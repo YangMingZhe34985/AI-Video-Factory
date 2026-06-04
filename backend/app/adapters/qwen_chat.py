@@ -58,6 +58,9 @@ class QwenChatAdapter(MockChatAdapter):
             "messages": messages,
             "_expect_json": expect_json,
         }
+        for key in ("enable_thinking", "top_p", "max_tokens"):
+            if params.get(key) is not None:
+                payload[key] = params[key]
         if schema and expect_json:
             payload["response_format"] = {
                 "type": "json_schema",

@@ -83,7 +83,7 @@ class Config:
     FAILURE_AGENT_ON_ERROR = _bool_env("FAILURE_AGENT_ON_ERROR", False)
 
     DEFAULT_VIDEO_UNDERSTANDING_MODEL = os.getenv(
-        "DEFAULT_VIDEO_UNDERSTANDING_MODEL", "qwen3.6-plus"
+        "DEFAULT_VIDEO_UNDERSTANDING_MODEL", "qwen3.7-plus"
     )
     DEFAULT_PROMPT_REWRITE_MODEL = os.getenv(
         "DEFAULT_PROMPT_REWRITE_MODEL", "deepseek-v4-flash"

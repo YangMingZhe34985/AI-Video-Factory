@@ -102,7 +102,26 @@ class NodeRunner:
         merged_params.update(params or {})
         payload = adapter.build_payload(inputs, merged_params)
         self._release_db_connection()
-        response = adapter.submit(payload)
+        try:
+            response = adapter.submit(payload)
+        except AppError as error:
+            enriched_payload = dict(error.payload or {})
+            enriched_payload.update(
+                {
+                    "model_id": model.model_id,
+                    "adapter_name": model.adapter_name,
+                    "task_type": model.task_type,
+                    "request_payload": payload,
+                    "node_key": node_key,
+                    "param_key": param_key,
+                }
+            )
+            raise AppError(
+                error.code,
+                error.message,
+                error.status_code,
+                payload=enriched_payload,
+            ) from error
         return adapter, payload, response
 
     @staticmethod

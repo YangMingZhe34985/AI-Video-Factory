@@ -37,7 +37,7 @@
               :options="jobOptions"
               :placeholder="t('artifacts.allJobs')"
               class="min-w-[160px]"
-              @change="loadArtifacts"
+              @change="onJobChange"
             />
           </div>
 
@@ -260,15 +260,16 @@ import * as seriesApi from '@/api/series'
 import AppSelect from '@/components/common/AppSelect.vue'
 import { PhArrowsClockwise, PhFile, PhDownloadSimple, PhEye, PhX, PhCopy } from '@phosphor-icons/vue'
 import { useI18n } from 'vue-i18n'
+import { clearRecentJob, getRecentJob, setRecentJob } from '@/composables/useRecentJob'
 
 const { t } = useI18n()
 const route = useRoute()
 const search = ref('')
-const filterSeriesId = ref('')
-const filterTemplateId = ref(route.query.template_id || '')
+const filterSeriesId = ref(route.query.series_id || route.query.series || '')
+const filterTemplateId = ref(route.query.template_id || route.query.template || '')
 const filterJobId = ref(route.query.job_id || '')
-const filterArtifactType = ref('')
-const filterBranchKey = ref('')
+const filterArtifactType = ref(route.query.artifact_type || route.query.type || '')
+const filterBranchKey = ref(route.query.branch_key || route.query.branch || '')
 const items = ref([])
 const loading = ref(false)
 const allJobs = ref([])
@@ -590,6 +591,13 @@ async function onTemplateChange() {
   await loadArtifacts()
 }
 
+async function onJobChange() {
+  if (filterJobId.value) {
+    setRecentJob(filterJobId.value)
+  }
+  await loadArtifacts()
+}
+
 async function loadArtifacts() {
   loading.value = true
   try {
@@ -621,6 +629,49 @@ function clearFilters() {
   loadArtifacts()
 }
 
+function hasExplicitInitialFilters() {
+  return !!(
+    route.query.series_id ||
+    route.query.series ||
+    route.query.template_id ||
+    route.query.template ||
+    route.query.job_id ||
+    route.query.artifact_type ||
+    route.query.type ||
+    route.query.branch_key ||
+    route.query.branch
+  )
+}
+
+async function applyRecentJobDefault() {
+  if (hasExplicitInitialFilters()) return
+  const recentJobId = getRecentJob()
+  if (!recentJobId) return
+
+  let recentJob = allJobs.value.find((item) => item.job_id === recentJobId)
+  if (!recentJob) {
+    try {
+      recentJob = await jobsApi.getJob(recentJobId)
+      if (recentJob?.job_id && !allJobs.value.some((item) => item.job_id === recentJob.job_id)) {
+        allJobs.value = [recentJob, ...allJobs.value]
+      }
+    } catch {
+      clearRecentJob(recentJobId)
+      return
+    }
+  }
+
+  if (!recentJob?.job_id) {
+    clearRecentJob(recentJobId)
+    return
+  }
+
+  filterJobId.value = recentJob.job_id
+  filterTemplateId.value = recentJob.template_id || ''
+  const template = templates.value.find((item) => item.template_id === filterTemplateId.value)
+  filterSeriesId.value = template?.series_id || template?.series || recentJob.series_id || ''
+}
+
 onMounted(async () => {
   try {
     seriesList.value = await seriesApi.getSeries()
@@ -633,6 +684,7 @@ onMounted(async () => {
     const jData = await jobsApi.getJobs({ perPage: 500 })
     allJobs.value = Array.isArray(jData) ? jData : (jData.jobs || [])
   } catch { allJobs.value = [] }
+  await applyRecentJobDefault()
   await loadArtifacts()
 })
 </script>

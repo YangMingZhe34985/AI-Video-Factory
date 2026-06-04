@@ -33,6 +33,20 @@ class DashScopeI2VAdapter(DashScopeGenerationAdapter):
             return {"model": self.model_id, "input": input_obj, "parameters": parameters}
 
         media = [{"type": "first_frame", "url": image_url}]
+        if self.model_id.startswith("happyhorse-"):
+            parameters = {
+                "resolution": params.get("resolution", "1080P"),
+                "duration": int(params.get("duration", 5)),
+                "watermark": bool(params.get("watermark", False)),
+            }
+            if params.get("seed") is not None:
+                parameters["seed"] = int(params["seed"])
+            return {
+                "model": self.model_id,
+                "input": {"prompt": inputs["prompt"], "media": media},
+                "parameters": parameters,
+            }
+
         if inputs.get("driving_audio"):
             media.append(
                 {

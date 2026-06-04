@@ -102,7 +102,7 @@ DATABASE_URL=mysql+pymysql://root:password@localhost:3306/video_factory
 STORAGE_ROOT=storage
 UPLOAD_FOLDER=storage/uploads
 DASHSCOPE_API_KEY=
-DEFAULT_VIDEO_UNDERSTANDING_MODEL=qwen3.6-plus
+DEFAULT_VIDEO_UNDERSTANDING_MODEL=qwen3.7-plus
 DEFAULT_PROMPT_REWRITE_MODEL=deepseek-v4-flash
 DEFAULT_T2V_MODEL=wan2.7-t2v
 DEFAULT_IMAGE_MODEL=wan2.7-image
@@ -203,8 +203,10 @@ Models are managed through the backend model registry. Business code calls adapt
 Examples:
 
 - `qwen3.6-plus`
+- `qwen3.7-plus`
+- `qwen3.7-max`
 - `qwen3.5-plus`
-- `glm5-1`
+- `glm-5.1`
 - `deepseek-v4-flash`
 - `deepseek-v4-pro`
 - `wan2.7-t2v`

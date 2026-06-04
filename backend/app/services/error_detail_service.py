@@ -141,8 +141,7 @@ class ErrorDetailService:
                 .order_by(ApiTask.created_at.desc())
                 .first()
             )
-            if task:
-                return task
+            return task
         if job:
             return (
                 ApiTask.query.filter_by(job_id=job.id)

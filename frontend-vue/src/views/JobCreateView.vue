@@ -328,7 +328,7 @@ const form = reactive({
 
 const DEFAULT_CONFIG = {
   models: {
-    video_understanding: 'qwen3.6-plus',
+    video_understanding: 'qwen3.7-plus',
     prompt_rewrite: 'qwen3.5-plus',
     t2v: 'wan2.7-t2v',
     image: 'wan2.6-image',

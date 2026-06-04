@@ -19,8 +19,17 @@ export const useModelStore = defineStore('models', () => {
       wan27i2v: 'wan2.7-i2v',
       wan27t2v: 'wan2.7-t2v',
       wan26r2vflash: 'wan2.6-r2v-flash',
-      glm51: 'glm5-1',
+      qwen37plus: 'qwen3.7-plus',
+      qwen37max: 'qwen3.7-max',
+      glm51: 'glm-5.1',
+      glm5: 'glm-5.1',
+      glm51legacy: 'glm-5.1',
+      glm5dot1: 'glm-5.1',
+      glm5dash1: 'glm-5.1',
+      glm51old: 'glm-5.1',
       deepseekv4pro: 'deepseek-v4-pro',
+      happyhorsei2v: 'happyhorse-1.0-i2v',
+      happyhorse10i2v: 'happyhorse-1.0-i2v',
     }
     return aliases[key] || raw
   }

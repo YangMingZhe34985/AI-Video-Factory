@@ -29,6 +29,33 @@ VIDEO_DURATION_SCHEMA = {
     },
 }
 
+HAPPYHORSE_I2V_PARAMETER_SCHEMA = {
+    "duration": {
+        "type": "integer",
+        "label": "Duration (seconds)",
+        "min": 3,
+        "max": 15,
+        "default": 5,
+    },
+    "resolution": {
+        "type": "string",
+        "label": "Resolution",
+        "enum": ["720P", "1080P"],
+        "default": "1080P",
+    },
+    "watermark": {
+        "type": "boolean",
+        "label": "Watermark",
+        "default": False,
+    },
+    "seed": {
+        "type": "integer",
+        "label": "Seed",
+        "min": 0,
+        "max": 2147483647,
+    },
+}
+
 T2V_PARAMETER_SCHEMA = {
     **VIDEO_DURATION_SCHEMA,
     "ratio": {
@@ -100,6 +127,27 @@ CHAT_PARAMETER_SCHEMA = {
 
 DEFAULT_MODELS = [
     {
+        "model_id": "qwen3.7-plus",
+        "display_name": "Qwen 3.7 Plus",
+        "provider": "dashscope",
+        "task_type": "video_understanding",
+        "adapter_name": "qwen_chat",
+        "default_params": {"temperature": 0.2, "fps": 2},
+        "parameter_schema": {
+            **CHAT_PARAMETER_SCHEMA,
+            "fps": {"type": "integer", "label": "Video FPS Sampling", "min": 1, "max": 6, "default": 2},
+        },
+    },
+    {
+        "model_id": "qwen3.7-max",
+        "display_name": "Qwen 3.7 Max",
+        "provider": "dashscope",
+        "task_type": "text_to_text",
+        "adapter_name": "qwen_chat",
+        "default_params": {"temperature": 0.2},
+        "parameter_schema": CHAT_PARAMETER_SCHEMA,
+    },
+    {
         "model_id": "qwen3.6-plus",
         "display_name": "Qwen 3.6 Plus",
         "provider": "dashscope",
@@ -130,13 +178,20 @@ DEFAULT_MODELS = [
         "parameter_schema": CHAT_PARAMETER_SCHEMA,
     },
     {
-        "model_id": "glm5-1",
+        "model_id": "glm-5.1",
         "display_name": "GLM 5.1",
         "provider": "dashscope",
         "task_type": "text_to_text",
         "adapter_name": "qwen_chat",
-        "default_params": {"temperature": 0.25},
-        "parameter_schema": CHAT_PARAMETER_SCHEMA,
+        "default_params": {"temperature": 0.25, "enable_thinking": False},
+        "parameter_schema": {
+            **CHAT_PARAMETER_SCHEMA,
+            "enable_thinking": {
+                "type": "boolean",
+                "label": "Enable Thinking",
+                "default": False,
+            },
+        },
     },
     {
         "model_id": "deepseek-v4-pro",
@@ -262,18 +317,17 @@ DEFAULT_MODELS = [
         },
     },
     {
-        "model_id": "happyhorse-i2v",
+        "model_id": "happyhorse-1.0-i2v",
         "display_name": "HappyHorse I2V",
         "provider": "dashscope",
         "task_type": "image_to_video",
         "adapter_name": "dashscope_i2v",
         "default_params": {
             "duration": 5,
-            "resolution": "720P",
-            "prompt_extend": False,
+            "resolution": "1080P",
             "watermark": False,
         },
-        "parameter_schema": VIDEO_DURATION_SCHEMA,
+        "parameter_schema": HAPPYHORSE_I2V_PARAMETER_SCHEMA,
     },
 ]
 
@@ -288,6 +342,10 @@ MODEL_ALIAS_TO_ID = {}
 for _model in DEFAULT_MODELS:
     MODEL_ALIAS_TO_ID[_model_alias_key(_model["model_id"])] = _model["model_id"]
     MODEL_ALIAS_TO_ID[_model_alias_key(_model["display_name"])] = _model["model_id"]
+MODEL_ALIAS_TO_ID[_model_alias_key("happyhorse-i2v")] = "happyhorse-1.0-i2v"
+MODEL_ALIAS_TO_ID[_model_alias_key("glm5-1")] = "glm-5.1"
+MODEL_ALIAS_TO_ID[_model_alias_key("glm5.1")] = "glm-5.1"
+MODEL_ALIAS_TO_ID[_model_alias_key("GLM5.1")] = "glm-5.1"
 
 
 class ModelService:
@@ -356,6 +414,9 @@ class ModelService:
         model = ModelRegistry.query.filter_by(model_id=lookup_id).first()
         if not model and str(model_id).isdigit():
             model = db.session.get(ModelRegistry, int(model_id))
+        if not model and lookup_id != model_id and lookup_id in DEFAULT_MODEL_BY_ID:
+            ModelService.seed_defaults()
+            model = ModelRegistry.query.filter_by(model_id=lookup_id).first()
         if not model and lookup_id != model_id:
             model = ModelRegistry.query.filter_by(model_id=model_id).first()
         if not model:

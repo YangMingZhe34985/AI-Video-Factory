@@ -200,7 +200,10 @@ Prompt 永远新增版本，不覆盖旧内容。创建版本时默认设为 act
 
 默认模型：
 
+- `qwen3.7-plus`
+- `qwen3.7-max`
 - `qwen3.6-plus`
+- `glm-5.1`
 - `qwen3.5-plus`
 - `wan2.7-t2v`
 - `wan2.6-image`
@@ -490,7 +493,7 @@ Content-Type: application/json
   "disabled_nodes": ["submit_t2v", "poll_t2v", "reverse_prompts4r2v", "submit_r2v_flash", "poll_r2v_flash"],
   "job_config": {
     "models": {
-      "video_understanding": "qwen3.6-plus",
+      "video_understanding": "qwen3.7-plus",
       "prompt_rewrite": "qwen3.5-plus",
       "image": "wan2.6-image",
       "i2v": "wan2.7-i2v"
