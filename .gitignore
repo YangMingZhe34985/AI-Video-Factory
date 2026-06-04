@@ -41,6 +41,12 @@ workflow_qwen36plus_video_to_i2v_template.py
 文生图提示词改写.md
 文生视频提示词改写.md
 
+# Deployment guide (local only — may contain server-specific notes)
+DEPLOYMENT.md
+
+# Production environment file (contains secrets)
+.env.production
+
 # ============================================================
 # Runtime data, generated media and user uploads
 # ============================================================

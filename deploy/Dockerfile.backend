@@ -1,0 +1,37 @@
+# ── AI Video Factory — Backend (Flask + Gunicorn) ────────────
+# Build context: project root  (docker-compose sets context: .)
+FROM python:3.12-slim
+
+LABEL org.opencontainers.image.title="AI Video Factory Backend"
+
+WORKDIR /app
+
+# curl is needed for the HEALTHCHECK only
+RUN apt-get update && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies (PyMySQL is pure-Python, no C libs needed)
+COPY backend/requirements.txt ./requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt \
+    && pip install --no-cache-dir "gunicorn==22.0.0"
+
+# Copy application source
+COPY backend/ .
+
+# Copy factory prompts (mounted as /factory_prompts in production,
+# but embedded here as fallback / for seed commands)
+COPY factory_prompts/ /factory_prompts/
+
+# Copy startup entrypoint
+COPY deploy/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+# Pre-create storage directories (overridden by volume in production)
+RUN mkdir -p storage/uploads storage/jobs storage/templates storage/artifacts
+
+EXPOSE 5000
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -fsS http://localhost:5000/api/health || exit 1
+
+ENTRYPOINT ["/entrypoint.sh"]

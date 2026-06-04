@@ -1,0 +1,77 @@
+version: "3.9"
+
+# ── AI Video Factory — Docker Compose (official v1.0) ─────────
+# 部署前请先按 DEPLOYMENT.md 完成 .env.production 配置
+
+services:
+
+  # ── MySQL 8.0 ─────────────────────────────────────────────────
+  db:
+    image: mysql:8.0
+    container_name: video_factory_db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE:      ${MYSQL_DATABASE:-video_factory}
+      MYSQL_CHARSET:       utf8mb4
+      MYSQL_COLLATION:     utf8mb4_unicode_ci
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1",
+             "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  # ── Flask Backend (Gunicorn) ──────────────────────────────────
+  backend:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.backend
+    container_name: video_factory_backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - .env.production
+    environment:
+      # 覆盖数据库连接地址，使用 Docker 内部网络
+      DATABASE_URL: "mysql+pymysql://root:${MYSQL_ROOT_PASSWORD}@db:3306/${MYSQL_DATABASE:-video_factory}"
+      FLASK_ENV: production
+      FACTORY_PROMPTS_DIR: /factory_prompts
+    volumes:
+      # 持久化用户上传和生成的产物
+      - backend_storage:/app/storage
+    networks:
+      - internal
+
+  # ── Nginx + Vue 3 前端 ────────────────────────────────────────
+  frontend:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.frontend
+    container_name: video_factory_frontend
+    restart: unless-stopped
+    ports:
+      - "${HOST_PORT:-80}:80"
+    depends_on:
+      - backend
+    networks:
+      - internal
+
+# ── 网络 ──────────────────────────────────────────────────────────
+networks:
+  internal:
+    driver: bridge
+
+# ── 持久卷 ────────────────────────────────────────────────────────
+volumes:
+  mysql_data:
+    driver: local        # MySQL 数据持久化
+  backend_storage:
+    driver: local        # 上传文件 & 生成产物持久化

@@ -1,0 +1,51 @@
+# Docker build context exclusions
+# Keep build context lean — exclude files not needed inside the image
+
+# Secrets & local env
+.env
+.env.*
+!.env.example
+backend/.env
+backend/.env.*
+
+# Python runtime
+backend/__pycache__/
+backend/**/__pycache__/
+backend/*.pyc
+backend/.venv/
+backend/venv/
+backend/env/
+backend/.pytest_cache/
+
+# Storage (large runtime data, not needed at build time)
+backend/storage/
+storage/
+workspace/
+
+# Node build artifacts (frontend)
+frontend-vue/node_modules/
+frontend-vue/dist/
+frontend-vue/.vite/
+frontend-vue/.cache/
+
+# Version control
+.git/
+.gitignore
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Docs / local notes
+DEPLOYMENT.md
+*.md
+!README.md
+
+# Logs
+*.log
+logs/
+
+# Migrations (handled at runtime via entrypoint)
+# backend/migrations/ is intentionally NOT excluded
