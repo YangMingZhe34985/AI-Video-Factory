@@ -1,0 +1,11 @@
+Single-database configuration for Flask-Migrate.
+
+Use:
+
+    flask --app run.py db upgrade
+
+to apply schema migrations. Use:
+
+    flask --app run.py init-db
+
+after schema upgrade to seed default data.
