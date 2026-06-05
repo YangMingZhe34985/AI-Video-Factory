@@ -7,6 +7,7 @@ from app.extensions import db
 from app.models import Artifact, Job, JobNodeRun, WorkflowNode
 from app.services.error_detail_service import ErrorDetailService
 from app.services.event_service import EventService
+from app.services.job_run_state_service import JobRunStateService
 from app.services.node_runner import NodeRunner
 from app.services.workflow_validator import WorkflowValidator
 from app.utils.time_utils import utc_now
@@ -301,7 +302,7 @@ class WorkflowService:
             status="skipped",
             attempt=JobNodeRun.query.filter_by(job_id=job.id, node_key=node.node_key).count() + 1,
             force=force,
-            input_snapshot={"reason": reason},
+            input_snapshot=JobRunStateService.attach_to_snapshot(job, {"reason": reason}),
             output_snapshot={"reason": reason},
             started_at=utc_now(),
             ended_at=utc_now(),
@@ -324,7 +325,9 @@ class WorkflowService:
             status="failed",
             attempt=JobNodeRun.query.filter_by(job_id=job.id, node_key=node.node_key).count() + 1,
             force=force,
-            input_snapshot={"depends_on": node.depends_on},
+            input_snapshot=JobRunStateService.attach_to_snapshot(
+                job, {"depends_on": node.depends_on}
+            ),
             output_snapshot={},
             error_message=message,
             started_at=utc_now(),
@@ -364,11 +367,18 @@ class WorkflowService:
 
     @staticmethod
     def latest_run(job: Job, node_key: str) -> JobNodeRun | None:
-        return (
-            JobNodeRun.query.filter_by(job_id=job.id, node_key=node_key)
-            .order_by(JobNodeRun.created_at.desc())
-            .first()
-        )
+        query = JobNodeRun.query.filter_by(job_id=job.id, node_key=node_key)
+        current_run_id = JobRunStateService.current_run_id(job)
+        if current_run_id:
+            run = (
+                query.filter(JobNodeRun.input_snapshot["run_id"].as_string() == current_run_id)
+                .order_by(JobNodeRun.created_at.desc())
+                .first()
+            )
+            if run:
+                return run
+            return None
+        return query.order_by(JobNodeRun.created_at.desc()).first()
 
     @staticmethod
     def _missing_dependencies(job: Job, node: WorkflowNode) -> list[str]:
@@ -434,7 +444,7 @@ class WorkflowService:
             "error_summary": job.error_summary,
             "node_runs": [
                 run.to_dict()
-                for run in JobNodeRun.query.filter_by(job_id=job.id)
+                for run in JobRunStateService.query_current_node_runs(job)
                 .order_by(JobNodeRun.created_at.asc())
                 .all()
             ],

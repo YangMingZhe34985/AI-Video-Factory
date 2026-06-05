@@ -33,8 +33,8 @@ export function deleteJob(jobId, confirmJobId) {
   return request.delete(`/jobs/${jobId}`, { data: { confirm_job_id: confirmJobId } })
 }
 
-export function runFull(jobId, force = false) {
-  return request.post(`/jobs/${jobId}/run-full`, { force })
+export function runFull(jobId, force = false, options = {}) {
+  return request.post(`/jobs/${jobId}/run-full`, { force, ...options })
 }
 
 export function runFrom(jobId, nodeKey, force = false) {

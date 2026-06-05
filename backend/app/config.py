@@ -109,6 +109,11 @@ class Config:
     DEFAULT_I2I_TEST_IMAGE_MODEL = os.getenv(
         "DEFAULT_I2I_TEST_IMAGE_MODEL", "wan2.7-image"
     )
+    DEFAULT_NEGATIVE_PROMPT = os.getenv(
+        "DEFAULT_NEGATIVE_PROMPT",
+        "主角动作卡顿，神情僵硬，面部变形，手臂错位，"
+        "手指畸形，肢体扭曲，身体比例错误，多手，多脚，塑料感服饰",
+    )
     I2I_TEST_MALE_DATASET_DIR = os.getenv(
         "I2I_TEST_MALE_DATASET_DIR", "workspace/personas/male"
     )

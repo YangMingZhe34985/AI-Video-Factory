@@ -98,9 +98,16 @@ class BaseModelAdapter(ABC):
         except ValueError:
             data = {"text": response.text}
         if response.status_code >= 400:
+            # Extract provider-specific error code and message from response body
+            error_code = data.get("code") or (data.get("output") or {}).get("code")
+            error_msg  = data.get("message") or (data.get("output") or {}).get("message")
+            user_msg   = f"HTTP {response.status_code} from model provider"
+            if error_code or error_msg:
+                detail = " — ".join(filter(None, [error_code, error_msg]))
+                user_msg = f"{user_msg} — {detail}"
             raise AppError(
                 "API_TASK_FAILED",
-                f"HTTP {response.status_code} from model provider",
+                user_msg,
                 response.status_code,
                 payload={"url": url, "response": data},
             )

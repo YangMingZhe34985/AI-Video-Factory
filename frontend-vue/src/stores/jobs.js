@@ -53,8 +53,8 @@ export const useJobStore = defineStore('jobs', () => {
     return jobsApi.deleteJob(jobId, confirmJobId)
   }
 
-  async function runFull(jobId, force = false) {
-    return jobsApi.runFull(jobId, force)
+  async function runFull(jobId, force = false, options = {}) {
+    return jobsApi.runFull(jobId, force, options)
   }
 
   async function runFrom(jobId, nodeKey, force = false) {

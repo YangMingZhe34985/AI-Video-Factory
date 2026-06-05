@@ -40,8 +40,11 @@
             <button v-if="!['running', 'queued'].includes(job.status)" @click="openDeleteDialog" class="px-4 py-2 border border-red-200 text-red-600 rounded-lg text-sm font-medium hover:bg-red-50 flex items-center">
               <PhTrash class="mr-1.5" /> Delete
             </button>
-            <button v-if="!['running', 'queued'].includes(job.status)" @click="runFull" class="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-blue-700 flex items-center">
-              <PhPlay class="mr-1.5" /> Run Full
+            <button v-if="!['running', 'queued'].includes(job.status)" @click="runFresh" class="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-blue-700 flex items-center">
+              <PhPlay class="mr-1.5" /> {{ t('jobs.runFresh') }}
+            </button>
+            <button v-if="['failed', 'partial_success'].includes(job.status)" @click="runRollback" class="px-4 py-2 border border-primary text-primary rounded-lg text-sm font-medium hover:bg-blue-50 flex items-center">
+              <PhArrowCounterClockwise class="mr-1.5" /> {{ t('jobs.runRollback') }}
             </button>
             <button v-if="job.status === 'running'" @click="pauseJob" class="px-4 py-2 border border-orange-200 text-orange-600 rounded-lg text-sm font-medium hover:bg-orange-50 flex items-center">
               <PhPause class="mr-1.5" /> {{ t('jobs.paused') }}
@@ -192,7 +195,23 @@
 
       <!-- Artifacts -->
       <div class="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
-        <h3 class="font-bold text-gray-900 mb-4">Artifacts</h3>
+        <div class="flex items-center justify-between gap-3 mb-4">
+          <div>
+            <h3 class="font-bold text-gray-900">Artifacts</h3>
+            <p class="text-xs text-gray-400 mt-0.5">
+              {{ showArtifactHistory ? 'Showing current and historical artifacts' : 'Showing current run artifacts' }}
+            </p>
+          </div>
+          <label class="inline-flex items-center gap-2 text-xs text-gray-500 select-none">
+            <input
+              v-model="showArtifactHistory"
+              type="checkbox"
+              class="rounded border-gray-300 text-primary focus:ring-primary"
+              @change="loadArtifacts"
+            />
+            Show history
+          </label>
+        </div>
         <div v-if="artifacts.length === 0" class="text-center text-gray-400 text-sm py-4">No artifacts yet</div>
         <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           <div v-for="a in artifacts" :key="a.id || a.artifact_id" class="border border-gray-200 rounded-lg p-3 flex items-center">
@@ -244,7 +263,7 @@ import { useToast } from '@/composables/useToast'
 import { formatDate } from '@/utils/format'
 import * as artifactsApi from '@/api/artifacts'
 import { deleteJob, packageJob, updateJob } from '@/api/jobs'
-import { PhCopy, PhPlay, PhPause, PhStop, PhImage, PhDownloadSimple, PhPencilSimple, PhTrash } from '@phosphor-icons/vue'
+import { PhCopy, PhPlay, PhPause, PhStop, PhImage, PhDownloadSimple, PhPencilSimple, PhTrash, PhArrowCounterClockwise } from '@phosphor-icons/vue'
 import { clearRecentJob, setRecentJob } from '@/composables/useRecentJob'
 
 import { useI18n } from 'vue-i18n'
@@ -259,6 +278,7 @@ const jobId = computed(() => route.params.jobId)
 const job = computed(() => jobStore.currentJob)
 const jobDisplayTitle = computed(() => job.value?.job_name || job.value?.job_id || job.value?.id || jobId.value)
 const artifacts = ref([])
+const showArtifactHistory = ref(false)
 const sseEvents = ref([])
 const sseConnected = ref(false)
 const expandedEventKeys = ref(new Set())
@@ -612,6 +632,31 @@ async function runFull() {
   } catch (e) { toast.error(t('jobs.jobStartFailed')) }
 }
 
+async function runFresh() {
+  try {
+    setRecentJob(job.value?.job_id || jobId.value)
+    artifacts.value = []
+    showArtifactHistory.value = false
+    packageResult.value = null
+    await jobStore.runFull(jobId.value, true, { restart: true })
+    toast.success(t('jobs.jobStarted'))
+    connectSSE()
+    await refreshLiveData()
+    startRunningPoll()
+  } catch (e) { toast.error(t('jobs.jobStartFailed')) }
+}
+
+async function runRollback() {
+  try {
+    setRecentJob(job.value?.job_id || jobId.value)
+    await jobStore.runFull(jobId.value, false)
+    toast.success(t('jobs.jobStarted'))
+    connectSSE()
+    await refreshLiveData()
+    startRunningPoll()
+  } catch (e) { toast.error(t('jobs.jobStartFailed')) }
+}
+
 async function pauseJob() {
   try {
     await jobStore.pauseJob(jobId.value)
@@ -653,7 +698,9 @@ async function loadJob(options = {}) {
 
 async function loadArtifacts() {
   try {
-    artifacts.value = await artifactsApi.getArtifacts(jobId.value)
+    artifacts.value = await artifactsApi.getArtifacts(jobId.value, {
+      includeHistory: showArtifactHistory.value,
+    })
     if (!Array.isArray(artifacts.value)) artifacts.value = []
   } catch { artifacts.value = [] }
 }

@@ -1,7 +1,9 @@
 import request from './request'
 
-export function getArtifacts(jobId) {
-  return request.get(`/jobs/${jobId}/artifacts`).then((data) => data.artifacts || data)
+export function getArtifacts(jobId, options = {}) {
+  const params = {}
+  if (options.includeHistory) params.include_history = true
+  return request.get(`/jobs/${jobId}/artifacts`, { params }).then((data) => data.artifacts || data)
 }
 
 export function searchArtifacts(params = {}) {

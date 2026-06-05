@@ -38,6 +38,7 @@ UI设计/
 *.docx
 网站最终期望呈现效果.md
 workflow_qwen36plus_video_to_i2v_template.py
+video_generate_wan2.7-image_to_wan2.6-i2v.py
 compress.py
 五段式提示词模版.md
 文生图提示词改写.md

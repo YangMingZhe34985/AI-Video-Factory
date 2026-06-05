@@ -41,7 +41,7 @@ HAPPYHORSE_I2V_PARAMETER_SCHEMA = {
         "type": "string",
         "label": "Resolution",
         "enum": ["720P", "1080P"],
-        "default": "1080P",
+        "default": "720P",
     },
     "watermark": {
         "type": "boolean",
@@ -324,7 +324,7 @@ DEFAULT_MODELS = [
         "adapter_name": "dashscope_i2v",
         "default_params": {
             "duration": 5,
-            "resolution": "1080P",
+            "resolution": "720P",
             "watermark": False,
         },
         "parameter_schema": HAPPYHORSE_I2V_PARAMETER_SCHEMA,

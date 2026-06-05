@@ -13,6 +13,7 @@ from app.models import Artifact, Job, JobNodeRun, WorkflowNode
 from app.services.error_detail_service import ErrorDetailService
 from app.services.event_service import EventService
 from app.services.failure_decision_service import FailureDecisionService
+from app.services.job_run_state_service import JobRunStateService
 from app.services.node_runner import NodeRunner
 from app.utils.time_utils import utc_now
 
@@ -100,6 +101,8 @@ class WorkflowScheduler:
 
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             while pending or futures:
+                # Expire cached objects so each iteration re-reads fresh DB state
+                db.session.expire_all()
                 job = db.session.get(Job, job_pk)
                 if not job:
                     raise AppError("JOB_NOT_FOUND", "Job not found", 404)
@@ -420,6 +423,21 @@ class WorkflowScheduler:
             )
         db.session.commit()
 
+        # Write to file-based error log so logs/ directory has content
+        if job:
+            try:
+                from app.services.storage_service import StorageService
+                StorageService.append_job_log(job.job_id, "error", {
+                    "node_key":  node_run.node_key if node_run else None,
+                    "run_id":    node_run.run_id if node_run else None,
+                    "code":      code,
+                    "summary":   error_detail.get("summary"),
+                    "technical": error_detail.get("technical_message"),
+                    "api_task":  error_detail.get("api_task"),
+                })
+            except Exception:
+                pass
+
     def _record_skipped_if_needed(
         self,
         job: Job,
@@ -436,7 +454,7 @@ class WorkflowScheduler:
             status="skipped",
             attempt=JobNodeRun.query.filter_by(job_id=job.id, node_key=node.node_key).count() + 1,
             force=force,
-            input_snapshot={"reason": reason},
+            input_snapshot=JobRunStateService.attach_to_snapshot(job, {"reason": reason}),
             output_snapshot={"reason": reason},
             started_at=utc_now(),
             ended_at=utc_now(),
@@ -464,7 +482,9 @@ class WorkflowScheduler:
             status="path_failed",
             attempt=JobNodeRun.query.filter_by(job_id=job.id, node_key=node.node_key).count() + 1,
             force=force,
-            input_snapshot={"depends_on": node.depends_on},
+            input_snapshot=JobRunStateService.attach_to_snapshot(
+                job, {"depends_on": node.depends_on}
+            ),
             output_snapshot={},
             error_message=message,
             started_at=utc_now(),
@@ -514,7 +534,9 @@ class WorkflowScheduler:
             status="path_failed",
             attempt=JobNodeRun.query.filter_by(job_id=job.id, node_key=node.node_key).count() + 1,
             force=force,
-            input_snapshot={"reason": reason, "upstream_node": upstream_node},
+            input_snapshot=JobRunStateService.attach_to_snapshot(
+                job, {"reason": reason, "upstream_node": upstream_node}
+            ),
             output_snapshot={"reason": reason, "upstream_node": upstream_node},
             error_message=reason,
             started_at=utc_now(),
@@ -772,11 +794,16 @@ class WorkflowScheduler:
 
     @staticmethod
     def _latest_run(job_pk: int, node_key: str) -> JobNodeRun | None:
-        return (
-            JobNodeRun.query.filter_by(job_id=job_pk, node_key=node_key)
-            .order_by(JobNodeRun.created_at.desc())
-            .first()
-        )
+        job = db.session.get(Job, job_pk)
+        query = JobNodeRun.query.filter_by(job_id=job_pk, node_key=node_key)
+        current_run_id = JobRunStateService.current_run_id(job)
+        if current_run_id:
+            return (
+                query.filter(JobNodeRun.input_snapshot["run_id"].as_string() == current_run_id)
+                .order_by(JobNodeRun.created_at.desc())
+                .first()
+            )
+        return query.order_by(JobNodeRun.created_at.desc()).first()
 
     @staticmethod
     def _has_deliverable_artifact(job: Job) -> bool:
@@ -787,26 +814,40 @@ class WorkflowScheduler:
             "r2v_flash_video",
             "r2v_flash_videos",
         }
-        return (
-            Artifact.query.filter(
-                Artifact.job_id == job.id,
-                Artifact.artifact_type.in_(deliverable_types),
-            ).first()
-            is not None
+        query = Artifact.query.filter(
+            Artifact.job_id == job.id,
+            Artifact.artifact_type.in_(deliverable_types),
         )
+        current_run_id = JobRunStateService.current_run_id(job)
+        if current_run_id:
+            query = query.filter(Artifact.meta["run_id"].as_string() == current_run_id)
+        return query.first() is not None
 
     @staticmethod
     def _has_unresolved_failure(job_pk: int, active_keys: set[str] | None = None) -> bool:
-        latest_by_node = {}
+        job = db.session.get(Job, job_pk)
+        if not job:
+            return True
+        latest_by_node: dict[str, str] = {}
+        latest_run_by_node: dict[str, JobNodeRun] = {}
         for run in (
-            JobNodeRun.query.filter_by(job_id=job_pk)
+            JobRunStateService.query_current_node_runs(job)
             .order_by(JobNodeRun.created_at.asc())
             .all()
         ):
             if active_keys is not None and run.node_key not in active_keys:
                 continue
             latest_by_node[run.node_key] = run.status
-        return any(status in {"failed", "path_failed"} for status in latest_by_node.values())
+            latest_run_by_node[run.node_key] = run
+        for node_key, status in latest_by_node.items():
+            if status in {"failed", "path_failed"}:
+                return True
+            if status == "skipped":
+                run = latest_run_by_node[node_key]
+                snapshot = run.output_snapshot if isinstance(run.output_snapshot, dict) else {}
+                if snapshot.get("skip_after_failure"):
+                    return True
+        return False
 
     @staticmethod
     def _is_node_enabled(job: Job, node: WorkflowNode) -> bool:
@@ -824,15 +865,18 @@ class WorkflowScheduler:
     @staticmethod
     def _job_run_summary(job_pk: int) -> dict:
         job = db.session.get(Job, job_pk)
+        node_runs = []
+        if job:
+            node_runs = [
+                run.to_dict()
+                for run in JobRunStateService.query_current_node_runs(job)
+                .order_by(JobNodeRun.created_at.asc())
+                .all()
+            ]
         return {
             "job_id": job.job_id if job else None,
             "status": job.status if job else "failed",
             "current_node": job.current_node if job else None,
             "error_summary": job.error_summary if job else "Job not found",
-            "node_runs": [
-                run.to_dict()
-                for run in JobNodeRun.query.filter_by(job_id=job_pk)
-                .order_by(JobNodeRun.created_at.asc())
-                .all()
-            ],
+            "node_runs": node_runs,
         }

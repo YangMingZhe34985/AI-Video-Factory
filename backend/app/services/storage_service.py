@@ -46,6 +46,21 @@ class StorageService:
         return ensure_dir(StorageService.root() / "jobs" / job_id / Path(*parts))
 
     @staticmethod
+    def append_job_log(job_id: str, log_type: str, entry: dict) -> None:
+        """Append one JSONL entry to storage/jobs/{job_id}/logs/{log_type}.log.
+
+        Failures in this method are silently swallowed so logging never breaks the main flow.
+        log_type examples: "error", "i2i_sample"
+        """
+        import json
+        from datetime import datetime, timezone
+        log_dir = StorageService.job_dir(job_id, "logs")
+        log_file = log_dir / f"{log_type}.log"
+        stamped = {"ts": datetime.now(timezone.utc).isoformat(), **entry}
+        with open(log_file, "a", encoding="utf-8") as f:
+            f.write(json.dumps(stamped, ensure_ascii=False) + "\n")
+
+    @staticmethod
     def save_source_video(file_storage, job_id: str) -> dict:
         filename = safe_filename(file_storage.filename, fallback=f"{job_id}.mp4")
         target = ensure_dir(Path(current_app.config["UPLOAD_FOLDER"])) / f"{job_id}_{filename}"

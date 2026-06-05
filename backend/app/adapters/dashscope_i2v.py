@@ -30,12 +30,14 @@ class DashScopeI2VAdapter(DashScopeGenerationAdapter):
                 parameters["shot_type"] = params["shot_type"]
             if params.get("audio") is not None:
                 parameters["audio"] = bool(params["audio"])
+            if inputs.get("negative_prompt"):
+                parameters["negative_prompt"] = inputs["negative_prompt"]
             return {"model": self.model_id, "input": input_obj, "parameters": parameters}
 
         media = [{"type": "first_frame", "url": image_url}]
         if self.model_id.startswith("happyhorse-"):
             parameters = {
-                "resolution": params.get("resolution", "1080P"),
+                "resolution": params.get("resolution", "720P"),
                 "duration": int(params.get("duration", 5)),
                 "watermark": bool(params.get("watermark", False)),
             }
@@ -56,13 +58,16 @@ class DashScopeI2VAdapter(DashScopeGenerationAdapter):
                     ),
                 }
             )
+        parameters = {
+            "resolution": params.get("resolution", "720P"),
+            "duration": int(params.get("duration", 10)),
+            "prompt_extend": bool(params.get("prompt_extend", False)),
+            "watermark": bool(params.get("watermark", False)),
+        }
+        if inputs.get("negative_prompt"):
+            parameters["negative_prompt"] = inputs["negative_prompt"]
         return {
             "model": self.model_id,
             "input": {"prompt": inputs["prompt"], "media": media},
-            "parameters": {
-                "resolution": params.get("resolution", "720P"),
-                "duration": int(params.get("duration", 10)),
-                "prompt_extend": bool(params.get("prompt_extend", False)),
-                "watermark": bool(params.get("watermark", False)),
-            },
+            "parameters": parameters,
         }

@@ -12,6 +12,7 @@ from app.models import ApiTask, Artifact, Job, JobNodeRun, JobPromptRef, ModelRe
 from app.services.artifact_service import ArtifactService
 from app.services.event_service import EventService
 from app.services.i2i_test_batch_service import I2ITestBatchService
+from app.services.job_run_state_service import JobRunStateService
 from app.services.model_service import ModelService
 from app.services.prompt_service import PromptService
 from app.services.storage_service import StorageService
@@ -29,7 +30,7 @@ class NodeRunner:
     }
 
     def build_input_snapshot(self, job: Job, node) -> dict:
-        return {
+        return JobRunStateService.attach_to_snapshot(job, {
             "job_id": job.job_id,
             "template_id": job.external_template_id,
             "node_key": node.node_key,
@@ -39,7 +40,7 @@ class NodeRunner:
             "depends_on": node.depends_on,
             "node_config": self._node_config(job, node),
             "job_config": job.config,
-        }
+        })
 
     def run(self, job: Job, node, node_run: JobNodeRun) -> dict:
         handler = getattr(self, f"_run_{node.node_key}", None)
@@ -124,6 +125,69 @@ class NodeRunner:
                 payload=enriched_payload,
             ) from error
         return adapter, payload, response
+
+    def _i2i_test_image_adapter_payload(
+        self,
+        model: ModelRegistry,
+        inputs: dict,
+        job: Job | None = None,
+        node=None,
+        param_key: str | None = None,
+    ):
+        """Like _adapter_payload but selects the correct adapter for I2I test images.
+
+        wan2.7-image is a multimodal model that requires the multimodal-generation
+        endpoint and a synchronous call.  All other image models continue to use
+        the standard dashscope_image adapter via _adapter_payload.
+
+        Returns (adapter, effective_adapter_name, payload, response).
+        """
+        from app.adapters.dashscope_multimodal_image import DashScopeMultimodalSyncAdapter
+
+        if model.model_id.startswith("wan2.7-image"):
+            adapter = DashScopeMultimodalSyncAdapter(model=model)
+            effective_adapter_name = "dashscope_multimodal_sync"
+        else:
+            adapter = get_adapter(model.adapter_name, model=model)
+            effective_adapter_name = model.adapter_name
+
+        merged_params = dict(model.default_params or {})
+        node_key = node.node_key if node else None
+        node_config = self._node_config(job, node) if node else {}
+        if node_config:
+            merged_params.update(node_config.get("model_params") or {})
+        if job and param_key:
+            merged_params.update(((job.config or {}).get("model_params") or {}).get(param_key) or {})
+        if job and node_key:
+            merged_params.update(((job.config or {}).get("node_model_params") or {}).get(node_key) or {})
+
+        payload = adapter.build_payload(inputs, merged_params)
+        self._release_db_connection()
+        try:
+            response = adapter.submit(payload)
+        except AppError as error:
+            enriched = dict(error.payload or {})
+            enriched.update({
+                "model_id": model.model_id,
+                "adapter_name": effective_adapter_name,
+                "request_payload": payload,
+                "node_key": node_key,
+                "param_key": param_key,
+            })
+            raise AppError(error.code, error.message, error.status_code, payload=enriched) from error
+        return adapter, effective_adapter_name, payload, response
+
+    def _negative_prompt(self, job: Job) -> str | None:
+        """Return the effective negative prompt for generation nodes.
+
+        Priority: job.config["negative_prompt"] override → DEFAULT_NEGATIVE_PROMPT.
+        Returns None when the resolved value is empty (suppresses the field).
+        """
+        job_override = (job.config or {}).get("negative_prompt")
+        if job_override is not None:
+            return job_override or None
+        default = current_app.config.get("DEFAULT_NEGATIVE_PROMPT") or ""
+        return default or None
 
     @staticmethod
     def _node_config(job: Job | None, node) -> dict:
@@ -389,7 +453,7 @@ class NodeRunner:
     ) -> Artifact:
         path = StorageService.write_text_artifact(
             job.job_id,
-            ["prompts", self._prompt_file_name(prompt)],
+            self._prompt_relative_parts(job, self._prompt_file_name(prompt)),
             prompt.content,
         )
         return ArtifactService.register_artifact(
@@ -432,7 +496,11 @@ class NodeRunner:
                 for ref in refs
             ],
         }
-        path = StorageService.write_job_json(job.job_id, ["prompts", "prompt_summary.json"], summary)
+        path = StorageService.write_job_json(
+            job.job_id,
+            self._prompt_relative_parts(job, "prompt_summary.json"),
+            summary,
+        )
         return ArtifactService.register_artifact(
             job,
             path,
@@ -468,6 +536,13 @@ class NodeRunner:
         cleaned = "".join(char if char.isalnum() or char in {"-", "_"} else "_" for char in str(value))
         return cleaned.strip("_") or "default"
 
+    @staticmethod
+    def _prompt_relative_parts(job: Job, file_name: str) -> list[str]:
+        run_id = JobRunStateService.current_run_id(job)
+        if run_id:
+            return ["prompts", run_id, file_name]
+        return ["prompts", file_name]
+
     def _create_api_task(
         self,
         job: Job,
@@ -477,16 +552,17 @@ class NodeRunner:
         request_payload: dict,
         response_payload: dict,
         expected_artifact_path: str,
+        adapter_name: str | None = None,
     ) -> ApiTask:
         task = ApiTask(
             job_id=job.id,
             node_run_id=node_run.id,
             branch_key=branch_key,
             model_id=model.model_id,
-            adapter_name=model.adapter_name,
+            adapter_name=adapter_name or model.adapter_name,
             provider_task_id=response_payload.get("provider_task_id"),
             status="submitted",
-            request_payload=request_payload,
+            request_payload=JobRunStateService.task_payload_for_job(job, request_payload),
             response_payload=response_payload,
             expected_artifact_path=expected_artifact_path,
             submitted_at=utc_now(),
@@ -539,11 +615,17 @@ class NodeRunner:
         )
 
     def _latest_task(self, job: Job, branch_key: str) -> ApiTask:
-        task = (
-            ApiTask.query.filter_by(job_id=job.id, branch_key=branch_key)
-            .order_by(ApiTask.created_at.desc())
-            .first()
-        )
+        query = ApiTask.query.filter_by(job_id=job.id, branch_key=branch_key)
+        current_run_id = JobRunStateService.current_run_id(job)
+        task = None
+        if current_run_id:
+            task = (
+                query.filter(ApiTask.request_payload["_run_id"].as_string() == current_run_id)
+                .order_by(ApiTask.created_at.desc())
+                .first()
+            )
+        else:
+            task = query.order_by(ApiTask.created_at.desc()).first()
         if not task:
             raise AppError(
                 "DEPENDENCY_MISSING",
@@ -553,11 +635,18 @@ class NodeRunner:
         return task
 
     def _prompt(self, job: Job, prompt_type: str, required: bool = True):
-        prompt = PromptService.get_active_for_template(
-            job.template, prompt_type, job_id=job.id
-        )
-        if not prompt:
+        if JobRunStateService.prompt_policy(job) == "template_first":
             prompt = PromptService.get_active_for_template(job.template, prompt_type)
+            if not prompt:
+                prompt = PromptService.get_active_for_template(
+                    job.template, prompt_type, job_id=job.id
+                )
+        else:
+            prompt = PromptService.get_active_for_template(
+                job.template, prompt_type, job_id=job.id
+            )
+            if not prompt:
+                prompt = PromptService.get_active_for_template(job.template, prompt_type)
         if required and not prompt:
             raise AppError(
                 "PROMPT_NOT_FOUND",
@@ -644,7 +733,8 @@ class NodeRunner:
         model = self._model_for(job, node, "t2v", "DEFAULT_T2V_MODEL")
         adapter, payload, response = self._adapter_payload(
             model,
-            {"prompt": prompt.content, "prompt_version": prompt.version},
+            {"prompt": prompt.content, "prompt_version": prompt.version,
+             "negative_prompt": self._negative_prompt(job)},
             job=job,
             node=node,
             param_key="t2v",
@@ -684,7 +774,7 @@ class NodeRunner:
     def _run_submit_first_frame_image(self, job: Job, node, node_run: JobNodeRun) -> dict:
         prompt = self._prompt(job, "first_frame_image")
         model = self._model_for(job, node, "image", "DEFAULT_IMAGE_MODEL")
-        adapter, payload, response = self._adapter_payload(
+        adapter, effective_adapter_name, payload, response = self._i2i_test_image_adapter_payload(
             model,
             {"prompt": prompt.content, "prompt_version": prompt.version},
             job=job,
@@ -716,7 +806,14 @@ class NodeRunner:
             f"jobs/{job.job_id}/outputs/first_frame_image/{prompt.version}/first_frame.png"
         )
         task = self._create_api_task(
-            job, node_run, "first_frame_image", model, payload, response, expected_path
+            job,
+            node_run,
+            "first_frame_image",
+            model,
+            payload,
+            response,
+            expected_path,
+            adapter_name=effective_adapter_name,
         )
         return {
             "api_task_id": task.api_task_id,
@@ -913,6 +1010,7 @@ class NodeRunner:
                 "prompt": prompt.content,
                 "prompt_version": prompt.version,
                 "reference_images": [item.file_path for item in references],
+                "negative_prompt": self._negative_prompt(job),
             },
             job=job,
             node=node,
@@ -1071,6 +1169,7 @@ class NodeRunner:
                 "prompt": prompt.content,
                 "prompt_version": prompt.version,
                 "first_frame_image": first_frame.file_path,
+                "negative_prompt": self._negative_prompt(job),
             },
             job=job,
             node=node,
@@ -1150,86 +1249,129 @@ class NodeRunner:
         )
         model = self._get_model(model_id)
         task_results = []
+        skipped_failed = 0
+
         for item in items:
-            test_index = int(item.get("test_index") or (len(task_results) + 1))
+            test_index = int(item.get("test_index") or (len(task_results) + skipped_failed + 1))
             source_image = item.get("primary_image")
             if not source_image:
-                raise AppError(
-                    "DEPENDENCY_MISSING",
-                    f"Missing source image for i2i test image #{test_index}",
-                    400,
-                )
+                item["image_status"] = "failed"
+                item["image_error"] = f"missing source image for test #{test_index}"
+                skipped_failed += 1
+                continue
+
             item_mode = item.get("mode") or batch.get("mode")
-            adapter, payload, response = self._adapter_payload(
-                model,
-                {
-                    "prompt": i2i_prompt.content,
-                    "prompt_version": i2i_prompt.version,
-                    "source_image": source_image,
+            try:
+                # wan2.7-image is a multimodal model: it must use the multimodal-generation
+                # endpoint (synchronous) instead of the image-generation endpoint (async).
+                # Using the wrong endpoint with enable_interleave=True causes random
+                # "输入/输出不合适" errors when person reference images are supplied.
+                adapter, effective_adapter_name, payload, response = (
+                    self._i2i_test_image_adapter_payload(
+                        model,
+                        {
+                            "prompt": i2i_prompt.content,
+                            "prompt_version": i2i_prompt.version,
+                            "source_image": source_image,
+                            "test_index": test_index,
+                            "mode": item_mode,
+                            "source_images": item.get("source_images") or [],
+                            "branch_key": "i2i_test",
+                        },
+                        job=job,
+                        node=node,
+                        param_key="i2i_test_image",
+                    )
+                )
+                request_payload = {
+                    **payload,
                     "test_index": test_index,
                     "mode": item_mode,
+                    "source_image": source_image,
                     "source_images": item.get("source_images") or [],
-                    "branch_key": "i2i_test",
-                },
-                job=job,
-                node=node,
-                param_key="i2i_test_image",
-            )
-            request_payload = {
-                **payload,
-                "test_index": test_index,
-                "mode": item_mode,
-                "source_image": source_image,
-                "source_images": item.get("source_images") or [],
-                "primary_role": item.get("primary_role"),
-                "i2i_prompt_version": i2i_prompt.version,
-            }
-            base = ["outputs", "i2i_test_image", f"test_{test_index:03d}"]
-            self._write_json_artifact(
-                job,
-                node_run,
-                base + ["request_payload.json"],
-                request_payload,
-                "request_payload",
-                "i2i_test",
-                model.model_id,
-                i2i_prompt.version,
-            )
-            self._write_json_artifact(
-                job,
-                node_run,
-                base + ["response.json"],
-                response,
-                "api_response",
-                "i2i_test",
-                model.model_id,
-                i2i_prompt.version,
-            )
-            expected_path = (
-                f"jobs/{job.job_id}/outputs/i2i_test_image/test_{test_index:03d}/first_frame.png"
-            )
-            task = self._create_api_task(
-                job,
-                node_run,
-                "i2i_test_image",
-                model,
-                request_payload,
-                response,
-                expected_path,
-            )
-            task_results.append(
-                {
-                    "test_index": test_index,
-                    "api_task_id": task.api_task_id,
-                    "provider_task_id": task.provider_task_id,
-                    "expected_artifact_path": expected_path,
-                    "model_id": model.model_id,
-                    "adapter": adapter.__class__.__name__,
+                    "primary_role": item.get("primary_role"),
+                    "i2i_prompt_version": i2i_prompt.version,
                 }
+                base = ["outputs", "i2i_test_image", f"test_{test_index:03d}"]
+                self._write_json_artifact(
+                    job, node_run, base + ["request_payload.json"],
+                    request_payload, "request_payload", "i2i_test", model.model_id, i2i_prompt.version,
+                )
+                self._write_json_artifact(
+                    job, node_run, base + ["response.json"],
+                    response, "api_response", "i2i_test", model.model_id, i2i_prompt.version,
+                )
+                expected_path = (
+                    f"jobs/{job.job_id}/outputs/i2i_test_image/test_{test_index:03d}/first_frame.png"
+                )
+                task = self._create_api_task(
+                    job, node_run, "i2i_test_image", model,
+                    request_payload, response, expected_path,
+                    adapter_name=effective_adapter_name,
+                )
+                item["image_status"] = "submitted"
+                task_results.append(
+                    {
+                        "test_index": test_index,
+                        "api_task_id": task.api_task_id,
+                        "provider_task_id": task.provider_task_id,
+                        "expected_artifact_path": expected_path,
+                        "model_id": model.model_id,
+                        "adapter": adapter.__class__.__name__,
+                    }
+                )
+            except AppError as err:
+                item["image_status"] = "failed"
+                item["image_error"] = err.message
+                skipped_failed += 1
+                EventService.record(
+                    job,
+                    "I2I_TEST_IMAGE_SUBMIT_FAILED",
+                    message=f"I2I test #{test_index} submit failed: {err.message}",
+                    node_key=node_run.node_key,
+                    level="warning",
+                )
+                try:
+                    StorageService.append_job_log(job.job_id, "i2i_sample", {
+                        "test_index": test_index,
+                        "stage": "submit_image",
+                        "status": "failed",
+                        "error": err.message,
+                    })
+                except Exception:
+                    pass
+
+        # Persist per-sample status back to job config
+        batch["items"] = items
+        job.config = {**(job.config or {}), "i2i_test_batch": batch}
+        db.session.flush()
+
+        if not task_results:
+            sample_errors = [
+                f"#{i.get('test_index')}: {i.get('image_error', 'unknown')}"
+                for i in items if i.get("image_status") == "failed"
+            ]
+            raise AppError(
+                "API_TASK_FAILED",
+                "All I2I test image submissions failed — "
+                + ("; ".join(sample_errors) if sample_errors else "no detail"),
+                502,
             )
-        return {"tasks": task_results, "i2i_prompt_version": i2i_prompt.version}
+
+        return {
+            "tasks": task_results,
+            "skipped_failed": skipped_failed,
+            "i2i_prompt_version": i2i_prompt.version,
+        }
 
     def _run_poll_i2i_test_image(self, job: Job, node, node_run: JobNodeRun) -> dict:
+        """Poll all I2I test image tasks.
+
+        Fault-tolerant: a single sample failure does not abort the node.
+        Pipeline: for each successful first-frame, immediately submit the i2v task so
+        video generation starts without waiting for all images to complete.
+        The node only fails when ALL samples fail.
+        """
         tasks = (
             ApiTask.query.filter_by(job_id=job.id, branch_key="i2i_test_image")
             .order_by(ApiTask.created_at.asc())
@@ -1237,54 +1379,208 @@ class NodeRunner:
         )
         if not tasks:
             raise AppError("DEPENDENCY_MISSING", "No I2I test image API tasks found", 400)
+
         prompt = self._prompt(job, "i2i")
-        artifacts = []
+        i2v_prompt = self._prompt(job, "i2v")
+        i2i_prompt = self._prompt(job, "i2i", required=False)
+        i2v_model = self._resolve_i2i_i2v_model(job, node)
+
         batch = dict((job.config or {}).get("i2i_test_batch") or {})
         items = list(batch.get("items") or [])
         by_index = {
-            int(item.get("test_index") or index + 1): dict(item)
-            for index, item in enumerate(items)
+            int(item.get("test_index") or idx + 1): dict(item)
+            for idx, item in enumerate(items)
         }
+
+        success_artifacts = []
+        failure_count = 0
+
         for task in tasks:
             model = self._get_model(task.model_id)
             adapter = get_adapter(task.adapter_name, model=model)
-            response = self._poll_until_complete(adapter, task)
             request_payload = task.request_payload or {}
             test_index = int(request_payload.get("test_index") or 0)
-            artifact = self._complete_task_from_adapter(
-                job,
-                node_run,
-                task,
-                adapter,
-                response,
-                "i2i_test_first_frame_image",
-                prompt_version=prompt.version,
-                metadata={
-                    "test_index": test_index,
-                    "mode": request_payload.get("mode"),
-                    "source_image": request_payload.get("source_image"),
-                    "source_images": request_payload.get("source_images") or [],
-                    "primary_role": request_payload.get("primary_role"),
-                },
-                artifact_branch_key="i2i_test",
-            )
-            if test_index:
-                item = by_index.get(test_index, {"test_index": test_index})
+            item = by_index.get(test_index, {"test_index": test_index})
+
+            try:
+                response = self._poll_until_complete(adapter, task)
+                artifact = self._complete_task_from_adapter(
+                    job,
+                    node_run,
+                    task,
+                    adapter,
+                    response,
+                    "i2i_test_first_frame_image",
+                    prompt_version=prompt.version,
+                    metadata={
+                        "test_index": test_index,
+                        "mode": request_payload.get("mode"),
+                        "source_image": request_payload.get("source_image"),
+                        "source_images": request_payload.get("source_images") or [],
+                        "primary_role": request_payload.get("primary_role"),
+                    },
+                    artifact_branch_key="i2i_test",
+                )
                 item["generated_first_frame_image"] = artifact.file_path
                 item["generated_first_frame_artifact_id"] = artifact.artifact_id
+                item["image_status"] = "success"
+                success_artifacts.append(artifact.to_dict())
+
+                # ── Inline pipeline: immediately submit i2v for this sample ──
+                try:
+                    i2v_task = self._submit_i2i_i2v_task_for_sample(
+                        job, node_run, artifact, item, i2v_model, i2v_prompt, i2i_prompt, node,
+                    )
+                    item["i2v_api_task_id"] = i2v_task.api_task_id
+                    EventService.record(
+                        job,
+                        "I2I_TEST_I2V_SUBMITTED",
+                        message=f"I2I test #{test_index}: i2v submitted inline",
+                        node_key=node_run.node_key,
+                        payload={"test_index": test_index, "api_task_id": i2v_task.api_task_id},
+                    )
+                except Exception as exc_i2v:
+                    item["i2v_api_task_id"] = None
+                    EventService.record(
+                        job,
+                        "I2I_TEST_I2V_SUBMIT_FAILED",
+                        message=f"I2I test #{test_index}: inline i2v submit failed — {exc_i2v}",
+                        node_key=node_run.node_key,
+                        level="warning",
+                    )
+
+            except AppError as err:
+                failure_count += 1
+                item["image_status"] = "failed"
+                item["image_error"] = err.message
+                EventService.record(
+                    job,
+                    "I2I_TEST_IMAGE_FAILED",
+                    message=f"I2I test #{test_index}: image failed — {err.message}",
+                    node_key=node_run.node_key,
+                    level="warning",
+                )
+
+            if test_index:
                 by_index[test_index] = item
-            artifacts.append(artifact.to_dict())
-        if by_index:
-            batch["items"] = [by_index[key] for key in sorted(by_index)]
-            job.config = {**(job.config or {}), "i2i_test_batch": batch}
-            db.session.flush()
-        return {"artifacts": artifacts}
+
+            # Persist sample outcome to log file
+            try:
+                StorageService.append_job_log(job.job_id, "i2i_sample", {
+                    "test_index": test_index,
+                    "stage": "poll_image",
+                    "status": item.get("image_status"),
+                    "error": item.get("image_error"),
+                    "artifact_id": item.get("generated_first_frame_artifact_id"),
+                })
+            except Exception:
+                pass
+
+        batch["items"] = [by_index[k] for k in sorted(by_index)]
+        job.config = {**(job.config or {}), "i2i_test_batch": batch}
+        db.session.flush()
+
+        if not success_artifacts:
+            sample_errors = [
+                f"#{ti}: {itm.get('image_error', 'unknown')}"
+                for ti, itm in sorted(by_index.items())
+                if itm.get("image_status") == "failed"
+            ]
+            raise AppError(
+                "API_TASK_FAILED",
+                f"All {len(tasks)} I2I test image task(s) failed — "
+                + ("; ".join(sample_errors) if sample_errors else "no detail"),
+                502,
+            )
+
+        return {"artifacts": success_artifacts, "failed_count": failure_count}
+
+    def _resolve_i2i_i2v_model(self, job: Job, node) -> ModelRegistry:
+        """Select the i2v model for I2I test, used by both poll_image (pipeline) and submit_i2v."""
+        job_config = job.config or {}
+        batch = job_config.get("i2i_test_batch") or {}
+        node_key = node.node_key if node else None
+        node_model = self._node_config(job, node).get("model_id") if node else None
+        node_override = (job_config.get("node_models") or {}).get(node_key)
+        job_i2i = dict(job_config.get("i2i_test") or {})
+        model_id = (
+            node_override
+            or job_i2i.get("i2v_model")
+            or ((job_config.get("models") or {}).get("i2i_test_i2v"))
+            or node_model
+            or batch.get("i2v_model")
+            or current_app.config["DEFAULT_I2I_TEST_I2V_MODEL"]
+        )
+        return self._get_model(model_id)
+
+    def _submit_i2i_i2v_task_for_sample(
+        self,
+        job: Job,
+        node_run: JobNodeRun,
+        first_frame: Artifact,
+        item: dict,
+        model: ModelRegistry,
+        i2v_prompt,
+        i2i_prompt,
+        node,
+    ) -> ApiTask:
+        """Submit a single sample's i2i_test_i2v task.  Called from poll_image (pipeline) and
+        submit_i2v (catch-up).  Returns the created ApiTask."""
+        test_index = int(item.get("test_index") or 0)
+        item_mode = item.get("mode")
+        shot_type = I2ITestBatchService.shot_type_for_mode(item_mode)
+        adapter, payload, response = self._adapter_payload(
+            model,
+            {
+                "prompt": i2v_prompt.content,
+                "prompt_version": i2v_prompt.version,
+                "first_frame_image": first_frame.file_path,
+                "test_index": test_index,
+                "mode": item_mode,
+                "source_images": item.get("source_images") or [],
+                "i2i_first_frame_artifact_id": first_frame.artifact_id,
+                "branch_key": "i2i_test",
+                "negative_prompt": self._negative_prompt(job),
+            },
+            params={"shot_type": shot_type},
+            job=job,
+            node=node,
+            param_key="i2i_test_i2v",
+        )
+        request_payload = {
+            **payload,
+            "test_index": test_index,
+            "mode": item_mode,
+            "shot_type": shot_type,
+            "source_images": item.get("source_images") or [],
+            "primary_role": item.get("primary_role"),
+            "source_image": item.get("primary_image"),
+            "i2i_first_frame_image": first_frame.file_path,
+            "i2i_first_frame_artifact_id": first_frame.artifact_id,
+            "i2i_prompt": i2i_prompt.content if i2i_prompt else None,
+            "i2i_prompt_version": i2i_prompt.version if i2i_prompt else None,
+            "i2v_prompt_version": i2v_prompt.version,
+        }
+        base = ["outputs", "i2i_test_i2v", f"test_{test_index:03d}"]
+        self._write_json_artifact(
+            job, node_run, base + ["request_payload.json"],
+            request_payload, "request_payload", "i2i_test", model.model_id, i2v_prompt.version,
+        )
+        self._write_json_artifact(
+            job, node_run, base + ["response.json"],
+            response, "api_response", "i2i_test", model.model_id, i2v_prompt.version,
+        )
+        expected_path = f"jobs/{job.job_id}/outputs/i2i_test_i2v/test_{test_index:03d}/video.mp4"
+        return self._create_api_task(
+            job, node_run, "i2i_test_i2v", model, request_payload, response, expected_path,
+        )
 
     def _run_submit_i2i_test_i2v(self, job: Job, node, node_run: JobNodeRun) -> dict:
+        """Catch-up node: submit i2v for any samples not yet submitted by the inline pipeline."""
         i2v_prompt = self._prompt(job, "i2v")
         i2i_prompt = self._prompt(job, "i2i", required=False)
-        batch = (job.config or {}).get("i2i_test_batch") or {}
-        items = batch.get("items") or []
+        batch = dict((job.config or {}).get("i2i_test_batch") or {})
+        items = list(batch.get("items") or [])
         if not items:
             raise AppError(
                 "DEPENDENCY_MISSING",
@@ -1309,119 +1605,74 @@ class NodeRunner:
             except (TypeError, ValueError):
                 continue
 
-        job_config = job.config or {}
-        node_key = node.node_key if node else None
-        node_model = self._node_config(job, node).get("model_id") if node else None
-        node_override = (job_config.get("node_models") or {}).get(node_key)
-        job_i2i = dict(job_config.get("i2i_test") or {})
-        model_id = (
-            node_override
-            or job_i2i.get("i2v_model")
-            or ((job_config.get("models") or {}).get("i2i_test_i2v"))
-            or node_model
-            or batch.get("i2v_model")
-            or current_app.config["DEFAULT_I2I_TEST_I2V_MODEL"]
-        )
-        model = self._get_model(model_id)
+        model = self._resolve_i2i_i2v_model(job, node)
         task_results = []
+        skipped_failed = 0
+        skipped_pipeline = 0
+
         for item in items:
-            test_index = int(item.get("test_index") or (len(task_results) + 1))
+            test_index = int(item.get("test_index") or (len(task_results) + skipped_failed + skipped_pipeline + 1))
+
+            # Skip samples whose image failed
+            if item.get("image_status") == "failed":
+                skipped_failed += 1
+                continue
+
+            # Skip samples already submitted by the inline pipeline in poll_image
+            if item.get("i2v_api_task_id"):
+                skipped_pipeline += 1
+                continue
+
             first_frame = first_frame_by_index.get(test_index)
             if not first_frame and item.get("generated_first_frame_artifact_id"):
                 first_frame = Artifact.query.filter_by(
                     artifact_id=item["generated_first_frame_artifact_id"]
                 ).first()
             if not first_frame:
-                raise AppError(
-                    "DEPENDENCY_MISSING",
-                    f"Missing I2I generated first-frame image for test #{test_index}",
-                    400,
-                )
-            item_mode = item.get("mode") or batch.get("mode")
-            # Derive the model API shot_type from the UI mode. This override has
-            # the highest precedence so any stale shot_type in model_params is corrected.
-            shot_type = I2ITestBatchService.shot_type_for_mode(item_mode)
-            adapter, payload, response = self._adapter_payload(
-                model,
-                {
-                    "prompt": i2v_prompt.content,
-                    "prompt_version": i2v_prompt.version,
-                    "first_frame_image": first_frame.file_path,
-                    "test_index": test_index,
-                    "mode": item_mode,
-                    "source_images": item.get("source_images") or [],
-                    "i2i_first_frame_artifact_id": first_frame.artifact_id,
-                    "branch_key": "i2i_test",
-                },
-                params={"shot_type": shot_type},
-                job=job,
-                node=node,
-                param_key="i2i_test_i2v",
+                item["image_status"] = "failed"
+                item["image_error"] = f"first-frame artifact not found for test #{test_index}"
+                skipped_failed += 1
+                continue
+
+            task = self._submit_i2i_i2v_task_for_sample(
+                job, node_run, first_frame, item, model, i2v_prompt, i2i_prompt, node,
             )
-            request_payload = {
-                **payload,
-                "test_index": test_index,
-                "mode": item_mode,
-                "shot_type": shot_type,
-                "source_images": item.get("source_images") or [],
-                "primary_role": item.get("primary_role"),
-                "source_image": item.get("primary_image"),
-                "i2i_first_frame_image": first_frame.file_path,
-                "i2i_first_frame_artifact_id": first_frame.artifact_id,
-                "i2i_prompt": i2i_prompt.content if i2i_prompt else None,
-                "i2i_prompt_version": i2i_prompt.version if i2i_prompt else None,
-                "i2v_prompt_version": i2v_prompt.version,
-            }
-            base = ["outputs", "i2i_test_i2v", f"test_{test_index:03d}"]
-            self._write_json_artifact(
-                job,
-                node_run,
-                base + ["request_payload.json"],
-                request_payload,
-                "request_payload",
-                "i2i_test",
-                model.model_id,
-                i2v_prompt.version,
-            )
-            self._write_json_artifact(
-                job,
-                node_run,
-                base + ["response.json"],
-                response,
-                "api_response",
-                "i2i_test",
-                model.model_id,
-                i2v_prompt.version,
-            )
-            expected_path = (
-                f"jobs/{job.job_id}/outputs/i2i_test_i2v/test_{test_index:03d}/video.mp4"
-            )
-            task = self._create_api_task(
-                job,
-                node_run,
-                "i2i_test_i2v",
-                model,
-                request_payload,
-                response,
-                expected_path,
-            )
+            item["i2v_api_task_id"] = task.api_task_id
             task_results.append(
                 {
                     "test_index": test_index,
                     "api_task_id": task.api_task_id,
                     "provider_task_id": task.provider_task_id,
-                    "expected_artifact_path": expected_path,
                     "model_id": model.model_id,
-                    "adapter": adapter.__class__.__name__,
                 }
             )
+
+        batch["items"] = items
+        job.config = {**(job.config or {}), "i2i_test_batch": batch}
+        db.session.flush()
+
+        if not task_results and skipped_pipeline == 0:
+            raise AppError(
+                "DEPENDENCY_MISSING",
+                "No I2I test i2v tasks could be submitted "
+                f"(failed samples: {skipped_failed})",
+                400,
+            )
+
         return {
             "tasks": task_results,
-            "i2i_prompt_version": i2i_prompt.version,
+            "skipped_failed": skipped_failed,
+            "skipped_pipeline": skipped_pipeline,
+            "i2i_prompt_version": i2i_prompt.version if i2i_prompt else None,
             "i2v_prompt_version": i2v_prompt.version,
         }
 
     def _run_poll_i2i_test_i2v(self, job: Job, node, node_run: JobNodeRun) -> dict:
+        """Poll all I2I test i2v tasks.
+
+        Fault-tolerant: a single sample failure does not abort the node.
+        The node only fails when ALL samples fail.
+        """
         tasks = (
             ApiTask.query.filter_by(job_id=job.id, branch_key="i2i_test_i2v")
             .order_by(ApiTask.created_at.asc())
@@ -1429,37 +1680,101 @@ class NodeRunner:
         )
         if not tasks:
             raise AppError("DEPENDENCY_MISSING", "No I2I test I2V API tasks found", 400)
+
         prompt = self._prompt(job, "i2v")
-        artifacts = []
+        batch = dict((job.config or {}).get("i2i_test_batch") or {})
+        items = list(batch.get("items") or [])
+        by_index = {
+            int(item.get("test_index") or idx + 1): dict(item)
+            for idx, item in enumerate(items)
+        }
+
+        success_artifacts = []
+        failure_count = 0
+
         for task in tasks:
             model = self._get_model(task.model_id)
             adapter = get_adapter(task.adapter_name, model=model)
-            response = self._poll_until_complete(adapter, task)
             request_payload = task.request_payload or {}
             test_index = request_payload.get("test_index")
-            artifact = self._complete_task_from_adapter(
-                job,
-                node_run,
-                task,
-                adapter,
-                response,
-                "i2i_test_video",
-                prompt_version=prompt.version,
-                metadata={
+            item = by_index.get(int(test_index or 0), {"test_index": test_index})
+
+            try:
+                response = self._poll_until_complete(adapter, task)
+                artifact = self._complete_task_from_adapter(
+                    job,
+                    node_run,
+                    task,
+                    adapter,
+                    response,
+                    "i2i_test_video",
+                    prompt_version=prompt.version,
+                    metadata={
+                        "test_index": test_index,
+                        "mode": request_payload.get("mode"),
+                        "source_images": request_payload.get("source_images") or [],
+                        "primary_role": request_payload.get("primary_role"),
+                        "source_image": request_payload.get("source_image"),
+                        "i2i_first_frame_image": request_payload.get("i2i_first_frame_image"),
+                        "i2i_first_frame_artifact_id": request_payload.get("i2i_first_frame_artifact_id"),
+                    },
+                    artifact_branch_key="i2i_test",
+                )
+                item["i2v_status"] = "success"
+                success_artifacts.append(artifact.to_dict())
+
+            except AppError as err:
+                failure_count += 1
+                item["i2v_status"] = "failed"
+                item["i2v_error"] = err.message
+                EventService.record(
+                    job,
+                    "I2I_TEST_VIDEO_FAILED",
+                    message=f"I2I test #{test_index}: video failed — {err.message}",
+                    node_key=node_run.node_key,
+                    level="warning",
+                )
+
+            if test_index is not None:
+                try:
+                    by_index[int(test_index)] = item
+                except (TypeError, ValueError):
+                    pass
+
+            # Persist sample outcome to log file
+            try:
+                StorageService.append_job_log(job.job_id, "i2i_sample", {
                     "test_index": test_index,
-                    "mode": request_payload.get("mode"),
-                    "source_images": request_payload.get("source_images") or [],
-                    "primary_role": request_payload.get("primary_role"),
-                    "source_image": request_payload.get("source_image"),
-                    "i2i_first_frame_image": request_payload.get("i2i_first_frame_image"),
-                    "i2i_first_frame_artifact_id": request_payload.get("i2i_first_frame_artifact_id"),
-                },
-                artifact_branch_key="i2i_test",
+                    "stage": "poll_i2v",
+                    "status": item.get("i2v_status"),
+                    "error": item.get("i2v_error"),
+                })
+            except Exception:
+                pass
+
+        batch["items"] = [by_index[k] for k in sorted(by_index)]
+        job.config = {**(job.config or {}), "i2i_test_batch": batch}
+        db.session.flush()
+
+        if not success_artifacts:
+            sample_errors = [
+                f"#{ti}: {itm.get('i2v_error', 'unknown')}"
+                for ti, itm in sorted(by_index.items())
+                if itm.get("i2v_status") == "failed"
+            ]
+            raise AppError(
+                "API_TASK_FAILED",
+                f"All {len(tasks)} I2I test video task(s) failed — "
+                + ("; ".join(sample_errors) if sample_errors else "no detail"),
+                502,
             )
-            artifacts.append(artifact.to_dict())
-        return {"artifacts": artifacts}
+
+        return {"artifacts": success_artifacts, "failed_count": failure_count}
 
     def _run_failure_agent(self, job: Job, node, node_run: JobNodeRun) -> dict:
+        from app.models.job_event import JobEvent
+        from app.services.error_detail_service import ErrorDetailService
+
         system_prompt = self._prompt(job, "failure_agent_system", required=False)
         user_prompt = self._prompt(job, "failure_agent_user", required=False)
         latest_failed = (
@@ -1470,10 +1785,47 @@ class NodeRunner:
             .order_by(JobNodeRun.created_at.desc())
             .first()
         )
+
+        # Build full error context so the LLM has enough information to decide
+        error_detail = ErrorDetailService.latest_for_job(job)
+        recent_error_events = (
+            JobEvent.query.filter(
+                JobEvent.job_id == job.id,
+                JobEvent.level.in_(["error", "warning"]),
+            )
+            .order_by(JobEvent.created_at.desc())
+            .limit(10)
+            .all()
+        )
+
         context = {
             "job": job.to_dict(),
             "current_node": job.current_node,
             "latest_failed_run": latest_failed.to_dict() if latest_failed else None,
+            # Full error detail including API task response and DashScope error code
+            "error_detail": error_detail,
+            # Structured node error with output_snapshot (contains error_detail)
+            "latest_failed_node_error": (
+                {
+                    "node_key":      latest_failed.node_key,
+                    "error_message": latest_failed.error_message,
+                    "error_detail":  (
+                        latest_failed.output_snapshot.get("error_detail")
+                        if isinstance(latest_failed.output_snapshot, dict) else None
+                    ),
+                }
+                if latest_failed else None
+            ),
+            # Recent error/warning events for full audit trail
+            "recent_error_events": [
+                {
+                    "event_type": e.event_type,
+                    "message":    e.message,
+                    "node_key":   e.node_key,
+                    "payload":    e.payload,
+                }
+                for e in recent_error_events
+            ],
             "prompt_refs": [ref.to_dict() for ref in job.prompt_refs],
             "api_tasks": [task.to_dict() for task in job.api_tasks[-10:]],
             "budget": {

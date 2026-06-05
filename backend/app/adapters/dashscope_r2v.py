@@ -32,11 +32,22 @@ class DashScopeR2VFlashAdapter(DashScopeGenerationAdapter):
             }
             if params.get("prompt_extend") is not None:
                 parameters["prompt_extend"] = bool(params["prompt_extend"])
+            if inputs.get("negative_prompt"):
+                parameters["negative_prompt"] = inputs["negative_prompt"]
             return {
                 "model": self.model_id,
                 "input": {"prompt": inputs["prompt"], "reference_urls": reference_urls},
                 "parameters": parameters,
             }
+        parameters = {
+            "resolution": params.get("resolution", "720P"),
+            "ratio": params.get("ratio", "9:16"),
+            "duration": int(params.get("duration", 5)),
+            "prompt_extend": bool(params.get("prompt_extend", False)),
+            "watermark": bool(params.get("watermark", False)),
+        }
+        if inputs.get("negative_prompt"):
+            parameters["negative_prompt"] = inputs["negative_prompt"]
         return {
             "model": self.model_id,
             "input": {
@@ -46,11 +57,5 @@ class DashScopeR2VFlashAdapter(DashScopeGenerationAdapter):
                     for value in reference_urls
                 ],
             },
-            "parameters": {
-                "resolution": params.get("resolution", "720P"),
-                "ratio": params.get("ratio", "9:16"),
-                "duration": int(params.get("duration", 5)),
-                "prompt_extend": bool(params.get("prompt_extend", False)),
-                "watermark": bool(params.get("watermark", False)),
-            },
+            "parameters": parameters,
         }

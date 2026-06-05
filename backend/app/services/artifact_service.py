@@ -6,6 +6,7 @@ from app.api import AppError
 from app.extensions import db
 from app.models import ApiTask, Artifact, Job, JobNodeRun, Template
 from app.services.event_service import EventService
+from app.services.job_run_state_service import JobRunStateService
 from app.services.storage_service import StorageService
 from app.utils.files import guess_mime_type
 
@@ -45,7 +46,7 @@ class ArtifactService:
             branch_key=branch_key,
             model_id=model_id,
             prompt_version=prompt_version,
-            meta=metadata or {},
+            meta=JobRunStateService.metadata_for_job(job, metadata),
         )
         db.session.add(artifact)
         db.session.flush()
@@ -54,14 +55,23 @@ class ArtifactService:
             "ARTIFACT_CREATED",
             message=f"Artifact created: {artifact_type}",
             node_key=node_run.node_key if node_run else None,
-            payload={"file_path": file_path, "artifact_type": artifact_type},
+            payload={
+                "file_path": file_path,
+                "artifact_type": artifact_type,
+                "run_id": (artifact.meta or {}).get("run_id"),
+            },
         )
         return artifact
 
     @staticmethod
-    def list_for_job(job: Job) -> list[dict]:
+    def list_for_job(job: Job, include_history: bool = False) -> list[dict]:
         result = []
+        current_run_id = JobRunStateService.current_run_id(job)
         for artifact in job.artifacts:
+            if current_run_id and not include_history:
+                meta = artifact.meta if isinstance(artifact.meta, dict) else {}
+                if meta.get("run_id") != current_run_id:
+                    continue
             result.append(ArtifactService._to_display_dict(artifact))
         return ArtifactService.sort_for_display(result)
 
@@ -75,12 +85,22 @@ class ArtifactService:
         return artifact
 
     @staticmethod
-    def latest_for_job(job: Job, artifact_type: str) -> Artifact | None:
-        return (
-            Artifact.query.filter_by(job_id=job.id, artifact_type=artifact_type)
-            .order_by(Artifact.created_at.desc())
-            .first()
-        )
+    def latest_for_job(
+        job: Job,
+        artifact_type: str,
+        prefer_current_run: bool = True,
+    ) -> Artifact | None:
+        base_query = Artifact.query.filter_by(job_id=job.id, artifact_type=artifact_type)
+        current_run_id = JobRunStateService.current_run_id(job)
+        if prefer_current_run and current_run_id:
+            artifact = (
+                base_query.filter(Artifact.meta["run_id"].as_string() == current_run_id)
+                .order_by(Artifact.created_at.desc())
+                .first()
+            )
+            if artifact:
+                return artifact
+        return base_query.order_by(Artifact.created_at.desc()).first()
 
     @staticmethod
     def search_artifacts(

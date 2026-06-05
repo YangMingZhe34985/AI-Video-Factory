@@ -20,6 +20,7 @@ class CreateJobSchema(BaseModel):
 
 class RunFullSchema(BaseModel):
     force: bool = False
+    restart: bool = False
 
 
 class RunFromSchema(BaseModel):

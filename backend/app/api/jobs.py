@@ -19,6 +19,7 @@ from app.schemas.job_schema import (
 )
 from app.services.job_package_service import JobPackageService
 from app.services.job_queue_service import JobQueueService
+from app.services.job_run_state_service import JobRunStateService
 from app.services.job_service import JobService
 from app.services.workflow_service import WorkflowService
 
@@ -108,9 +109,24 @@ def package_job(job_id: str):
 @bp.post("/<job_id>/run-full")
 def run_full(job_id: str):
     payload = RunFullSchema.model_validate(request.get_json(silent=True) or {})
-    JobService.get_job(job_id)
+    job = JobService.get_job(job_id)
     if current_app.config.get("JOB_QUEUE_ENABLED", True):
-        return api_success(JobQueueService.enqueue(job_id, "run_full", force=payload.force))
+        return api_success(
+            JobQueueService.enqueue(
+                job_id,
+                "run_full",
+                force=payload.force,
+                restart=payload.restart,
+            )
+        )
+    if payload.restart:
+        nodes = [
+            node.node_key
+            for node in WorkflowService.list_nodes()
+            if WorkflowService.is_node_enabled(job, node)
+        ]
+        JobRunStateService.begin_restart(job, nodes)
+        db.session.commit()
     _start_async_run(job_id, lambda: WorkflowService.run_full(job_id, force=payload.force))
     return api_success({"job_id": job_id, "status": "running"})
 

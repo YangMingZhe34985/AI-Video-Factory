@@ -136,6 +136,8 @@
     "showing": "Showing {count} jobs",
     "noJobs": "No jobs found",
     "loadingJobs": "Loading jobs...",
+    "runFresh": "Run Fresh",
+    "runRollback": "Retry Failed",
     "jobStarted": "Job started",
     "jobStartFailed": "Failed to start job",
     "jobPaused": "Job paused",

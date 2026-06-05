@@ -14,7 +14,14 @@ bp = Blueprint("artifacts", __name__, url_prefix="/api")
 @bp.get("/jobs/<job_id>/artifacts")
 def list_job_artifacts(job_id: str):
     job = JobService.get_job(job_id)
-    return api_success({"artifacts": ArtifactService.list_for_job(job)})
+    include_history = str(request.args.get("include_history") or "").lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+    return api_success(
+        {"artifacts": ArtifactService.list_for_job(job, include_history=include_history)}
+    )
 
 
 @bp.get("/artifacts")

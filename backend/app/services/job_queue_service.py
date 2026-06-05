@@ -13,6 +13,7 @@ from app.extensions import db
 from app.models import Job
 from app.services.error_detail_service import ErrorDetailService
 from app.services.event_service import EventService
+from app.services.job_run_state_service import JobRunStateService
 from app.services.workflow_service import WorkflowService
 
 
@@ -22,6 +23,7 @@ class QueuedJobTask:
     run_type: str
     node_key: str | None = None
     force: bool = False
+    restart: bool = False
     submitted_at: float = field(default_factory=time.time)
 
     def to_dict(self) -> dict[str, Any]:
@@ -30,6 +32,7 @@ class QueuedJobTask:
             "run_type": self.run_type,
             "node_key": self.node_key,
             "force": self.force,
+            "restart": self.restart,
             "submitted_at": self.submitted_at,
         }
 
@@ -47,6 +50,7 @@ class JobQueueService:
         run_type: str,
         force: bool = False,
         node_key: str | None = None,
+        restart: bool = False,
     ) -> dict:
         app = current_app._get_current_object()
         with cls._lock:
@@ -57,11 +61,20 @@ class JobQueueService:
             if job.status == "running" or cls._is_known(job_id):
                 return cls._response_for_existing(job)
 
+            if restart and run_type == "run_full":
+                nodes = [
+                    node.node_key
+                    for node in WorkflowService.list_nodes()
+                    if WorkflowService.is_node_enabled(job, node)
+                ]
+                JobRunStateService.begin_restart(job, nodes)
+
             task = QueuedJobTask(
                 job_id=job_id,
                 run_type=run_type,
                 node_key=node_key,
                 force=force,
+                restart=restart,
             )
             cls._queue.append(task)
             job.status = "queued"

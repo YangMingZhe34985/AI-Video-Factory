@@ -136,6 +136,8 @@
     "showing": "显示 {count} 个作业",
     "noJobs": "未找到作业",
     "loadingJobs": "加载作业中...",
+    "runFresh": "从头运行",
+    "runRollback": "回退运行",
     "jobStarted": "作业已启动",
     "jobStartFailed": "启动作业失败",
     "jobPaused": "作业已暂停",

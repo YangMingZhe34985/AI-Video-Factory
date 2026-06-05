@@ -10,6 +10,7 @@ from app.models import Artifact, Job, JobEvent, JobNodeRun, JobPromptRef, Prompt
 from app.services.artifact_service import ArtifactService
 from app.services.error_detail_service import ErrorDetailService
 from app.services.event_service import EventService
+from app.services.job_run_state_service import JobRunStateService
 from app.services.storage_service import StorageService
 from app.services.workflow_service import WorkflowService
 from app.services.workflow_validator import WorkflowValidator
@@ -522,11 +523,7 @@ class JobService:
 
     @staticmethod
     def _summary_dict(job: Job, total_nodes: int | None = None) -> dict:
-        runs = (
-            JobNodeRun.query.filter_by(job_id=job.id)
-            .order_by(JobNodeRun.created_at.asc())
-            .all()
-        )
+        runs = JobService._visible_node_runs(job)
         data = job.to_dict()
         # Enrich with Series / Template display info (resolved via template)
         template = job.template
@@ -569,11 +566,7 @@ class JobService:
         job = JobService.get_job(job_id)
         nodes = WorkflowService.list_nodes()
         latest_by_node = {}
-        for run in (
-            JobNodeRun.query.filter_by(job_id=job.id)
-            .order_by(JobNodeRun.created_at.asc())
-            .all()
-        ):
+        for run in JobService._visible_node_runs(job):
             latest_by_node[run.node_key] = run
 
         node_statuses = []
@@ -615,6 +608,21 @@ class JobService:
             "error_detail": ErrorDetailService.latest_for_job(job),
             "recent_events": [event.to_dict() for event in events],
         }
+
+    @staticmethod
+    def _visible_node_runs(job: Job) -> list[JobNodeRun]:
+        query = JobNodeRun.query.filter_by(job_id=job.id).order_by(
+            JobNodeRun.created_at.asc()
+        )
+        current_run_id = JobRunStateService.current_run_id(job)
+        if not current_run_id:
+            return query.all()
+        return [
+            run
+            for run in query.all()
+            if isinstance(run.input_snapshot, dict)
+            and run.input_snapshot.get("run_id") == current_run_id
+        ]
 
     @staticmethod
     def update_job(job_id: str, data: dict) -> Job:
