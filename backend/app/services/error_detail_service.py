@@ -103,8 +103,13 @@ class ErrorDetailService:
 
     @classmethod
     def latest_for_job(cls, job: Job) -> dict[str, Any] | None:
+        if job.status == "success":
+            return None
         failed_run = (
-            JobNodeRun.query.filter_by(job_id=job.id, status="failed")
+            JobNodeRun.query.filter(
+                JobNodeRun.job_id == job.id,
+                JobNodeRun.status.in_(["failed", "path_failed"]),
+            )
             .order_by(JobNodeRun.created_at.desc())
             .first()
         )

@@ -50,6 +50,32 @@
             </div>
           </div>
 
+          <!-- 路径快捷控制条 -->
+          <div class="px-5 py-2 border-b border-gray-100 shrink-0 bg-white flex flex-wrap gap-2 items-center">
+            <span class="text-[10px] font-semibold uppercase tracking-wide text-gray-400 mr-1">{{ t('workflow.pathControls') }}</span>
+            <div
+              v-for="path in pathStats"
+              :key="path.key"
+              class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white border border-gray-100 shadow-sm text-xs"
+            >
+              <span class="w-1.5 h-1.5 rounded-full shrink-0" :style="{ background: path.color }" />
+              <span class="font-medium text-gray-700">{{ String(locale || '').startsWith('zh') ? path.labelZh : path.labelEn }}</span>
+              <span class="text-gray-400 tabular-nums">{{ path.enabledCount }}/{{ path.total }}</span>
+              <button
+                v-if="!path.allEnabled"
+                class="ml-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-50 text-emerald-700 hover:bg-emerald-100 disabled:opacity-50"
+                :disabled="pathLoading === path.key"
+                @click="togglePath(path, true)"
+              >{{ t('workflow.enableAll') }}</button>
+              <button
+                v-else
+                class="ml-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium bg-rose-50 text-rose-600 hover:bg-rose-100 disabled:opacity-50"
+                :disabled="pathLoading === path.key"
+                @click="togglePath(path, false)"
+              >{{ t('workflow.disableAll') }}</button>
+            </div>
+          </div>
+
           <div ref="canvasContainer" class="flex-1 overflow-auto bg-dot-grid">
             <div
               class="relative"
@@ -513,7 +539,7 @@ import ToastContainer from '@/components/common/ToastContainer.vue'
 import StatusBadge from '@/components/common/StatusBadge.vue'
 import ToggleSwitch from '@/components/common/ToggleSwitch.vue'
 import WorkflowJobWizard from '@/components/workflow/WorkflowJobWizard.vue'
-import { useWorkflowStore } from '@/stores/workflow'
+import { useWorkflowStore, WORKFLOW_PATHS } from '@/stores/workflow'
 import { useModelStore } from '@/stores/models'
 import { useTemplateStore } from '@/stores/templates'
 import { useSeriesStore } from '@/stores/series'
@@ -546,6 +572,28 @@ const templateStore = useTemplateStore()
 const seriesStore = useSeriesStore()
 const toast = useToast()
 const showCreateJobPanel = ref(false)
+
+const pathLoading = ref(null)
+const pathStats = computed(() =>
+  WORKFLOW_PATHS.map((path) => {
+    const pathNodes = store.nodes.filter((n) => path.nodes.includes(n.node_key))
+    const enabledCount = pathNodes.filter((n) => n.enabled).length
+    return { ...path, total: pathNodes.length, enabledCount, allEnabled: enabledCount === pathNodes.length && pathNodes.length > 0 }
+  })
+)
+
+async function togglePath(path, enable) {
+  pathLoading.value = path.key
+  try {
+    if (enable) await store.enablePath(path.nodes)
+    else await store.disablePath(path.nodes)
+    toast.success(enable ? (String(locale.value || '').startsWith('zh') ? '路径已启用' : 'Path enabled') : (String(locale.value || '').startsWith('zh') ? '路径已禁用' : 'Path disabled'))
+  } catch {
+    toast.error(String(locale.value || '').startsWith('zh') ? '操作失败' : 'Operation failed')
+  } finally {
+    pathLoading.value = null
+  }
+}
 
 // Right panel: resizable + togglable
 const {

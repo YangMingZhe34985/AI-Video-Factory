@@ -104,19 +104,19 @@
             </div>
 
             <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1.5">Job Name</label>
+              <label class="block text-sm font-medium text-gray-700 mb-1.5">{{ t('workflow.wizardJobName') }}</label>
               <input
                 v-model="jobName"
                 type="text"
                 class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm bg-white focus:border-primary outline-none transition-colors"
-                placeholder="Optional display name"
+                :placeholder="t('workflow.wizardJobNamePlaceholder')"
               />
             </div>
 
             <div v-if="!isAdvancedMode" class="space-y-3">
               <div>
-                <h4 class="text-sm font-bold text-gray-900">Run Path</h4>
-                <p class="text-xs text-gray-500 mt-0.5">Choose business paths; the system maps them to workflow nodes.</p>
+                <h4 class="text-sm font-bold text-gray-900">{{ t('workflow.wizardRunPath') }}</h4>
+                <p class="text-xs text-gray-500 mt-0.5">{{ t('workflow.wizardRunPathHelp') }}</p>
               </div>
               <div class="grid grid-cols-1 gap-2">
                 <button
@@ -770,38 +770,38 @@ const promptSources = computed(() => [
 
 const isAdvancedMode = computed(() => props.mode === 'advanced')
 
-const routeOptions = [
+const routeOptions = computed(() => [
   {
     key: 'main_i2v',
-    label: 'First Frame + I2V Main Path',
-    description: 'Reverse T2V, generate first frame, then generate main I2V video.',
+    label: t('workflow.routeMainI2v'),
+    description: t('workflow.routeMainI2vDesc'),
     nodes: ['reverse_prompts', 'rewrite_prompts', 'submit_first_frame_image', 'poll_first_frame_image', 'submit_i2v', 'poll_i2v', 'export_manifest'],
   },
   {
     key: 'prompt_core',
-    label: 'Core Prompt Path',
-    description: 'Generate reusable T2V, first-frame, I2V and I2I prompts without media generation.',
+    label: t('workflow.routePromptCore'),
+    description: t('workflow.routePromptCoreDesc'),
     nodes: ['reverse_prompts', 'rewrite_prompts', 'rewrite_t2i_to_i2i', 'export_manifest'],
   },
   {
     key: 'i2i_test',
-    label: 'I2I Test Path',
-    description: 'Generate test first-frame images from I2I prompt, then test I2V videos.',
+    label: t('workflow.routeI2iTest'),
+    description: t('workflow.routeI2iTestDesc'),
     nodes: ['reverse_prompts', 'rewrite_prompts', 'rewrite_t2i_to_i2i', 'prepare_i2i_test_batch', 'submit_i2i_test_image', 'poll_i2i_test_image', 'submit_i2i_test_i2v', 'poll_i2i_test_i2v', 'export_manifest'],
   },
   {
     key: 't2v',
-    label: 'T2V Optional Branch',
-    description: 'Submit and poll text-to-video branch.',
+    label: t('workflow.routeT2v'),
+    description: t('workflow.routeT2vDesc'),
     nodes: ['reverse_prompts', 'submit_t2v', 'poll_t2v', 'export_manifest'],
   },
   {
     key: 'r2v_flash',
-    label: 'R2V / Utility Branch',
-    description: 'Rewrite R2V prompt and run reference-to-video branch.',
+    label: t('workflow.routeR2vFlash'),
+    description: t('workflow.routeR2vFlashDesc'),
     nodes: ['reverse_prompts', 'reverse_prompts4r2v', 'submit_r2v_flash', 'poll_r2v_flash', 'export_manifest'],
   },
-]
+])
 const selectedRouteKeys = ref([...props.defaultRouteKeys])
 
 // ── Helpers ───────────────────────────────────────────────────────
@@ -1038,7 +1038,7 @@ const i2iConfigValid = computed(() => {
 
 const selectedRouteNodes = computed(() => {
   const keys = new Set()
-  const selected = routeOptions.filter((route) => selectedRouteKeys.value.includes(route.key))
+  const selected = routeOptions.value.filter((route) => selectedRouteKeys.value.includes(route.key))
   selected.forEach((route) => route.nodes.forEach((nodeKey) => keys.add(nodeKey)))
   return [...keys]
 })

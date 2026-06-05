@@ -29,6 +29,8 @@ const STATUS_KEY_MAP = {
   paused: 'jobs.paused',
   cancelled: 'jobs.cancelled',
   partial_success: 'jobs.partialSuccess',
+  retrying: 'jobs.retrying',
+  path_failed: 'jobs.pathFailed',
 }
 
 const label = computed(() => {

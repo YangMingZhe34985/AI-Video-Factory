@@ -6,8 +6,8 @@ LABEL org.opencontainers.image.title="AI Video Factory Backend"
 
 WORKDIR /app
 
-# curl is needed for the HEALTHCHECK only
-RUN apt-get update && apt-get install -y --no-install-recommends curl \
+# curl is needed for the HEALTHCHECK; ffmpeg is used for generated video compression.
+RUN apt-get update && apt-get install -y --no-install-recommends curl ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies (PyMySQL is pure-Python, no C libs needed)

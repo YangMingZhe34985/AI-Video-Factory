@@ -68,6 +68,21 @@
           <div class="flex items-center gap-2 flex-wrap">
             <router-link :to="`/prompts?template=${tpl.template_id || tpl.id}`" class="border border-gray-200 text-gray-600 hover:bg-gray-50 px-3 py-1.5 rounded-lg text-xs font-medium">{{ t('templates.viewDetails') }}</router-link>
             <button @click="openJobWizard(tpl)" class="border border-gray-200 text-gray-600 hover:bg-gray-50 px-3 py-1.5 rounded-lg text-xs font-medium">{{ t('templates.createJob') }}</button>
+            <button
+              @click="handlePackageTemplate(tpl)"
+              :disabled="packagingTemplateId === templateKey(tpl)"
+              class="border border-gray-200 text-gray-600 hover:bg-gray-50 px-3 py-1.5 rounded-lg text-xs font-medium disabled:opacity-50 flex items-center"
+            >
+              <PhDownloadSimple class="mr-1" />
+              {{ packagingTemplateId === templateKey(tpl) ? t('templates.packaging') : t('templates.packageTemplate') }}
+            </button>
+            <a
+              v-if="templatePackageUrls[templateKey(tpl)]"
+              :href="templatePackageUrls[templateKey(tpl)]"
+              class="border border-green-200 text-green-700 bg-green-50 hover:bg-green-100 px-3 py-1.5 rounded-lg text-xs font-medium"
+            >
+              {{ t('templates.downloadPackage') }}
+            </a>
             <button @click="openMoveDialog(tpl)" class="border border-gray-200 text-gray-600 hover:bg-gray-50 px-3 py-1.5 rounded-lg text-xs font-medium">{{ t('series.moveTo') }}</button>
           </div>
         </div>
@@ -193,7 +208,8 @@ import WorkflowJobWizard from '@/components/workflow/WorkflowJobWizard.vue'
 import { useTemplateStore } from '@/stores/templates'
 import { useSeriesStore } from '@/stores/series'
 import { useToast } from '@/composables/useToast'
-import { PhArrowsClockwise, PhFilmSlate, PhPlus, PhFolderPlus } from '@phosphor-icons/vue'
+import { getTemplatePackageDownloadUrl, packageTemplate } from '@/api/templates'
+import { PhArrowsClockwise, PhDownloadSimple, PhFilmSlate, PhPlus, PhFolderPlus } from '@phosphor-icons/vue'
 
 const { t } = useI18n()
 const store = useTemplateStore()
@@ -216,6 +232,8 @@ const movingTemplate = ref(null)
 const moveTargetSeriesId = ref('default')
 const newTemplate = ref({ series_id: 'default', name: '', description: '' })
 const newSeries = ref({ series_id: '', name: '', description: '' })
+const packagingTemplateId = ref('')
+const templatePackageUrls = ref({})
 
 const filteredTemplates = computed(() => {
   let list = store.templates
@@ -263,6 +281,10 @@ function openJobWizard(tpl) {
   wizardTemplateId.value = tpl.template_id || tpl.id || ''
   wizardSeriesId.value = tpl.series_id || tpl.series || 'default'
   showWizard.value = true
+}
+
+function templateKey(tpl) {
+  return tpl.template_id || tpl.id || ''
 }
 
 async function refresh() {
@@ -324,6 +346,24 @@ async function handleMoveTemplate() {
     toast.error(e?.response?.data?.error?.message || t('series.moveFailed'))
   } finally {
     moving.value = false
+  }
+}
+
+async function handlePackageTemplate(tpl) {
+  const id = templateKey(tpl)
+  if (!id) return
+  packagingTemplateId.value = id
+  try {
+    const result = await packageTemplate(id)
+    templatePackageUrls.value = {
+      ...templatePackageUrls.value,
+      [id]: result?.download_url || getTemplatePackageDownloadUrl(id),
+    }
+    toast.success(t('templates.packageReady'))
+  } catch (e) {
+    toast.error(e?.response?.data?.error?.message || t('templates.packageFailed'))
+  } finally {
+    packagingTemplateId.value = ''
   }
 }
 

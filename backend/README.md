@@ -1182,6 +1182,18 @@ Behavior notes:
 - Poll nodes still use blocking polling in this phase, but `WORKFLOW_MAX_PARALLEL_POLLS` limits how many poll nodes can occupy worker threads at once.
 - `Job.current_node` may contain comma-separated node keys while multiple nodes are running, or `parallel:<count>` if the list is too long.
 
+Failure tolerance:
+
+```env
+FAILURE_AGENT_ENABLED=true
+FAILURE_AGENT_MAX_RETRIES=1
+```
+
+- When a node fails, the Failure Agent is invoked as a decision hook, not as a normal workflow dependency.
+- Deterministic configuration/input errors are not retried. Retryable model/API failures are capped at 1 retry by default and 2 by hard limit.
+- A failed optional branch can become `path_failed`; unrelated branches continue. If at least one deliverable video artifact exists, the Job can finish as `partial_success`.
+- Node statuses may include `retrying` and `path_failed` in addition to the original `pending/running/success/failed/skipped` values.
+
 ## 2026-06 Prompt Manager UX / Job Package
 
 Prompt Manager now supports type-first filtering through a global list endpoint:
@@ -1230,7 +1242,7 @@ The package Artifact uses:
 The package includes only deliverable material:
 - `final/`: best final video by priority `i2v_video > t2v_video > i2i_test_video > r2v_flash_video`.
 - `assets/`: key image assets such as `first_frame_image`, `i2i_test_source_image`, `i2i_test_first_frame_image`, and `reference_image`.
-- `prompts/prompts.md` and `prompts/prompts.json`.
+- individual prompt Markdown files such as `prompts/i2v.md`, `prompts/i2i.md`, or `prompts/r2v_flash.md`, plus `prompts/prompts.json`.
 - `package_manifest.json`.
 
 Excluded process artifacts include `request_payload`, `api_response`, `task_meta`, `raw_response`, `manifest`, and `i2i_test_batch`.
@@ -1280,3 +1292,32 @@ POST /api/templates/{template_id}/prompts/{prompt_type}/versions/{version}/edit
 ```
 
 The endpoint creates a new `PromptVersion` with `source=edit` and `parent_version` pointing to the edited version. It does not overwrite the old version.
+
+## 2026-06 Template Package / Redis Assessment
+
+Template package is implemented as a minimal production handoff ZIP. It does not use the `artifacts` table because `artifacts.job_id` is job-scoped and non-null.
+
+Endpoints:
+
+```text
+POST /api/templates/{template_id}/package
+GET  /api/templates/{template_id}/package/download
+```
+
+The backend writes one latest package file:
+
+```text
+storage/templates/{template_id}/packages/template_{template_id}_package.zip
+```
+
+The ZIP contains only the prompt/video assets needed for production use:
+
+- `prompts/i2i.md` when an I2I prompt can be resolved.
+- `prompts/i2v.md` when an I2V prompt can be resolved.
+- `prompts/r2v.md` only when neither I2I nor I2V prompt can be resolved.
+- `video/{artifact_type}_{artifact_id}_{file_name}` for the best generated video across this template's jobs.
+- `package_manifest.json`
+
+Prompt resolution priority is Template active PromptVersion, Template latest PromptVersion, Job active PromptVersion, then latest JobPromptRef snapshot. Video priority is `i2v_video > t2v_video > i2i_test_video > r2v_flash_video/r2v_flash_videos`. A template with no packable prompt and no video returns `NO_TEMPLATE_PACKABLE_CONTENT`.
+
+Redis is not introduced in this phase. The current process-local `JobQueueService` is suitable for single-machine practice. Redis/RQ/Celery would be a medium-difficulty production upgrade: it improves queue durability, crash recovery, multi-process worker safety, and throughput across many jobs, but it will not significantly shorten a single job because the dominant latency comes from remote DashScope/Qwen model tasks and polling.

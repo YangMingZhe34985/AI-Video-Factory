@@ -4,6 +4,7 @@
 .env
 .env.*
 !.env.example
+!deploy/.env.production.example
 backend/.env
 backend/.env.*
 !backend/.env.example
@@ -37,12 +38,14 @@ UI设计/
 *.docx
 网站最终期望呈现效果.md
 workflow_qwen36plus_video_to_i2v_template.py
+compress.py
 五段式提示词模版.md
 文生图提示词改写.md
 文生视频提示词改写.md
+PACKAGING.md
 
-# Deployment guide (local only — may contain server-specific notes)
-DEPLOYMENT.md
+# Generic deployment guide is safe to publish; keep server-specific notes elsewhere.
+!DEPLOYMENT.md
 
 # Production environment file (contains secrets)
 .env.production

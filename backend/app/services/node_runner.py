@@ -15,6 +15,7 @@ from app.services.i2i_test_batch_service import I2ITestBatchService
 from app.services.model_service import ModelService
 from app.services.prompt_service import PromptService
 from app.services.storage_service import StorageService
+from app.services.video_compression_service import VideoCompressionService
 from app.utils.time_utils import utc_now
 
 
@@ -269,11 +270,14 @@ class NodeRunner:
                 payload=response,
             )
         downloaded = Path(output_files[0])
-        file_path = (
-            task.expected_artifact_path
-            if downloaded.resolve() == expected_path.resolve()
-            else StorageService.relative_path(downloaded)
-        )
+        artifact_metadata = dict(metadata or {})
+        registered_path = downloaded
+        if self._is_video_artifact(artifact_type):
+            registered_path, compression = self._compress_video_artifact(
+                job, node_run, downloaded, artifact_type
+            )
+            artifact_metadata["compression"] = compression
+        file_path = StorageService.relative_path(registered_path)
         task.status = "success"
         task.response_payload = response
         task.completed_at = utc_now()
@@ -293,8 +297,45 @@ class NodeRunner:
             api_task=task,
             model_id=task.model_id,
             prompt_version=prompt_version,
-            metadata=metadata,
+            metadata=artifact_metadata,
         )
+
+    def _is_video_artifact(self, artifact_type: str) -> bool:
+        return "video" in str(artifact_type or "")
+
+    def _compress_video_artifact(
+        self,
+        job: Job,
+        node_run: JobNodeRun,
+        downloaded: Path,
+        artifact_type: str,
+    ) -> tuple[Path, dict]:
+        selected_path, metadata = VideoCompressionService.compress_for_artifact(downloaded)
+        status = metadata.get("status")
+        if status == "success":
+            EventService.record(
+                job,
+                "VIDEO_COMPRESSED",
+                message=f"Video compressed: {artifact_type}",
+                node_key=node_run.node_key,
+                payload={
+                    "artifact_type": artifact_type,
+                    "original_file_path": metadata.get("original_file_path"),
+                    "compressed_file_path": metadata.get("compressed_file_path"),
+                    "original_size": metadata.get("original_size"),
+                    "compressed_size": metadata.get("compressed_size"),
+                },
+            )
+        elif metadata.get("enabled") and status not in {"disabled", "skipped_already_compressed"}:
+            EventService.record(
+                job,
+                "VIDEO_COMPRESSION_SKIPPED",
+                message=f"Video compression skipped: {status}",
+                node_key=node_run.node_key,
+                level="warning",
+                payload={"artifact_type": artifact_type, "compression": metadata},
+            )
+        return selected_path, metadata
 
     def _write_json_artifact(
         self,
@@ -1422,7 +1463,10 @@ class NodeRunner:
         system_prompt = self._prompt(job, "failure_agent_system", required=False)
         user_prompt = self._prompt(job, "failure_agent_user", required=False)
         latest_failed = (
-            JobNodeRun.query.filter_by(job_id=job.id, status="failed")
+            JobNodeRun.query.filter(
+                JobNodeRun.job_id == job.id,
+                JobNodeRun.status.in_(["failed", "path_failed"]),
+            )
             .order_by(JobNodeRun.created_at.desc())
             .first()
         )

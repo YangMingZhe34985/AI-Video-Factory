@@ -358,7 +358,14 @@ const liveEventsDotClass = computed(() => {
 })
 
 function nodeRunBorder(status) {
-  const map = { success: 'border-green-200', failed: 'border-red-200', running: 'border-blue-200', paused: 'border-orange-200' }
+  const map = {
+    success: 'border-green-200',
+    failed: 'border-red-200',
+    running: 'border-blue-200',
+    retrying: 'border-blue-200',
+    path_failed: 'border-amber-200',
+    paused: 'border-orange-200',
+  }
   return map[status] || 'border-gray-200'
 }
 

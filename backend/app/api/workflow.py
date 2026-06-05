@@ -1,12 +1,13 @@
 from http import HTTPStatus
 
-from flask import Blueprint, request
+from flask import Blueprint, request, send_file
 
 from app.api import api_success
 from app.schemas.prompt_schema import CreateTemplateSchema
 from app.services.model_service import ModelService
 from app.services.prompt_service import PromptService
 from app.services.series_service import SeriesService
+from app.services.template_package_service import TemplatePackageService
 from app.services.workflow_service import WorkflowService
 from app.services.workflow_validator import WorkflowValidator
 
@@ -38,6 +39,23 @@ def list_templates():
 def get_template(template_id: str):
     template = PromptService.get_template(template_id)
     return api_success(SeriesService.enrich_template(template))
+
+
+@bp.post("/templates/<template_id>/package")
+def package_template(template_id: str):
+    result = TemplatePackageService.create_package(template_id)
+    return api_success(result, HTTPStatus.CREATED)
+
+
+@bp.get("/templates/<template_id>/package/download")
+def download_template_package(template_id: str):
+    package_path = TemplatePackageService.get_package_path(template_id)
+    return send_file(
+        package_path,
+        as_attachment=True,
+        download_name=package_path.name,
+        mimetype="application/zip",
+    )
 
 
 @bp.post("/templates/<template_id>/move")

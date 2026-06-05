@@ -108,6 +108,8 @@ def register_auth_handlers(app, jwt):
             path.endswith("/download") or path.endswith("/preview")
         ):
             return None
+        if path.startswith("/api/templates/") and path.endswith("/package/download"):
+            return None
         verify_jwt_in_request()
         return None
 

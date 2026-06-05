@@ -69,6 +69,12 @@
           </div>
 
           <div class="ml-auto flex items-center gap-2">
+            <button
+              v-if="selectedJobId"
+              class="px-3 py-1.5 rounded-lg text-xs border"
+              :class="simplifiedView ? 'bg-blue-50 text-blue-700 border-blue-200' : 'border-gray-200 text-gray-500 hover:bg-gray-50'"
+              @click="simplifiedView = !simplifiedView"
+            >{{ simplifiedView ? label('simplifiedView') : label('fullView') }}</button>
             <button @click="clearFilters" class="px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50">
               {{ label('clearFilters') }}
             </button>
@@ -481,6 +487,8 @@ const text = {
     editCreated: 'Edited prompt version created',
     editFailed: 'Failed to edit prompt',
     noChange: 'No changes — content is identical to the original.',
+    simplifiedView: 'Simplified',
+    fullView: 'Full view',
   },
   zh: {
     clearFilters: '清除筛选',
@@ -508,6 +516,8 @@ const text = {
     editCreated: '已创建修改后的新版本',
     editFailed: '修改提示词失败',
     noChange: '内容无变化，与原版本相同。',
+    simplifiedView: '简洁视图',
+    fullView: '完整视图',
   },
 }
 
@@ -565,8 +575,24 @@ const availablePromptKeys = computed(() => {
     .filter((asset) => asset.prompt_type === selectedPromptType.value)
     .map((asset) => asset.prompt_key || 'default'))]
 })
-const businessAssets = computed(() => sortedAssets(promptStore.jobPrompts.filter((asset) => typeGroup(asset.prompt_type) !== 'system')))
-const systemAssets = computed(() => sortedAssets(promptStore.jobPrompts.filter((asset) => typeGroup(asset.prompt_type) === 'system')))
+const simplifiedView = ref(true)
+
+function deduplicatedAssets(assets) {
+  if (!simplifiedView.value || !selectedJobId.value) return assets
+  const PRIORITY = { job: 3, template: 2, job_snapshot: 1 }
+  const map = new Map()
+  for (const asset of assets) {
+    const key = `${asset.prompt_type}:${asset.prompt_key || 'default'}`
+    const existing = map.get(key)
+    if (!existing || (PRIORITY[asset.scope] || 0) > (PRIORITY[existing.scope] || 0)) {
+      map.set(key, asset)
+    }
+  }
+  return Array.from(map.values())
+}
+
+const businessAssets = computed(() => sortedAssets(deduplicatedAssets(promptStore.jobPrompts.filter((asset) => typeGroup(asset.prompt_type) !== 'system'))))
+const systemAssets = computed(() => sortedAssets(deduplicatedAssets(promptStore.jobPrompts.filter((asset) => typeGroup(asset.prompt_type) === 'system'))))
 const currentVersions = computed(() => selectedAsset.value?.versions || [])
 const originalEditContent = computed(() => editingVersion.value?.content || editingVersion.value?.content_snapshot || '')
 const diffLines = computed(() => buildLineDiff(originalEditContent.value, editDraft.value.content || ''))

@@ -14,6 +14,7 @@ The project is designed around workflow nodes, prompt versioning, model registry
 - Track job node runs, API tasks, artifacts, package outputs, and structured error details.
 - View live job events and historical event logs in the job detail page.
 - Package selected final videos, images, and prompts into a downloadable ZIP.
+- Package template-level production prompts and one best generated video into a downloadable ZIP.
 - Browse and preview artifacts, including Markdown and JSON text artifacts.
 
 ## Tech Stack
@@ -243,12 +244,21 @@ Core API groups:
 
 - Auth: `/api/auth/*`
 - Dashboard: `/api/dashboard/summary`
-- Templates: `/api/templates`
+- Templates: `/api/templates`, `/api/templates/{template_id}/package`
 - Jobs: `/api/jobs`
 - Workflow: `/api/workflow/nodes`
 - Prompts: `/api/prompts`, `/api/templates/{template_id}/prompts`
 - Models: `/api/models`
 - Artifacts: `/api/artifacts`, `/api/jobs/{job_id}/artifacts`
+
+Template package endpoints:
+
+```text
+POST /api/templates/{template_id}/package
+GET  /api/templates/{template_id}/package/download
+```
+
+Template packages are minimal production ZIP files. They include `i2i` and `i2v` prompt Markdown when available, or `r2v` as a fallback, plus one best generated video and `package_manifest.json`.
 
 ## Production Notes
 
@@ -258,6 +268,7 @@ Core API groups:
 - Store API keys only in environment variables or server secret managers.
 - Do not commit runtime storage or generated media.
 - The current job queue is process-local. For multi-process or distributed production deployment, migrate queue execution to Celery/Redis or an equivalent external task queue.
+- Redis is not required for single-machine practice. It mainly improves global queue reliability, crash recovery, and multi-worker deployment safety; it will not significantly shorten a single video generation job because remote model execution and polling are the main bottlenecks.
 
 ## License
 

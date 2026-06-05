@@ -47,6 +47,10 @@ services:
     volumes:
       # 持久化用户上传和生成的产物
       - backend_storage:/app/storage
+      # workspace 数据集目录（人物图片等），挂载到容器根下 /workspace
+      # 代码通过 current_app.root_path.parents[1] 计算 project_root，
+      # 在 Docker 中结果为 /（非 /app），故挂载目标为 /workspace 而非 /app/workspace
+      - ./workspace:/workspace:ro
     networks:
       - internal
 

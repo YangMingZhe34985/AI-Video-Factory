@@ -9,9 +9,10 @@ from flask import current_app
 
 from app.api import AppError
 from app.extensions import db
-from app.models import Job, JobNodeRun, WorkflowNode
+from app.models import Artifact, Job, JobNodeRun, WorkflowNode
 from app.services.error_detail_service import ErrorDetailService
 from app.services.event_service import EventService
+from app.services.failure_decision_service import FailureDecisionService
 from app.services.node_runner import NodeRunner
 from app.utils.time_utils import utc_now
 
@@ -20,6 +21,7 @@ from app.utils.time_utils import utc_now
 class _WorkerResult:
     ok: bool
     node_key: str
+    node_run_id: int | None = None
     error_message: str | None = None
     error_code: str | None = None
 
@@ -92,8 +94,8 @@ class WorkflowScheduler:
                 states[node.node_key] = "pending"
                 pending.add(node.node_key)
 
-        had_failure = False
         stop_submitting = False
+        retries_by_node: dict[str, int] = {}
         futures: dict[Future, str] = {}
 
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
@@ -128,16 +130,23 @@ class WorkflowScheduler:
                         missing = self._missing_dependencies(
                             job, blocked, states, all_node_by_key, active_keys
                         )
-                        self._record_failed_before_run(
+                        self._record_path_failed_before_run(
                             job,
                             blocked,
                             force,
                             f"Dependencies not satisfied: {', '.join(missing)}",
                         )
-                        states[blocked_key] = "blocked"
-                        pending.remove(blocked_key)
-                        had_failure = True
-                        stop_submitting = True
+                        states[blocked_key] = "path_failed"
+                        self._mark_descendant_path_failures(
+                            job=job,
+                            failed_key=blocked_key,
+                            pending=pending,
+                            states=states,
+                            node_by_key=node_by_key,
+                            force=force,
+                            reason=f"Upstream dependency path failed: {blocked_key}",
+                        )
+                        pending.discard(blocked_key)
                         continue
 
                 if not futures:
@@ -156,21 +165,39 @@ class WorkflowScheduler:
                     states[node_key] = "success" if result.ok else "failed"
                     self._update_current_nodes(job_pk)
                     if not result.ok:
-                        had_failure = True
-                        stop_submitting = True
+                        decision = self._handle_failed_node(
+                            job_pk=job_pk,
+                            node_key=node_key,
+                            node_run_id=result.node_run_id,
+                            states=states,
+                            pending=pending,
+                            node_by_key=node_by_key,
+                            force=force,
+                            retries_by_node=retries_by_node,
+                        )
+                        if decision.get("action") == "fail_job":
+                            stop_submitting = True
 
         job = db.session.get(Job, job_pk)
         if job and job.status not in {"paused", "cancelled"}:
-            job.status = "failed" if had_failure else "success"
+            unresolved_failure = self._has_unresolved_failure(job_pk, active_keys)
+            if unresolved_failure:
+                job.status = "partial_success" if self._has_deliverable_artifact(job) else "failed"
+            else:
+                job.status = "success"
             job.current_node = None
-            if had_failure:
+            if unresolved_failure:
                 error_detail = ErrorDetailService.latest_for_job(job)
                 EventService.record(
                     job,
-                    "JOB_FAILED",
-                    message=job.error_summary or "Job failed",
+                    "JOB_PARTIAL_SUCCESS" if job.status == "partial_success" else "JOB_FAILED",
+                    message=(
+                        "Job completed with partial success"
+                        if job.status == "partial_success"
+                        else (job.error_summary or "Job failed")
+                    ),
                     payload={"error_detail": error_detail} if error_detail else {},
-                    level="error",
+                    level="warning" if job.status == "partial_success" else "error",
                 )
             else:
                 job.error_summary = None
@@ -305,7 +332,7 @@ class WorkflowScheduler:
                     node_key=node_key,
                 )
                 db.session.commit()
-                return {"ok": True, "node_key": node_key}
+                return {"ok": True, "node_key": node_key, "node_run_id": node_run_id}
             except AppError as error:
                 WorkflowScheduler._safe_rollback()
                 WorkflowScheduler._mark_worker_failed(
@@ -319,6 +346,7 @@ class WorkflowScheduler:
                 return {
                     "ok": False,
                     "node_key": node_key,
+                    "node_run_id": node_run_id,
                     "error_message": error.message,
                     "error_code": error.code,
                 }
@@ -334,6 +362,7 @@ class WorkflowScheduler:
                 return {
                     "ok": False,
                     "node_key": node_key,
+                    "node_run_id": node_run_id,
                     "error_message": str(error),
                     "error_code": "INTERNAL_ERROR",
                 }
@@ -375,7 +404,7 @@ class WorkflowScheduler:
             ErrorDetailService.attach_to_node_run(node_run, error_detail)
         if job:
             if job.status not in {"paused", "cancelled"}:
-                job.status = "failed"
+                job.status = "running"
             job.error_summary = error_detail["summary"]
             EventService.record(
                 job,
@@ -422,7 +451,7 @@ class WorkflowScheduler:
         )
         db.session.commit()
 
-    def _record_failed_before_run(
+    def _record_path_failed_before_run(
         self,
         job: Job,
         node: WorkflowNode,
@@ -432,7 +461,7 @@ class WorkflowScheduler:
         run = JobNodeRun(
             job_id=job.id,
             node_key=node.node_key,
-            status="failed",
+            status="path_failed",
             attempt=JobNodeRun.query.filter_by(job_id=job.id, node_key=node.node_key).count() + 1,
             force=force,
             input_snapshot={"depends_on": node.depends_on},
@@ -453,11 +482,10 @@ class WorkflowScheduler:
         )
         run.error_message = error_detail["summary"]
         ErrorDetailService.attach_to_node_run(run, error_detail)
-        job.status = "failed"
         job.error_summary = error_detail["summary"]
         EventService.record(
             job,
-            "NODE_FAILED",
+            "NODE_PATH_FAILED",
             message=error_detail["summary"],
             node_key=node.node_key,
             payload={
@@ -465,9 +493,196 @@ class WorkflowScheduler:
                 "scheduler": "dag_parallel",
                 "error_detail": error_detail,
             },
-            level="error",
+            level="warning",
         )
         db.session.commit()
+
+    def _record_path_failed_node(
+        self,
+        job: Job,
+        node: WorkflowNode,
+        force: bool,
+        reason: str,
+        upstream_node: str,
+    ) -> None:
+        latest = self._latest_run(job.id, node.node_key)
+        if latest and latest.status in {"success", "skipped", "path_failed"} and not force:
+            return
+        run = JobNodeRun(
+            job_id=job.id,
+            node_key=node.node_key,
+            status="path_failed",
+            attempt=JobNodeRun.query.filter_by(job_id=job.id, node_key=node.node_key).count() + 1,
+            force=force,
+            input_snapshot={"reason": reason, "upstream_node": upstream_node},
+            output_snapshot={"reason": reason, "upstream_node": upstream_node},
+            error_message=reason,
+            started_at=utc_now(),
+            ended_at=utc_now(),
+        )
+        db.session.add(run)
+        EventService.record(
+            job,
+            "NODE_PATH_FAILED",
+            message=f"Node path failed: {node.node_key} ({reason})",
+            node_key=node.node_key,
+            payload={
+                "reason": reason,
+                "upstream_node": upstream_node,
+                "scheduler": "dag_parallel",
+            },
+            level="warning",
+        )
+        db.session.commit()
+
+    def _handle_failed_node(
+        self,
+        *,
+        job_pk: int,
+        node_key: str,
+        node_run_id: int | None,
+        states: dict[str, str],
+        pending: set[str],
+        node_by_key: dict[str, WorkflowNode],
+        force: bool,
+        retries_by_node: dict[str, int],
+    ) -> dict:
+        job = db.session.get(Job, job_pk)
+        failed_run = db.session.get(JobNodeRun, node_run_id) if node_run_id else None
+        if not job or not failed_run:
+            return {"action": "fail_job", "reason": "Failed run could not be reloaded"}
+
+        error_detail = ErrorDetailService.latest_for_job(job)
+        retries_used = retries_by_node.get(node_key, 0)
+        decision = FailureDecisionService.decide(
+            job=job,
+            failed_run=failed_run,
+            error_detail=error_detail,
+            retries_used=retries_used,
+        )
+        action = decision.get("action")
+        if action == "retry_node" and decision.get("retry_count", 0) > 0:
+            retries_by_node[node_key] = retries_used + 1
+            self._mark_retrying(job, failed_run, decision)
+            states[node_key] = "pending"
+            pending.add(node_key)
+            return decision
+
+        if action == "skip_node":
+            self._mark_skipped_after_failure(job, failed_run, decision)
+            states[node_key] = "skipped"
+            return decision
+
+        if action == "fail_job":
+            if job.status not in {"paused", "cancelled"}:
+                job.status = "failed"
+            db.session.commit()
+            return decision
+
+        states[node_key] = "path_failed"
+        self._mark_descendant_path_failures(
+            job=job,
+            failed_key=node_key,
+            pending=pending,
+            states=states,
+            node_by_key=node_by_key,
+            force=force,
+            reason=f"Upstream node failed: {node_key}",
+        )
+        if job.status not in {"paused", "cancelled"}:
+            job.status = "running"
+        db.session.commit()
+        return decision
+
+    def _mark_retrying(
+        self,
+        job: Job,
+        failed_run: JobNodeRun,
+        decision: dict,
+    ) -> None:
+        failed_run.status = "retrying"
+        snapshot = failed_run.output_snapshot if isinstance(failed_run.output_snapshot, dict) else {}
+        snapshot = dict(snapshot)
+        snapshot["retry_decision"] = decision
+        failed_run.output_snapshot = snapshot
+        EventService.record(
+            job,
+            "NODE_RETRYING",
+            message=f"Retrying node: {failed_run.node_key}",
+            node_key=failed_run.node_key,
+            payload=decision,
+            level="warning",
+        )
+        db.session.commit()
+
+    def _mark_skipped_after_failure(
+        self,
+        job: Job,
+        failed_run: JobNodeRun,
+        decision: dict,
+    ) -> None:
+        failed_run.status = "skipped"
+        failed_run.error_message = decision.get("reason")
+        snapshot = failed_run.output_snapshot if isinstance(failed_run.output_snapshot, dict) else {}
+        snapshot = dict(snapshot)
+        snapshot["skip_after_failure"] = decision
+        failed_run.output_snapshot = snapshot
+        EventService.record(
+            job,
+            "NODE_SKIPPED",
+            message=f"Node skipped after failure: {failed_run.node_key}",
+            node_key=failed_run.node_key,
+            payload=decision,
+            level="warning",
+        )
+        db.session.commit()
+
+    def _mark_descendant_path_failures(
+        self,
+        *,
+        job: Job,
+        failed_key: str,
+        pending: set[str],
+        states: dict[str, str],
+        node_by_key: dict[str, WorkflowNode],
+        force: bool,
+        reason: str,
+    ) -> None:
+        descendants = [
+            key
+            for key in sorted(pending, key=lambda item: node_by_key[item].sequence or 0)
+            if key != failed_key
+            and key != "export_manifest"
+            and self._depends_on_path(key, failed_key, node_by_key)
+        ]
+        for key in descendants:
+            node = node_by_key[key]
+            states[key] = "path_failed"
+            pending.discard(key)
+            self._record_path_failed_node(job, node, force, reason, failed_key)
+
+    def _depends_on_path(
+        self,
+        node_key: str,
+        upstream_key: str,
+        node_by_key: dict[str, WorkflowNode],
+        seen: set[str] | None = None,
+    ) -> bool:
+        if node_key == upstream_key:
+            return True
+        seen = seen or set()
+        if node_key in seen:
+            return False
+        seen.add(node_key)
+        node = node_by_key.get(node_key)
+        if not node:
+            return False
+        for dep_key in node.depends_on or []:
+            if dep_key == upstream_key:
+                return True
+            if dep_key in node_by_key and self._depends_on_path(dep_key, upstream_key, node_by_key, seen):
+                return True
+        return False
 
     def _dependencies_satisfied(
         self,
@@ -495,7 +710,7 @@ class WorkflowScheduler:
             if dep_node and not self._is_node_enabled(job, dep_node):
                 continue
             if dep_key in active_keys:
-                if states.get(dep_key) not in {"success", "skipped"}:
+                if states.get(dep_key) not in {"success", "skipped", "path_failed"}:
                     missing.append(dep_key)
                 continue
             latest = self._latest_run(job.id, dep_key)
@@ -530,6 +745,7 @@ class WorkflowScheduler:
             return _WorkerResult(
                 ok=bool(result.get("ok")),
                 node_key=result.get("node_key") or node_key,
+                node_run_id=result.get("node_run_id"),
                 error_message=result.get("error_message"),
                 error_code=result.get("error_code"),
             )
@@ -537,6 +753,7 @@ class WorkflowScheduler:
             return _WorkerResult(
                 ok=False,
                 node_key=node_key,
+                node_run_id=None,
                 error_message=str(error),
                 error_code="INTERNAL_ERROR",
             )
@@ -560,6 +777,36 @@ class WorkflowScheduler:
             .order_by(JobNodeRun.created_at.desc())
             .first()
         )
+
+    @staticmethod
+    def _has_deliverable_artifact(job: Job) -> bool:
+        deliverable_types = {
+            "i2v_video",
+            "t2v_video",
+            "i2i_test_video",
+            "r2v_flash_video",
+            "r2v_flash_videos",
+        }
+        return (
+            Artifact.query.filter(
+                Artifact.job_id == job.id,
+                Artifact.artifact_type.in_(deliverable_types),
+            ).first()
+            is not None
+        )
+
+    @staticmethod
+    def _has_unresolved_failure(job_pk: int, active_keys: set[str] | None = None) -> bool:
+        latest_by_node = {}
+        for run in (
+            JobNodeRun.query.filter_by(job_id=job_pk)
+            .order_by(JobNodeRun.created_at.asc())
+            .all()
+        ):
+            if active_keys is not None and run.node_key not in active_keys:
+                continue
+            latest_by_node[run.node_key] = run.status
+        return any(status in {"failed", "path_failed"} for status in latest_by_node.values())
 
     @staticmethod
     def _is_node_enabled(job: Job, node: WorkflowNode) -> bool:

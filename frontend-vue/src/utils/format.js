@@ -17,6 +17,8 @@ export function statusColors(status) {
     cancelled: 'bg-gray-50 text-gray-500 border-gray-100',
     pending: 'bg-gray-50 text-gray-500 border-gray-100',
     partial_success: 'bg-purple-50 text-purple-600 border-purple-100',
+    retrying: 'bg-blue-50 text-blue-600 border-blue-100',
+    path_failed: 'bg-amber-50 text-amber-700 border-amber-100',
   }
   return map[status] || map.pending
 }
@@ -31,6 +33,8 @@ export function statusDotColor(status) {
     cancelled: 'bg-gray-400',
     pending: 'bg-gray-400',
     partial_success: 'bg-purple-500',
+    retrying: 'bg-blue-500',
+    path_failed: 'bg-amber-500',
   }
   return map[status] || 'bg-gray-400'
 }

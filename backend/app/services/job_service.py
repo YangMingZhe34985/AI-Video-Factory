@@ -544,9 +544,10 @@ class JobService:
             latest_by_node[run.node_key] = run
         data["node_runs"] = [run.to_dict() for run in latest_by_node.values()]
         data["total_nodes"] = len(enabled_keys)
+        completed_statuses = {"success", "failed", "skipped", "path_failed"}
         data["completed_nodes"] = len([
             run for key, run in latest_by_node.items()
-            if key in enabled_keys and run.status in {"success", "failed", "skipped"}
+            if key in enabled_keys and run.status in completed_statuses
         ])
         return data
 
@@ -606,7 +607,7 @@ class JobService:
             "total_nodes": len(enabled_keys),
             "completed_nodes": len([
                 run for key, run in latest_by_node.items()
-                if key in enabled_keys and run.status in {"success", "failed", "skipped"}
+                if key in enabled_keys and run.status in {"success", "failed", "skipped", "path_failed"}
             ]),
             "nodes": node_statuses,
             "artifacts": ArtifactService.list_for_job(job),

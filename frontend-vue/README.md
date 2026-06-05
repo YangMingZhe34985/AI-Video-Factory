@@ -160,6 +160,8 @@ frontend-vue/
 | `GET` | `/api/templates` | TemplatesView、WorkflowJobWizard、PromptManagerView |
 | `GET` | `/api/templates/:id` | templateStore.fetchTemplate() |
 | `POST` | `/api/templates` | templateStore.createTemplate() |
+| `POST` | `/api/templates/:id/package` | TemplatesView template package action |
+| `GET` | `/api/templates/:id/package/download` | TemplatesView template package download |
 
 ### 作业 (Jobs)
 
@@ -480,6 +482,29 @@ If the backend returns `NO_PACKABLE_CONTENT`, the UI displays the backend error 
 Latest UI alignment:
 - Job packages now include only path-relevant prompts: `i2v` for main I2V, `i2i` when the I2I rewrite/test path exists, and `r2v_flash` only for R2V-only jobs.
 - System prompts, T2V prompts, first-frame/T2I prompts, negative prompts, request payloads, API responses, task metadata, raw responses, manifests, and I2I batch JSON are not displayed as package content.
+
+## 2026-06 Template Package / Quick Start i18n
+
+TemplatesView includes a `Package Template` action for each template. It calls:
+
+```http
+POST /api/templates/{template_id}/package
+GET  /api/templates/{template_id}/package/download
+```
+
+The downloaded ZIP is a minimal production package. It includes `prompts/i2i.md` and `prompts/i2v.md` when available, or `prompts/r2v.md` as the fallback path, plus one best generated video and `package_manifest.json`.
+
+WorkflowJobWizard route labels are now localized through `vue-i18n`. Chinese mode shows:
+
+- `首帧图 + I2V 主路径`
+- `核心提示词路径`
+- `I2I 测试路径`
+- `T2V 可选分支`
+- `R2V / 工具分支`
+
+The node chain text remains the original English `node_key` values because those are technical workflow identifiers.
+
+Prompt edit UI remains:
 - PromptManagerView version rows now expose an Edit action for non-read-only versions.
 - Edit opens a full-screen two-column dialog with before/after content, text diff mode, Markdown preview mode, and "save as new version" behavior.
 - Job prompt snapshots remain read-only and do not show the Edit action.
