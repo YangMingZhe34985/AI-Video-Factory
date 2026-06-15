@@ -21,7 +21,7 @@ class JobRunStateService:
             "started_at": utc_now().isoformat(),
             "enabled_nodes": list(enabled_nodes or []),
             "disabled_nodes": list(node_overrides.get("disabled_nodes") or []),
-            "prompt_policy": "template_first",
+            "prompt_policy": "job_first",
             "artifact_visibility": "current_only",
         }
         config[cls.CONFIG_KEY] = current_run

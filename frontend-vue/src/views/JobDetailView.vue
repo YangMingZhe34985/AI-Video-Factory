@@ -300,6 +300,7 @@ const maxVisibleEvents = 100
 
 const totalNodes = computed(() => job.value?.total_nodes || 12)
 const completedNodes = computed(() => {
+  if (job.value?.status === 'success') return totalNodes.value
   if (Number.isFinite(Number(job.value?.completed_nodes))) return Number(job.value.completed_nodes)
   return latestRuns(job.value?.node_runs || []).filter((n) => n.status === 'success').length
 })
@@ -570,8 +571,9 @@ function connectSSE() {
       const data = JSON.parse(e.data)
       if (data.type === 'stream_closed') {
         eventSource?.close()
+        eventSource = null
         sseConnected.value = false
-        scheduleLiveRefresh(0)
+        doFinalRefresh()
         return
       }
       mergeEvents([data])
@@ -591,6 +593,20 @@ function scheduleLiveRefresh(delay = 500) {
   }, delay)
 }
 
+async function doFinalRefresh() {
+  await new Promise(resolve => setTimeout(resolve, 800))
+  await Promise.all([loadJob({ silent: true }), loadArtifacts()])
+  if (
+    job.value?.status === 'success' &&
+    Number.isFinite(Number(job.value?.completed_nodes)) &&
+    Number.isFinite(Number(job.value?.total_nodes)) &&
+    Number(job.value.completed_nodes) < Number(job.value.total_nodes)
+  ) {
+    await new Promise(resolve => setTimeout(resolve, 1500))
+    await Promise.all([loadJob({ silent: true }), loadArtifacts()])
+  }
+}
+
 async function refreshLiveData() {
   await Promise.all([loadJob({ silent: true }), loadArtifacts()])
   if (terminalStatuses.has(job.value?.status)) {
@@ -600,14 +616,16 @@ async function refreshLiveData() {
       eventSource = null
       sseConnected.value = false
     }
+    doFinalRefresh()
   }
 }
 
 function startRunningPoll() {
   stopRunningPoll()
-  pollingTimer = window.setInterval(() => {
+  pollingTimer = window.setInterval(async () => {
     if (terminalStatuses.has(job.value?.status)) {
       stopRunningPoll()
+      await doFinalRefresh()
       return
     }
     refreshLiveData()

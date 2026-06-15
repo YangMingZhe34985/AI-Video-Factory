@@ -4,11 +4,12 @@ from flask import current_app
 
 from app.api import AppError
 from app.extensions import db
-from app.models import Artifact, Job, JobNodeRun, WorkflowNode
+from app.models import Artifact, Job, JobNodeRun, PromptVersion, WorkflowNode
 from app.services.error_detail_service import ErrorDetailService
 from app.services.event_service import EventService
 from app.services.job_run_state_service import JobRunStateService
 from app.services.node_runner import NodeRunner
+from app.services.prompt_sync_service import BUSINESS_PROMPT_TYPES, PromptSyncService
 from app.services.workflow_validator import WorkflowValidator
 from app.utils.time_utils import utc_now
 
@@ -412,10 +413,14 @@ class WorkflowService:
         if (job.config or {}).get("i2i_test_batch"):
             initial_artifacts["i2i_test_batch"] = True
         initial_artifacts.update((job.config or {}).get("initial_artifacts") or {})
+        initial_prompts = dict((job.config or {}).get("initial_prompts") or {})
+        for prompt_type in BUSINESS_PROMPT_TYPES:
+            if prompt_type not in initial_prompts and WorkflowService._has_usable_active_prompt(job, prompt_type):
+                initial_prompts[prompt_type] = {"existing_prompt": True}
         result = WorkflowValidator.validate(
             enabled_nodes=enabled_nodes,
             disabled_nodes=disabled_nodes,
-            initial_prompts=(job.config or {}).get("initial_prompts") or {},
+            initial_prompts=initial_prompts,
             initial_artifacts=initial_artifacts,
         )
         if not result.get("valid"):
@@ -434,6 +439,34 @@ class WorkflowService:
                 400,
                 payload={"required_inputs": result["required_inputs"]},
             )
+
+    @staticmethod
+    def _has_usable_active_prompt(job: Job, prompt_type: str) -> bool:
+        job_prompt = (
+            PromptVersion.query.filter_by(
+                template_id=job.template_id,
+                job_id=job.id,
+                prompt_type=prompt_type,
+                prompt_key="default",
+                is_active=True,
+            )
+            .order_by(PromptVersion.created_at.desc())
+            .first()
+        )
+        if PromptSyncService.is_usable_business_prompt(job_prompt):
+            return True
+        template_prompt = (
+            PromptVersion.query.filter_by(
+                template_id=job.template_id,
+                prompt_type=prompt_type,
+                prompt_key="default",
+                is_active=True,
+            )
+            .filter(PromptVersion.job_id.is_(None))
+            .order_by(PromptVersion.created_at.desc())
+            .first()
+        )
+        return PromptSyncService.is_usable_business_prompt(template_prompt)
 
     @staticmethod
     def _job_run_summary(job: Job) -> dict:

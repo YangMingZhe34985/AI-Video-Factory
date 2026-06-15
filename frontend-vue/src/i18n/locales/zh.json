@@ -408,6 +408,8 @@
     "routePromptCoreDesc": "只生成可复用的 T2V、首帧图、I2V 与 I2I 提示词，不生成媒体。",
     "routeI2iTest": "I2I 测试路径",
     "routeI2iTestDesc": "基于 I2I 提示词生成测试首帧图，再测试 I2V 视频。",
+    "routeI2iTestImageOnly": "I2I 测试（仅首帧图）",
+    "routeI2iTestImageOnlyDesc": "仅基于 I2I 提示词生成测试首帧图，不生成视频。",
     "routeT2v": "T2V 可选分支",
     "routeT2vDesc": "提交并轮询文生视频分支。",
     "routeR2vFlash": "R2V / 工具分支",

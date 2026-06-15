@@ -407,6 +407,8 @@
     "routePromptCoreDesc": "Generate reusable T2V, first-frame, I2V and I2I prompts without media generation.",
     "routeI2iTest": "I2I Test Path",
     "routeI2iTestDesc": "Generate test first-frame images from I2I prompt, then test I2V videos.",
+    "routeI2iTestImageOnly": "I2I Test (Image Only)",
+    "routeI2iTestImageOnlyDesc": "Generate test first-frame images from I2I prompt without video generation.",
     "routeT2v": "T2V Optional Branch",
     "routeT2vDesc": "Submit and poll text-to-video branch.",
     "routeR2vFlash": "R2V / Utility Branch",

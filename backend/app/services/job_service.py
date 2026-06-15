@@ -11,6 +11,7 @@ from app.services.artifact_service import ArtifactService
 from app.services.error_detail_service import ErrorDetailService
 from app.services.event_service import EventService
 from app.services.job_run_state_service import JobRunStateService
+from app.services.prompt_sync_service import PromptSyncService
 from app.services.storage_service import StorageService
 from app.services.workflow_service import WorkflowService
 from app.services.workflow_validator import WorkflowValidator
@@ -320,6 +321,7 @@ class JobService:
             )
             db.session.flush()
             ref = PromptService.snapshot_for_job(job, prompt)
+            PromptSyncService.sync_job_prompt_to_template(prompt, reason="initial_prompt")
             refs[prompt_type] = {
                 "prompt_id": prompt.prompt_id,
                 "version": prompt.version,
@@ -546,6 +548,8 @@ class JobService:
             run for key, run in latest_by_node.items()
             if key in enabled_keys and run.status in completed_statuses
         ])
+        if job.status in ("success", "failed", "partial_success", "cancelled"):
+            data["completed_nodes"] = data["total_nodes"]
         return data
 
     @staticmethod
@@ -594,14 +598,18 @@ class JobService:
         enabled_keys = {
             node.node_key for node in nodes if WorkflowService.is_node_enabled(job, node)
         }
+        total_nodes = len(enabled_keys)
+        completed_nodes = len([
+            run for key, run in latest_by_node.items()
+            if key in enabled_keys and run.status in {"success", "failed", "skipped", "path_failed"}
+        ])
+        if job.status in ("success", "failed", "partial_success", "cancelled"):
+            completed_nodes = total_nodes
         return {
             "job": job.to_dict(),
             "node_runs": [run.to_dict() for run in latest_by_node.values()],
-            "total_nodes": len(enabled_keys),
-            "completed_nodes": len([
-                run for key, run in latest_by_node.items()
-                if key in enabled_keys and run.status in {"success", "failed", "skipped", "path_failed"}
-            ]),
+            "total_nodes": total_nodes,
+            "completed_nodes": completed_nodes,
             "nodes": node_statuses,
             "artifacts": ArtifactService.list_for_job(job),
             "error_summary": job.error_summary,

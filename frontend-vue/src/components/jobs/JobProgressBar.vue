@@ -13,6 +13,7 @@ import { computed } from 'vue'
 const props = defineProps({ job: { type: Object, required: true } })
 
 const pct = computed(() => {
+  if (props.job.status === 'success') return 100
   const total = props.job.total_nodes || 12
   const done = Number.isFinite(Number(props.job.completed_nodes))
     ? Number(props.job.completed_nodes)

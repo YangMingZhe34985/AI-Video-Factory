@@ -1318,6 +1318,14 @@ The ZIP contains only the prompt/video assets needed for production use:
 - `video/{artifact_type}_{artifact_id}_{file_name}` for the best generated video across this template's jobs.
 - `package_manifest.json`
 
-Prompt resolution priority is Template active PromptVersion, Template latest PromptVersion, Job active PromptVersion, then latest JobPromptRef snapshot. Video priority is `i2v_video > t2v_video > i2i_test_video > r2v_flash_video/r2v_flash_videos`. A template with no packable prompt and no video returns `NO_TEMPLATE_PACKABLE_CONTENT`.
+Prompt resolution ignores old template-level business mocks with `source=factory_prompts`. It prefers synced template business prompts, then falls back to the latest usable Job-level PromptVersion or JobPromptRef snapshot from this template. Video priority is `i2v_video > t2v_video > i2i_test_video > r2v_flash_video/r2v_flash_videos`. A template with no packable prompt and no video returns `NO_TEMPLATE_PACKABLE_CONTENT`.
+
+## 2026-06 Template Business Prompt Sync
+
+Template creation still seeds system prompts from `factory_prompts/`, because these prompts are required by workflow nodes. It no longer creates default business mock prompts for `t2v`, `first_frame_image`, `i2v`, `i2i`, `r2v_flash`, or `negative`.
+
+Job-level business prompts are now the source of truth. When a Job creates, edits, rolls back, activates, or workflow-generates a business prompt, the backend creates a new template-level copy with `source=synced_from_job` and marks it active for the same `prompt_type + prompt_key`. Existing template versions are preserved for history. The sync event is recorded as `TEMPLATE_PROMPT_SYNCED`.
+
+Runtime prompt lookup remains Job-first for business prompts. If a Job has no active prompt, the backend may fall back to a usable template prompt, but old factory business mocks are ignored and do not satisfy workflow validation or template packaging.
 
 Redis is not introduced in this phase. The current process-local `JobQueueService` is suitable for single-machine practice. Redis/RQ/Celery would be a medium-difficulty production upgrade: it improves queue durability, crash recovery, multi-process worker safety, and throughput across many jobs, but it will not significantly shorten a single job because the dominant latency comes from remote DashScope/Qwen model tasks and polling.

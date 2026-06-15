@@ -288,7 +288,7 @@ class Config:
             "sequence": 990,
             "branch_key": "core",
             "enabled": True,
-            "depends_on": ["poll_i2v", "poll_i2i_test_i2v", "poll_t2v", "poll_r2v_flash"],
+            "depends_on": ["poll_i2v", "poll_i2i_test_i2v", "poll_i2i_test_image", "poll_t2v", "poll_r2v_flash"],
         },
     ]
 

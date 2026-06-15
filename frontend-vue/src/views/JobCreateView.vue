@@ -390,6 +390,8 @@ const i2vFields = [
 const I2I_TEST_NODES = [
   'rewrite_t2i_to_i2i',
   'prepare_i2i_test_batch',
+  'submit_i2i_test_image',
+  'poll_i2i_test_image',
   'submit_i2i_test_i2v',
   'poll_i2i_test_i2v',
 ]

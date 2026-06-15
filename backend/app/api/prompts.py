@@ -44,8 +44,14 @@ def create_prompt(template_id: str):
 
 @bp.post("/<template_id>/prompts/seed-factory")
 def seed_factory_prompts(template_id: str):
-    skip_existing = (request.get_json(silent=True) or {}).get("skip_existing", True)
-    prompts = PromptService.seed_factory_prompts(template_id, skip_existing=bool(skip_existing))
+    body = request.get_json(silent=True) or {}
+    skip_existing = body.get("skip_existing", True)
+    include_business_mocks = body.get("include_business_mocks", False)
+    prompts = PromptService.seed_factory_prompts(
+        template_id,
+        skip_existing=bool(skip_existing),
+        include_business_mocks=bool(include_business_mocks),
+    )
     return api_success(
         {"created": len(prompts), "prompts": [prompt.to_dict() for prompt in prompts]},
         HTTPStatus.CREATED,

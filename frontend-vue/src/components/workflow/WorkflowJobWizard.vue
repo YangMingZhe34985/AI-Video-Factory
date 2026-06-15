@@ -790,6 +790,12 @@ const routeOptions = computed(() => [
     nodes: ['reverse_prompts', 'rewrite_prompts', 'rewrite_t2i_to_i2i', 'prepare_i2i_test_batch', 'submit_i2i_test_image', 'poll_i2i_test_image', 'submit_i2i_test_i2v', 'poll_i2i_test_i2v', 'export_manifest'],
   },
   {
+    key: 'i2i_test_image_only',
+    label: t('workflow.routeI2iTestImageOnly'),
+    description: t('workflow.routeI2iTestImageOnlyDesc'),
+    nodes: ['reverse_prompts', 'rewrite_prompts', 'rewrite_t2i_to_i2i', 'prepare_i2i_test_batch', 'submit_i2i_test_image', 'poll_i2i_test_image', 'export_manifest'],
+  },
+  {
     key: 't2v',
     label: t('workflow.routeT2v'),
     description: t('workflow.routeT2vDesc'),

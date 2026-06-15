@@ -38,7 +38,9 @@
         class="w-full border border-gray-200 rounded-lg px-2.5 py-2 text-sm bg-white focus:border-primary outline-none disabled:opacity-50"
       >
         <option value="">{{ loadingJobs ? t('common.loading') : t('workflow.wizardSelectPlaceholder') }}</option>
-        <option v-for="j in jobs" :key="j.job_id" :value="j.job_id">{{ j.job_id }}</option>
+        <option v-for="j in jobs" :key="j.job_id" :value="j.job_id">
+          {{ j.job_name ? `${j.job_name} (${j.job_id})` : j.job_id }}
+        </option>
       </select>
       <p v-if="sel.template && !jobs.length && !loadingJobs" class="text-xs text-gray-400 mt-1">
         {{ t('workflow.wizardNoJobsFound') }}
@@ -55,7 +57,7 @@
       >
         <option value="">{{ loadingPrompts ? t('common.loading') : t('workflow.wizardSelectPlaceholder') }}</option>
         <option v-for="v in promptVersions" :key="v.uid" :value="v.uid">
-          v{{ v.version }}{{ v.prompt_key && v.prompt_key !== 'default' ? ` [${v.prompt_key}]` : '' }}
+          {{ v.version }}{{ v.prompt_key && v.prompt_key !== 'default' ? ` [${v.prompt_key}]` : '' }}
         </option>
       </select>
       <p v-if="sel.job && !promptVersions.length && !loadingPrompts" class="text-xs text-gray-400 mt-1">
@@ -140,18 +142,26 @@ async function onJobChange() {
       job_id: sel.value.job,
       prompt_type: props.promptType,
     })
-    const versions = []
+    const scopePriority = { job: 0, job_snapshot: 1, template: 2 }
+    const dedup = new Map()
     ;(assets || []).forEach((asset) => {
+      const scope = asset.scope || 'template'
+      const priority = scopePriority[scope] ?? 9
       ;(asset.versions || []).forEach((v) => {
-        versions.push({
-          uid: v.id ?? v.prompt_id ?? `${asset.prompt_key}-${v.version}`,
-          version: v.version,
-          prompt_key: asset.prompt_key ?? 'default',
-          content: v.content ?? '',
-        })
+        const dedupKey = `${asset.prompt_key ?? 'default'}::${v.version}`
+        const existing = dedup.get(dedupKey)
+        if (!existing || priority < existing._priority) {
+          dedup.set(dedupKey, {
+            uid: v.id ?? v.prompt_id ?? `${asset.prompt_key}-${v.version}`,
+            version: v.version,
+            prompt_key: asset.prompt_key ?? 'default',
+            content: v.content ?? '',
+            _priority: priority,
+          })
+        }
       })
     })
-    promptVersions.value = versions
+    promptVersions.value = [...dedup.values()].map(({ _priority, ...rest }) => rest)
   } catch { promptVersions.value = [] }
   finally { loadingPrompts.value = false }
 }

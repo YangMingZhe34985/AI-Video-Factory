@@ -10,6 +10,7 @@ from app.models.job import Job
 from app.models.job_prompt_ref import JobPromptRef
 from app.models.prompt_version import PromptVersion
 from app.services.prompt_service import PromptService
+from app.services.prompt_sync_service import PromptSyncService
 from app.services.storage_service import StorageService
 from app.utils.files import ensure_dir
 from app.utils.json_utils import dump_pretty
@@ -136,6 +137,7 @@ class TemplatePackageService:
                 PromptVersion.job_id.is_(None),
                 PromptVersion.prompt_type == prompt_type,
                 PromptVersion.is_active.is_(True),
+                PromptVersion.source != "factory_prompts",
             )
             .order_by(desc(PromptVersion.created_at))
         )
@@ -149,6 +151,7 @@ class TemplatePackageService:
                 PromptVersion.template_id == template.id,
                 PromptVersion.job_id.is_(None),
                 PromptVersion.prompt_type == prompt_type,
+                PromptVersion.source != "factory_prompts",
             )
             .order_by(desc(PromptVersion.created_at))
         )
@@ -215,6 +218,8 @@ class TemplatePackageService:
     @staticmethod
     def _first_non_empty_prompt(query) -> PromptVersion | None:
         for prompt in query.limit(50).all():
+            if not PromptSyncService.is_usable_business_prompt(prompt):
+                continue
             if str(prompt.content or "").strip():
                 return prompt
         return None

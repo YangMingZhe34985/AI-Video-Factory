@@ -8,10 +8,11 @@ from app.api import AppError
 from app.extensions import db
 from app.models import Job, JobPromptRef, PromptVersion, Template
 from app.services.event_service import EventService
+from app.services.prompt_sync_service import PromptSyncService
 from app.utils.time_utils import isoformat
 
 
-FACTORY_PROMPT_FILES = {
+SYSTEM_FACTORY_PROMPT_FILES = {
     "video_understanding_system": "video_understanding_system.md",
     "video_understanding_user": "video_understanding_user.md",
     "prompt_rewrite_system": "prompt_rewrite_system.md",
@@ -20,11 +21,19 @@ FACTORY_PROMPT_FILES = {
     "rewrite_t2i_to_i2i_system": "rewrite_t2i_to_i2i_system.md",
     "failure_agent_system": "failure_agent_system.md",
     "failure_agent_user": "failure_agent_user.md",
+}
+
+BUSINESS_FACTORY_PROMPT_FILES = {
     "t2v": "mock_t2v.md",
     "first_frame_image": "mock_first_frame_image.md",
     "r2v_flash": "mock_r2v_flash.md",
     "i2v": "mock_i2v.md",
     "negative": "mock_negative.md",
+}
+
+FACTORY_PROMPT_FILES = {
+    **SYSTEM_FACTORY_PROMPT_FILES,
+    **BUSINESS_FACTORY_PROMPT_FILES,
 }
 
 
@@ -102,6 +111,8 @@ class PromptService:
     def create_version(template_id: str, data: dict) -> PromptVersion:
         template = PromptService.get_template(template_id)
         prompt = PromptService.create_version_for_template(template, data)
+        db.session.flush()
+        PromptSyncService.sync_job_prompt_to_template(prompt, reason="manual_create")
         db.session.commit()
         return prompt
 
@@ -168,24 +179,35 @@ class PromptService:
         return prompt
 
     @staticmethod
-    def seed_factory_prompts(template_id: str, skip_existing: bool = True) -> list[PromptVersion]:
+    def seed_factory_prompts(
+        template_id: str,
+        skip_existing: bool = True,
+        include_business_mocks: bool = False,
+    ) -> list[PromptVersion]:
         template = PromptService.get_template(template_id)
         prompts = PromptService.seed_factory_prompts_for_template(
-            template, skip_existing=skip_existing
+            template,
+            skip_existing=skip_existing,
+            include_business_mocks=include_business_mocks,
         )
         db.session.commit()
         return prompts
 
     @staticmethod
     def seed_factory_prompts_for_template(
-        template: Template, skip_existing: bool = True
+        template: Template,
+        skip_existing: bool = True,
+        include_business_mocks: bool = False,
     ) -> list[PromptVersion]:
         prompts_dir = Path(current_app.config["FACTORY_PROMPTS_DIR"])
         if not prompts_dir.exists():
             return []
 
         created = []
-        for prompt_type, filename in FACTORY_PROMPT_FILES.items():
+        prompt_files = dict(SYSTEM_FACTORY_PROMPT_FILES)
+        if include_business_mocks:
+            prompt_files.update(BUSINESS_FACTORY_PROMPT_FILES)
+        for prompt_type, filename in prompt_files.items():
             path = prompts_dir / filename
             if not path.exists():
                 continue
@@ -286,6 +308,8 @@ class PromptService:
             raise AppError("PROMPT_NOT_FOUND", "Prompt version not found", 404)
         q.filter(PromptVersion.version != version).update({"is_active": False})
         prompt.is_active = True
+        db.session.flush()
+        PromptSyncService.sync_job_prompt_to_template(prompt, reason="activate")
         db.session.commit()
         return prompt
 
@@ -332,6 +356,8 @@ class PromptService:
                 "activate": True,
             },
         )
+        db.session.flush()
+        PromptSyncService.sync_job_prompt_to_template(prompt, reason="rollback")
         db.session.commit()
         return prompt
 
@@ -382,6 +408,8 @@ class PromptService:
                 "activate": data.get("activate", True),
             },
         )
+        db.session.flush()
+        PromptSyncService.sync_job_prompt_to_template(prompt, reason="edit")
         db.session.commit()
         return prompt
 
