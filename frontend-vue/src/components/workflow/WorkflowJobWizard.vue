@@ -432,22 +432,6 @@
                   class="w-full border border-gray-200 rounded-lg px-2.5 py-2 text-sm bg-white"
                 />
               </div>
-              <div>
-                <label class="text-xs text-gray-500 block mb-1">I2I Image Model</label>
-                <select v-model="i2iConfig.image_model" class="w-full border border-gray-200 rounded-lg px-2.5 py-2 text-sm bg-white">
-                  <option v-for="m in i2iImageModelOptions" :key="m.model_id" :value="m.model_id">
-                    {{ m.display_name || m.model_id }}
-                  </option>
-                </select>
-              </div>
-              <div>
-                <label class="text-xs text-gray-500 block mb-1">{{ t('workflow.i2iTestI2vModel') }}</label>
-                <select v-model="i2iConfig.i2v_model" class="w-full border border-gray-200 rounded-lg px-2.5 py-2 text-sm bg-white">
-                  <option v-for="m in i2iVideoModelOptions" :key="m.model_id" :value="m.model_id">
-                    {{ m.display_name || m.model_id }}
-                  </option>
-                </select>
-              </div>
             </div>
           </div>
 
@@ -750,8 +734,6 @@ const draggingImagesOver = ref(false)
 const i2iConfig = reactive({
   mode: 'couple',
   test_count: 3,
-  image_model: 'wan2.7-image',
-  i2v_model: 'wan2.6-i2v-flash',
 })
 const nodeModelOverrides = reactive({})
 const nodeParamOverrides = reactive({})
@@ -1019,27 +1001,11 @@ const needsI2IConfig = computed(() =>
   )
 )
 
-const i2iImageModelOptions = computed(() =>
-  withFallbackModel(
-    modelStore.models.filter((model) => model.task_type === 'text_to_image'),
-    { model_id: 'wan2.7-image', display_name: 'Wan 2.7 Image' }
-  )
-)
-
-const i2iVideoModelOptions = computed(() =>
-  withFallbackModel(
-    modelStore.models.filter((model) => model.task_type === 'image_to_video'),
-    { model_id: 'wan2.6-i2v-flash', display_name: 'Wan 2.6 I2V Flash' }
-  )
-)
-
 const i2iConfigValid = computed(() => {
   const count = Number(i2iConfig.test_count)
   return ['couple', 'single_male', 'single_female'].includes(i2iConfig.mode)
     && Number.isInteger(count)
     && count >= 1
-    && !!String(i2iConfig.image_model || '').trim()
-    && !!String(i2iConfig.i2v_model || '').trim()
 })
 
 const selectedRouteNodes = computed(() => {
@@ -1072,8 +1038,6 @@ function applyI2INodeDefaults() {
   if (Number.isInteger(count) && count >= 1 && count <= 10) {
     i2iConfig.test_count = count
   }
-  if (cfg.image_model) i2iConfig.image_model = cfg.image_model
-  if (cfg.i2v_model) i2iConfig.i2v_model = cfg.i2v_model
 }
 
 function toggleRoute(key) {
@@ -1269,8 +1233,6 @@ async function submitJob() {
         enabled: true,
         mode: i2iConfig.mode,
         test_count: i2iConfig.test_count,
-        image_model: i2iConfig.image_model,
-        i2v_model: i2iConfig.i2v_model,
       }
     }
 

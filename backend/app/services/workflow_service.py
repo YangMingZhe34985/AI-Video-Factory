@@ -410,7 +410,7 @@ class WorkflowService:
             initial_artifacts["reference_images"] = True
         if Artifact.query.filter_by(job_id=job.id, artifact_type="i2i_test_first_frame_image").first():
             initial_artifacts["i2i_test_first_frame_image"] = True
-        if (job.config or {}).get("i2i_test_batch"):
+        if (job.config or {}).get("i2i_test_batch") or (job.config or {}).get("i2i_test"):
             initial_artifacts["i2i_test_batch"] = True
         initial_artifacts.update((job.config or {}).get("initial_artifacts") or {})
         initial_prompts = dict((job.config or {}).get("initial_prompts") or {})

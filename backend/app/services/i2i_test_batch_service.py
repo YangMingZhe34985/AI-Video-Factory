@@ -150,14 +150,12 @@ class I2ITestBatchService:
             "mode": mode,
             "test_count": test_count,
             "image_model": (
-                test_config.get("image_model")
-                or node_models.get("submit_i2i_test_image")
+                node_models.get("submit_i2i_test_image")
                 or models.get("i2i_test_image")
                 or current_app.config["DEFAULT_I2I_TEST_IMAGE_MODEL"]
             ),
             "i2v_model": (
-                test_config.get("i2v_model")
-                or node_models.get("submit_i2i_test_i2v")
+                node_models.get("submit_i2i_test_i2v")
                 or models.get("i2i_test_i2v")
                 or current_app.config["DEFAULT_I2I_TEST_I2V_MODEL"]
             ),

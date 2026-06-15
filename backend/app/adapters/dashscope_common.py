@@ -36,6 +36,7 @@ class DashScopeGenerationAdapter(MockAdapter):
                 "Content-Type": "application/json",
                 "X-DashScope-Async": "enable",
                 "X-DashScope-OssResourceResolve": "enable",
+                "X-DashScope-DataInspection": '{"input":"disable","output":"disable"}',
             },
             json=payload,
         )

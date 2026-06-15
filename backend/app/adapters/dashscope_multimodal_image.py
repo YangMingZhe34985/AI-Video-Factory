@@ -64,6 +64,7 @@ class DashScopeMultimodalSyncAdapter(DashScopeGenerationAdapter):
                 "Authorization": f"Bearer {self.api_key()}",
                 "Content-Type": "application/json",
                 "X-DashScope-OssResourceResolve": "enable",
+                "X-DashScope-DataInspection": '{"input":"disable","output":"disable"}',
                 # No X-DashScope-Async — synchronous mode
             },
             json=payload,

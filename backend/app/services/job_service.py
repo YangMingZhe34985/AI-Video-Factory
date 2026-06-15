@@ -198,7 +198,7 @@ class JobService:
         validation_artifacts = JobService._validation_artifacts(
             initial_artifacts, source_info, initial_files
         )
-        if job_config.get("i2i_test_batch"):
+        if job_config.get("i2i_test_batch") or job_config.get("i2i_test"):
             validation_artifacts["i2i_test_batch"] = True
         validation = WorkflowValidator.validate(
             enabled_nodes=node_overrides["enabled_nodes"],

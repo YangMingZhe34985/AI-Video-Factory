@@ -221,6 +221,7 @@
             <div class="flex-1 min-w-0">
               <div class="text-sm font-bold text-gray-900 truncate">{{ a.filename || a.name || 'artifact' }}</div>
               <div class="text-xs text-gray-500">{{ a.mime_type || '' }}</div>
+              <div class="text-[10px] text-gray-400 mt-0.5">{{ formatDate(a.created_at) }}</div>
             </div>
             <a v-if="a.id || a.artifact_id" :href="`/api/artifacts/${a.id || a.artifact_id}/download`" class="p-1.5 text-gray-400 hover:text-primary border border-gray-200 rounded ml-2">
               <PhDownloadSimple />

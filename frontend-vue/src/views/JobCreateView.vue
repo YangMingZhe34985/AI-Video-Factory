@@ -196,11 +196,6 @@
                     <input v-model.number="formParams.i2i_test.test_count" type="number" min="1" max="10" class="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm outline-none focus:border-primary" />
                   </div>
                   <div>
-                    <label class="text-xs text-gray-500 block mb-1">{{ t('workflow.i2iTestI2vModel') }}</label>
-                    <input v-model="formParams.i2i_test.i2v_model" type="text" class="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm outline-none focus:border-primary" placeholder="wan2.6-i2v-flash" />
-                    <p class="text-xs text-gray-400 mt-0.5">{{ t('workflow.i2iTestModelNote') }}</p>
-                  </div>
-                  <div>
                     <label class="text-xs text-gray-500 block mb-1">{{ t('workflow.i2iTestMaleDir') }} <span class="text-gray-300">({{ t('common.optional') }})</span></label>
                     <input v-model="formParams.i2i_test.male_dataset_dir" type="text" class="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm outline-none focus:border-primary" placeholder="workspace/personas/male" />
                   </div>
@@ -348,7 +343,6 @@ const DEFAULT_CONFIG = {
     enabled: false,
     mode: 'couple',
     test_count: 3,
-    i2v_model: 'wan2.6-i2v-flash',
     male_dataset_dir: 'workspace/personas/male',
     female_dataset_dir: 'workspace/personas/female',
   },
@@ -556,7 +550,7 @@ async function submitJob() {
           ...DEFAULT_CONFIG.models,
           main_i2v: DEFAULT_CONFIG.models.main_i2v,
           i2v: DEFAULT_CONFIG.models.main_i2v,
-          i2i_test_i2v: i2iTest.i2v_model || DEFAULT_CONFIG.models.i2i_test_i2v,
+          i2i_test_i2v: DEFAULT_CONFIG.models.i2i_test_i2v,
         },
         model_params: {
           ...DEFAULT_CONFIG.model_params,

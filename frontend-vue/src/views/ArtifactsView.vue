@@ -147,7 +147,8 @@
               <span v-else>--</span>
               <span v-if="a.template_name" class="text-gray-300"> / {{ a.template_name }}</span>
             </p>
-            <p class="text-xs text-gray-500 mb-3">{{ a.mime_type || '--' }} · {{ formatSize(a.size) }}</p>
+            <p class="text-xs text-gray-500 mb-1">{{ a.mime_type || '--' }} · {{ formatSize(a.size) }}</p>
+            <p class="text-[10px] text-gray-400 mb-3">{{ formatDate(a.created_at) }}</p>
 
             <div class="flex items-center gap-2">
               <a :href="`/api/artifacts/${a.id || a.artifact_id}/download`"
@@ -261,6 +262,7 @@ import AppSelect from '@/components/common/AppSelect.vue'
 import { PhArrowsClockwise, PhFile, PhDownloadSimple, PhEye, PhX, PhCopy } from '@phosphor-icons/vue'
 import { useI18n } from 'vue-i18n'
 import { clearRecentJob, getRecentJob, setRecentJob } from '@/composables/useRecentJob'
+import { formatDate } from '@/utils/format'
 
 const { t } = useI18n()
 const route = useRoute()

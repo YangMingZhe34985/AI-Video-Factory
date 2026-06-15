@@ -210,7 +210,14 @@ class NodeRunner:
             db.session.rollback()
             raise
         finally:
-            db.session.close()
+            # Use expire_all() instead of close() so that ORM objects (job,
+            # task, node_run …) remain *attached* to the session.  They will
+            # be transparently re-loaded from the DB on next attribute access,
+            # which avoids DetachedInstanceError in code that runs after the
+            # long polling loop (e.g. self._prompt(job, …) accessing
+            # job.template).  The underlying DB connection is still returned
+            # to the pool, which is the original purpose of this helper.
+            db.session.expire_all()
 
     @staticmethod
     def _render_prompt_template(template: str, **values) -> str:
@@ -1300,6 +1307,15 @@ class NodeRunner:
         i2i_prompt = self._prompt(job, "i2i")
         batch = (job.config or {}).get("i2i_test_batch") or {}
         items = batch.get("items") or []
+
+        # Auto-prepare batch when prepare_i2i_test_batch node was not enabled
+        # but the user provided i2i_test config (mode, test_count, models).
+        if not items and (job.config or {}).get("i2i_test"):
+            batch = I2ITestBatchService.prepare_batch(
+                job, node_run, node_config=self._node_config(job, node)
+            )
+            items = batch.get("items") or []
+
         if not items:
             raise AppError(
                 "DEPENDENCY_MISSING",
