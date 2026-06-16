@@ -1,275 +1,321 @@
 # AI Video Factory
 
-AI Video Factory is a full-stack video generation workflow system. It provides a Flask backend and a Vue 3 + Vite frontend for creating, running, monitoring, and packaging AI video generation jobs.
+[中文文档](README_zh.md) | **English**
 
-The project is designed around workflow nodes, prompt versioning, model registry management, generated artifacts, and job event tracking. It supports both mock execution for local development and real DashScope/Qwen-compatible model adapters for production practice.
+A full-stack AI video generation workflow platform featuring a DAG-based pipeline orchestrator, prompt versioning, model registry, and artifact management.
 
-## Features
+AI Video Factory turns a source video into production-ready AI-generated videos through an automated, configurable multi-step workflow — from video understanding and prompt engineering to image generation, video synthesis, and quality testing.
 
-- Create and manage video generation jobs.
-- Run full workflows, run from a selected node, or run a single node.
-- Configure workflow nodes and per-job model parameters.
-- Manage prompt versions with activation, rollback, edit-as-new-version, and job snapshots.
-- Manage model registry entries for text, image, video, I2V, R2V, and I2I flows.
-- Track job node runs, API tasks, artifacts, package outputs, and structured error details.
-- View live job events and historical event logs in the job detail page.
-- Package selected final videos, images, and prompts into a downloadable ZIP.
-- Package template-level production prompts and one best generated video into a downloadable ZIP.
-- Browse and preview artifacts, including Markdown and JSON text artifacts.
+---
 
-## Tech Stack
+## ✨ Features
 
-Backend:
+### Workflow Engine
+- **DAG-based parallel scheduling** — nodes execute concurrently when dependencies are satisfied
+- **Multiple run modes** — run the full pipeline, run from a specific node, or run a single node
+- **Job lifecycle control** — pause, cancel, restart, and force re-run capabilities
+- **Fault-tolerant execution** — individual node failures don't cascade; partial results are preserved
+- **I2I test batch system** — batch identity-preserving image/video generation with per-sample fault isolation
+
+### Prompt Management
+- **Versioned prompts** — every edit, rollback, or LLM generation creates a new version; nothing is ever overwritten
+- **Multi-source prompts** — factory defaults, LLM-generated, manual edits, and rollbacks all coexist
+- **Job-level snapshots** — each job captures the exact prompt versions used, ensuring reproducibility
+- **Template-first / Job-first resolution** — configurable strategy for prompt inheritance
+
+### Model Registry
+- **Adapter-based abstraction** — unified interface across DashScope, Qwen, DeepSeek, and mock providers
+- **Per-job model overrides** — assign different models to specific nodes without changing global defaults
+- **Supported task types** — text-to-video, image generation, image-to-video, reference-to-video, chat/understanding
+
+### Artifact & Packaging
+- **Full artifact tracking** — every generated video, image, and prompt is recorded with metadata and lineage
+- **Artifact browser** — search, filter, preview (image/video/markdown/JSON), and download any artifact
+- **One-click packaging** — export job results or template-level production packages as downloadable ZIP files
+
+### Real-time Monitoring
+- **SSE live event stream** — watch job progress in real time via Server-Sent Events
+- **Structured event logging** — every state change, API call, and error is recorded with context
+- **Node-level progress** — see which workflow nodes are running, succeeded, or failed at a glance
+
+### Additional
+- **LLM-based failure agent** — automatic error diagnosis with actionable recovery decisions
+- **Automatic video compression** — configurable ffmpeg-based compression with size-aware fallback
+- **JWT authentication** — secure API access with token refresh
+- **Internationalization** — English and Chinese UI via vue-i18n
+- **Docker deployment** — production-ready Docker Compose with MySQL, Gunicorn, and Nginx
+
+---
+
+## 🏗 Architecture
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                     Frontend (Vue 3)                     │
+│   Vite · Pinia · Vue Router · Tailwind CSS · vue-i18n   │
+└──────────────────────┬──────────────────────────────────┘
+                       │ REST API / SSE
+┌──────────────────────▼──────────────────────────────────┐
+│                    Backend (Flask)                        │
+│  ┌──────────┐  ┌──────────────┐  ┌───────────────────┐  │
+│  │ Workflow  │  │   Prompt     │  │  Model Registry   │  │
+│  │ Scheduler │  │   Versioning │  │  & Adapters       │  │
+│  └──────────┘  └──────────────┘  └───────────────────┘  │
+│  ┌──────────┐  ┌──────────────┐  ┌───────────────────┐  │
+│  │ Artifact  │  │  Job Queue   │  │  Failure Agent    │  │
+│  │ Service   │  │  & Events    │  │  (LLM Diagnosis)  │  │
+│  └──────────┘  └──────────────┘  └───────────────────┘  │
+└──────────────────────┬──────────────────────────────────┘
+                       │
+        ┌──────────────▼──────────────┐
+        │   DashScope / Qwen / Mock   │
+        │   (Model Provider APIs)      │
+        └─────────────────────────────┘
+```
+
+### Workflow Pipeline
+
+```
+Source Video
+    │
+    ▼
+reverse_prompts ──► Video Understanding LLM ──► T2V Prompt
+    │
+    ▼
+rewrite_prompts ──► first_frame_image prompt + i2v prompt
+    │
+    ├──► submit_first_frame_image ──► poll_first_frame_image ──► First Frame
+    │                                                               │
+    │                                                               ▼
+    │                                            submit_i2v ──► poll_i2v ──► Final Video
+    │
+    ├──► [T2V]        submit_t2v ──► poll_t2v ──► T2V Video
+    │
+    ├──► [R2V Flash]  reverse_prompts4r2v ──► submit_r2v_flash ──► poll_r2v_flash
+    │
+    ├──► [I2I Test]   rewrite_t2i_to_i2i ──► prepare_batch ──► submit/poll (batch)
+    │
+    └──► [Failure Agent] ──► LLM-based error diagnosis
+    │
+    ▼
+export_manifest ──► Job manifest JSON
+```
+
+---
+
+## 🛠 Tech Stack
+
+| Layer | Technologies |
+|---|---|
+| **Frontend** | Vue 3.4, Vite 5, Pinia, Vue Router, Tailwind CSS 3, Phosphor Icons, vue-i18n |
+| **Backend** | Python 3.12, Flask 3, Flask-SQLAlchemy, Flask-Migrate, Pydantic 2, Flask-JWT-Extended |
+| **Database** | MySQL 8.0 (production) / SQLite (development) |
+| **Deployment** | Docker, Docker Compose, Nginx, Gunicorn |
+| **Model Providers** | Aliyun DashScope (Wan series), Qwen, DeepSeek |
+| **Tools** | ffmpeg (video compression), Alembic (migrations) |
+
+---
+
+## 🚀 Quick Start
+
+### Prerequisites
 
 - Python 3.10+
-- Flask
-- Flask-SQLAlchemy
-- Flask-Migrate
-- PyMySQL
-- Pydantic
-- python-dotenv
-- requests
+- Node.js 18+
+- MySQL 8.0 (optional, SQLite works for development)
 
-Frontend:
-
-- Vue 3
-- Vite
-- Pinia
-- Vue Router
-- Axios
-- Tailwind CSS
-- Phosphor Icons
-- vue-i18n
-
-## Project Structure
-
-```text
-.
-|-- backend/                 # Flask REST API, workflow engine, adapters, database models
-|   |-- app/
-|   |-- migrations/
-|   |-- storage/             # Runtime data, ignored by git
-|   |-- .env.example
-|   |-- requirements.txt
-|   `-- run.py
-|-- frontend-vue/            # Vue 3 + Vite frontend
-|   |-- src/
-|   |-- public/
-|   |-- package.json
-|   `-- vite.config.js
-|-- factory_prompts/         # Prompt templates used by workflow seed logic
-|-- workspace/               # Local generated/runtime workspace, ignored by git
-|-- .gitignore
-|-- LICENSE
-`-- README.md
-```
-
-## Security Notice
-
-Never commit real API keys, local `.env` files, generated videos/images, user uploads, database files, or runtime storage directories.
-
-This repository includes a `.gitignore` that excludes:
-
-- `.env` and `.env.*`, while keeping `.env.example`.
-- `backend/storage/`, `storage/`, and `workspace/`.
-- generated images, videos, audio files, local databases, logs, caches, and build outputs.
-- local tool state such as `.claude/`, `.codex_smoke/`, and IDE folders.
-
-Before publishing, run:
-
-```bash
-git status --short
-```
-
-Check carefully that no file containing `DASHSCOPE_API_KEY`, `DEEPSEEK_API_KEY`, JWT secrets, database passwords, uploaded videos, generated images, or personal reference photos is staged.
-
-## Backend Setup
+### Backend
 
 ```bash
 cd backend
+
+# Create virtual environment
 python -m venv .venv
-.venv\Scripts\activate
+source .venv/bin/activate        # Linux/macOS
+# .venv\Scripts\activate         # Windows
+
+# Install dependencies
 pip install -r requirements.txt
-copy .env.example .env
-```
 
-Edit `backend/.env` for your local environment.
+# Configure environment
+cp .env.example .env
+# Edit .env — set DATABASE_URL, DASHSCOPE_API_KEY, etc.
 
-Important variables:
-
-```env
-SECRET_KEY=change-me
-DATABASE_URL=mysql+pymysql://root:password@localhost:3306/video_factory
-STORAGE_ROOT=storage
-UPLOAD_FOLDER=storage/uploads
-DASHSCOPE_API_KEY=
-DEFAULT_VIDEO_UNDERSTANDING_MODEL=qwen3.7-plus
-DEFAULT_PROMPT_REWRITE_MODEL=deepseek-v4-flash
-DEFAULT_T2V_MODEL=wan2.7-t2v
-DEFAULT_IMAGE_MODEL=wan2.7-image
-DEFAULT_I2V_MODEL=wan2.7-i2v
-```
-
-Initialize the database:
-
-```bash
+# Initialize database
 flask --app run.py db upgrade
 flask --app run.py init-db
-```
 
-Start the backend:
-
-```bash
+# Start development server
 flask --app run.py run --host 0.0.0.0 --port 5000
 ```
 
-Health check:
-
-```bash
-curl http://127.0.0.1:5000/api/health
-```
-
-## Frontend Setup
+### Frontend
 
 ```bash
 cd frontend-vue
+
 npm install
 npm run dev
 ```
 
-The Vite dev server runs at:
+The frontend runs at `http://localhost:5173` and proxies API requests to `http://127.0.0.1:5000`.
 
-```text
-http://localhost:5173
-```
-
-API requests are proxied to:
-
-```text
-http://127.0.0.1:5000
-```
-
-Production build:
+### Docker Deployment (Production)
 
 ```bash
-npm run build
+# Copy and edit production environment
+cp deploy/.env.production.example .env.production
+
+# Build and start all services
+docker compose up -d --build
 ```
 
-## Workflow Overview
+This starts three containers:
+- **MySQL 8.0** — database with persistent volume
+- **Backend** — Flask + Gunicorn on port 5000 (internal)
+- **Frontend** — Nginx serving the SPA on port 80, reverse-proxying `/api/` to the backend
 
-The main I2V path is:
+See [DEPLOYMENT.md](DEPLOYMENT.md) for the full production deployment guide.
 
-```text
-reverse_prompts
-rewrite_prompts
-submit_first_frame_image
-poll_first_frame_image
-submit_i2v
-poll_i2v
-export_manifest
+---
+
+## 📂 Project Structure
+
+```
+.
+├── backend/                    # Flask REST API & workflow engine
+│   ├── app/
+│   │   ├── adapters/           # Model provider adapters (DashScope, Qwen, Mock)
+│   │   ├── api/                # Route handlers (blueprints)
+│   │   ├── models/             # SQLAlchemy ORM models
+│   │   ├── schemas/            # Pydantic request/response schemas
+│   │   ├── services/           # Business logic layer
+│   │   └── utils/              # Shared utilities
+│   ├── migrations/             # Alembic database migrations
+│   ├── storage/                # Runtime data (git-ignored)
+│   ├── .env.example
+│   ├── requirements.txt
+│   └── run.py                  # WSGI entry point
+│
+├── frontend-vue/               # Vue 3 + Vite SPA
+│   ├── src/
+│   │   ├── api/                # Axios API client modules
+│   │   ├── components/         # Reusable UI components
+│   │   ├── composables/        # Vue composables (SSE, auth, etc.)
+│   │   ├── i18n/               # English & Chinese locales
+│   │   ├── stores/             # Pinia state stores
+│   │   ├── views/              # Page components
+│   │   └── router/             # Vue Router configuration
+│   ├── vite.config.js
+│   └── package.json
+│
+├── deploy/                     # Docker & Nginx configs
+│   ├── Dockerfile.backend
+│   ├── Dockerfile.frontend
+│   ├── nginx.conf
+│   ├── entrypoint.sh
+│   └── .env.production.example
+│
+├── factory_prompts/            # Default prompt templates (.md)
+├── docker-compose.yml
+├── DEPLOYMENT.md               # Production deployment guide
+├── LICENSE                     # MIT License
+└── README.md
 ```
 
-Optional branches include:
+---
 
-- T2V: `submit_t2v -> poll_t2v`
-- R2V: `reverse_prompts4r2v -> submit_r2v_flash -> poll_r2v_flash`
-- I2I test: `rewrite_t2i_to_i2i` and the I2I test batch nodes
-- Failure diagnosis: `failure_agent`
+## ⚙️ Configuration
 
-The backend supports queued job execution and DAG-style parallel node scheduling where dependencies allow it.
+Key environment variables (see `.env.example` for the full list):
 
-## Prompt System
+| Variable | Description | Default |
+|---|---|---|
+| `DATABASE_URL` | Database connection string | `sqlite:///video_factory.db` |
+| `SECRET_KEY` | Flask secret key | — |
+| `DASHSCOPE_API_KEY` | Aliyun DashScope API key | — |
+| `MODEL_ADAPTER_MODE` | `mock`, `real`, or `auto` | `auto` |
+| `T2V_ENABLED` | Enable text-to-video branch | `true` |
+| `I2V_ENABLED` | Enable image-to-video branch | `true` |
+| `R2V_FLASH_ENABLED` | Enable R2V flash branch | `false` |
+| `I2I_TEST_ENABLED` | Enable I2I test branch | `false` |
+| `WORKFLOW_PARALLEL_ENABLED` | Enable DAG parallel scheduling | `true` |
+| `VIDEO_COMPRESSION_ENABLED` | Enable ffmpeg video compression | `true` |
+| `FAILURE_AGENT_ENABLED` | Enable LLM failure diagnosis | `false` |
 
-Prompts are versioned assets. The system never overwrites old prompt versions. Editing, rollback, and workflow-generated prompts create new versions and can be snapshotted per job for reproducibility.
+---
 
-Key prompt types include:
+## 📡 API Overview
 
-- `t2v`
-- `first_frame_image`
-- `i2v`
-- `i2i`
-- `r2v_flash`
-- `video_understanding_system`
-- `prompt_rewrite_system`
-- `reverse_prompts4r2v_system`
-- `rewrite_t2i_to_i2i_system`
-- `failure_agent_system`
+All endpoints are prefixed with `/api/`. Authentication is via JWT tokens.
 
-Factory prompt files live in `factory_prompts/` and can be seeded into templates.
-
-## Model Registry
-
-Models are managed through the backend model registry. Business code calls adapters through a unified interface instead of calling provider APIs directly.
-
-Examples:
-
-- `qwen3.6-plus`
-- `qwen3.7-plus`
-- `qwen3.7-max`
-- `qwen3.5-plus`
-- `glm-5.1`
-- `deepseek-v4-flash`
-- `deepseek-v4-pro`
-- `wan2.7-t2v`
-- `wan2.6-image`
-- `wan2.7-image`
-- `wan2.7-image-pro`
-- `wan2.7-i2v`
-- `wan2.6-r2v-flash`
-
-## API Overview
-
-Common response format:
-
+**Response format:**
 ```json
-{
-  "success": true,
-  "data": {}
-}
+{ "success": true, "data": { ... } }
 ```
 
-Common error format:
-
+**Error format:**
 ```json
-{
-  "success": false,
-  "error": {
-    "code": "JOB_NOT_FOUND",
-    "message": "Job not found"
-  }
-}
+{ "success": false, "error": { "code": "JOB_NOT_FOUND", "message": "Job not found" } }
 ```
 
-Core API groups:
+**Core endpoint groups:**
 
-- Auth: `/api/auth/*`
-- Dashboard: `/api/dashboard/summary`
-- Templates: `/api/templates`, `/api/templates/{template_id}/package`
-- Jobs: `/api/jobs`
-- Workflow: `/api/workflow/nodes`
-- Prompts: `/api/prompts`, `/api/templates/{template_id}/prompts`
-- Models: `/api/models`
-- Artifacts: `/api/artifacts`, `/api/jobs/{job_id}/artifacts`
+| Group | Prefix | Description |
+|---|---|---|
+| Auth | `/api/auth` | Register, login, token refresh |
+| Dashboard | `/api/dashboard` | Aggregate statistics |
+| Templates | `/api/templates` | Template CRUD & packaging |
+| Jobs | `/api/jobs` | Job CRUD, run control, packaging |
+| Workflow | `/api/workflow` | Node management & validation |
+| Prompts | `/api/prompts` | Prompt versioning & management |
+| Models | `/api/models` | Model registry CRUD |
+| Artifacts | `/api/artifacts` | Artifact search, download, preview |
 
-Template package endpoints:
+**Key job endpoints:**
 
-```text
-POST /api/templates/{template_id}/package
-GET  /api/templates/{template_id}/package/download
+```
+POST   /api/jobs                          # Create job
+POST   /api/jobs/{id}/run-full            # Run full workflow
+POST   /api/jobs/{id}/run-from            # Run from specific node
+POST   /api/jobs/{id}/run-node            # Run single node
+POST   /api/jobs/{id}/pause               # Pause running job
+POST   /api/jobs/{id}/cancel              # Cancel job
+GET    /api/jobs/{id}/stream              # SSE live event stream
+POST   /api/jobs/{id}/package             # Generate result ZIP
 ```
 
-Template packages are minimal production ZIP files. They include `i2i` and `i2v` prompt Markdown when available, or `r2v` as a fallback, plus one best generated video and `package_manifest.json`.
+---
 
-## Production Notes
+## 🤝 Contributing
 
-- Use MySQL for production practice instead of local SQLite.
-- Use strong `SECRET_KEY` and JWT settings.
-- Keep `API_AUTH_REQUIRED=true` unless you are developing locally.
-- Store API keys only in environment variables or server secret managers.
-- Do not commit runtime storage or generated media.
-- The current job queue is process-local. For multi-process or distributed production deployment, migrate queue execution to Celery/Redis or an equivalent external task queue.
-- Redis is not required for single-machine practice. It mainly improves global queue reliability, crash recovery, and multi-worker deployment safety; it will not significantly shorten a single video generation job because remote model execution and polling are the main bottlenecks.
+Contributions are welcome! Here's how to get started:
 
-## License
+1. **Fork** the repository
+2. **Create a feature branch** — `git checkout -b feature/my-feature`
+3. **Make your changes** — follow the existing code style and patterns
+4. **Test** — ensure the backend and frontend both run correctly
+5. **Submit a pull request** — describe what you changed and why
 
-This project is released under the MIT License. See [LICENSE](LICENSE).
+### Development Notes
+
+- Backend uses Flask blueprints for API routes; add new endpoints in `backend/app/api/`
+- ORM models live in `backend/app/models/`; run `flask db migrate` after changes
+- Frontend state is managed via Pinia stores in `frontend-vue/src/stores/`
+- The workflow engine is in `backend/app/services/workflow_scheduler.py` and `node_runner.py`
+- Model adapters follow the adapter pattern; see `backend/app/adapters/base.py` for the interface
+
+---
+
+## 📄 License
+
+This project is released under the [MIT License](LICENSE).
+
+---
+
+## 🙏 Acknowledgments
+
+- [Aliyun DashScope](https://dashscope.aliyun.com/) — Model provider for Wan series video/image generation models
+- [Flask](https://flask.palletsprojects.com/) — Python web framework
+- [Vue.js](https://vuejs.org/) — Progressive JavaScript framework
+- [Tailwind CSS](https://tailwindcss.com/) — Utility-first CSS framework
