@@ -93,6 +93,7 @@ class NodeRunner:
         job: Job | None = None,
         node=None,
         param_key: str | None = None,
+        param_node_key: str | None = None,
     ):
         adapter = get_adapter(model.adapter_name, model=model)
         merged_params = dict(model.default_params or {})
@@ -102,8 +103,9 @@ class NodeRunner:
             merged_params.update(node_config.get("model_params") or {})
         if job and param_key:
             merged_params.update(((job.config or {}).get("model_params") or {}).get(param_key) or {})
-        if job and node_key:
-            merged_params.update(((job.config or {}).get("node_model_params") or {}).get(node_key) or {})
+        effective_node_key = param_node_key or node_key
+        if job and effective_node_key:
+            merged_params.update(((job.config or {}).get("node_model_params") or {}).get(effective_node_key) or {})
         merged_params.update(params or {})
         payload = adapter.build_payload(inputs, merged_params)
         self._release_db_connection()
@@ -136,6 +138,7 @@ class NodeRunner:
         job: Job | None = None,
         node=None,
         param_key: str | None = None,
+        param_node_key: str | None = None,
     ):
         """Like _adapter_payload but selects the correct adapter for I2I test images.
 
@@ -161,8 +164,9 @@ class NodeRunner:
             merged_params.update(node_config.get("model_params") or {})
         if job and param_key:
             merged_params.update(((job.config or {}).get("model_params") or {}).get(param_key) or {})
-        if job and node_key:
-            merged_params.update(((job.config or {}).get("node_model_params") or {}).get(node_key) or {})
+        effective_node_key = param_node_key or node_key
+        if job and effective_node_key:
+            merged_params.update(((job.config or {}).get("node_model_params") or {}).get(effective_node_key) or {})
 
         payload = adapter.build_payload(inputs, merged_params)
         self._release_db_connection()
@@ -1635,6 +1639,7 @@ class NodeRunner:
             job=job,
             node=node,
             param_key="i2i_test_i2v",
+            param_node_key="submit_i2i_test_i2v",
         )
         request_payload = {
             **payload,
