@@ -48,6 +48,7 @@ def health():
     return jsonify({
         "success": True,
         "data": {
+            "app": "CineCrew",
             "status": "healthy",
             "mode": current_app.config.get("MODEL_ADAPTER_MODE", "auto"),
         },

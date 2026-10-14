@@ -1,6 +1,6 @@
 version: "3.9"
 
-# ── AI Video Factory — Docker Compose (official v1.0) ─────────
+# ── CineCrew — Docker Compose (official v1.0) ─────────────────
 # 部署前请先按 DEPLOYMENT.md 完成 .env.production 配置
 
 services:
@@ -8,7 +8,7 @@ services:
   # ── MySQL 8.0 ─────────────────────────────────────────────────
   db:
     image: mysql:8.0
-    container_name: video_factory_db
+    container_name: cinecrew_db
     restart: unless-stopped
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
@@ -32,7 +32,7 @@ services:
     build:
       context: .
       dockerfile: deploy/Dockerfile.backend
-    container_name: video_factory_backend
+    container_name: cinecrew_backend
     restart: unless-stopped
     depends_on:
       db:
@@ -59,7 +59,7 @@ services:
     build:
       context: .
       dockerfile: deploy/Dockerfile.frontend
-    container_name: video_factory_frontend
+    container_name: cinecrew_frontend
     restart: unless-stopped
     ports:
       - "${HOST_PORT:-80}:80"

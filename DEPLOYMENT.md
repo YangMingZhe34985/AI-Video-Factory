@@ -1,4 +1,4 @@
-# AI Video Factory — 云端部署方案
+# CineCrew — 云端部署方案
 
 > **版本**: official v1.0  
 > **最后更新**: 2026-06-04  
@@ -30,7 +30,7 @@
                               │
                     ┌─────────▼─────────┐
                     │      Nginx        │
-                    │  (video_factory_  │
+                    │  (cinecrew_       │
                     │   frontend)       │
                     │                   │
                     │  ① / → Vue SPA   │
@@ -39,13 +39,13 @@
                               │ /api/*  (Docker 内网)
                     ┌─────────▼─────────┐
                     │  Flask (Gunicorn) │
-                    │  (video_factory_  │
+                    │  (cinecrew_       │
                     │   backend :5000)  │
                     └─────────┬─────────┘
                               │ SQLAlchemy (Docker 内网)
                     ┌─────────▼─────────┐
                     │    MySQL 8.0      │
-                    │  (video_factory_  │
+                    │  (cinecrew_       │
                     │   db :3306)       │
                     └───────────────────┘
 ```
@@ -54,9 +54,9 @@
 
 | 容器名                   | 镜像          | 对外端口 | 说明                        |
 |--------------------------|---------------|----------|-----------------------------|
-| `video_factory_db`       | mysql:8.0     | 无       | 数据库（仅内网访问）        |
-| `video_factory_backend`  | 自构建        | 无       | Flask API (Gunicorn)        |
-| `video_factory_frontend` | 自构建        | **80**   | Nginx + Vue 3 静态文件      |
+| `cinecrew_db`            | mysql:8.0     | 无       | 数据库（仅内网访问）        |
+| `cinecrew_backend`       | 自构建        | 无       | Flask API (Gunicorn)        |
+| `cinecrew_frontend`      | 自构建        | **80**   | Nginx + Vue 3 静态文件      |
 
 **持久化卷：**
 
@@ -289,15 +289,15 @@ docker compose logs -f db
 后端日志成功示例：
 
 ```
-video_factory_backend | === AI Video Factory — Backend Startup ===
-video_factory_backend | [1/3] Running database migrations...
-video_factory_backend |       Migrations OK.
-video_factory_backend | [2/3] Seeding default data (idempotent)...
-video_factory_backend |       Seed OK.
-video_factory_backend | [3/3] Starting Gunicorn...
-video_factory_backend | [INFO] Starting gunicorn 22.0.0
-video_factory_backend | [INFO] Listening at: http://0.0.0.0:5000
-video_factory_backend | [INFO] Booting worker with pid: ...
+cinecrew_backend | === CineCrew — Backend Startup ===
+cinecrew_backend | [1/3] Running database migrations...
+cinecrew_backend |       Migrations OK.
+cinecrew_backend | [2/3] Seeding default data (idempotent)...
+cinecrew_backend |       Seed OK.
+cinecrew_backend | [3/3] Starting Gunicorn...
+cinecrew_backend | [INFO] Starting gunicorn 22.0.0
+cinecrew_backend | [INFO] Listening at: http://0.0.0.0:5000
+cinecrew_backend | [INFO] Booting worker with pid: ...
 ```
 
 ---
@@ -314,9 +314,9 @@ docker compose ps
 
 ```
 NAME                       STATUS          PORTS
-video_factory_db           running (healthy)
-video_factory_backend      running (healthy)
-video_factory_frontend     running (healthy)   0.0.0.0:80->80/tcp
+cinecrew_db           running (healthy)
+cinecrew_backend      running (healthy)
+cinecrew_frontend     running (healthy)   0.0.0.0:80->80/tcp
 ```
 
 ### 8.2 API 健康检查
@@ -335,7 +335,7 @@ curl http://localhost/api/health
 http://<服务器公网IP>
 ```
 
-应看到 AI Video Factory 登录页面。
+应看到 CineCrew 登录页面。
 
 ### 8.4 首次登录 — 注册账户
 
@@ -405,7 +405,7 @@ docker compose logs -t backend
 
 ```bash
 # 导出数据库（替换密码）
-docker exec video_factory_db \
+docker exec cinecrew_db \
     mysqldump -u root -p"${MYSQL_ROOT_PASSWORD}" video_factory \
     > backup_$(date +%Y%m%d_%H%M%S).sql
 
@@ -451,13 +451,13 @@ docker compose down -v
 
 ```bash
 # 进入后端容器
-docker exec -it video_factory_backend bash
+docker exec -it cinecrew_backend bash
 
 # 在后端容器内运行 Flask CLI
-docker exec -it video_factory_backend flask --app run.py --help
+docker exec -it cinecrew_backend flask --app run.py --help
 
 # 直接访问 MySQL
-docker exec -it video_factory_db \
+docker exec -it cinecrew_db \
     mysql -u root -p video_factory
 ```
 
@@ -534,14 +534,14 @@ docker compose logs backend --tail=50
 
 ```bash
 # 手动在容器内运行迁移
-docker exec -it video_factory_backend flask --app run.py db upgrade
+docker exec -it cinecrew_backend flask --app run.py db upgrade
 
 # 查看迁移历史
-docker exec -it video_factory_backend flask --app run.py db history
+docker exec -it cinecrew_backend flask --app run.py db history
 
 # 如需重置（危险！会丢失数据）
-docker exec -it video_factory_backend flask --app run.py db downgrade base
-docker exec -it video_factory_backend flask --app run.py db upgrade
+docker exec -it cinecrew_backend flask --app run.py db downgrade base
+docker exec -it cinecrew_backend flask --app run.py db upgrade
 ```
 
 ---
@@ -584,7 +584,7 @@ docker compose --env-file .env.production up -d
 curl http://localhost/api/health
 
 # 备份数据库
-docker exec video_factory_db \
+docker exec cinecrew_db \
     mysqldump -u root -p"<密码>" video_factory > backup.sql
 
 # 停止服务
@@ -631,7 +631,7 @@ docker compose --env-file .env.production up -d --no-deps backend frontend
 确认新版后端镜像已包含 `ffmpeg`：
 
 ```bash
-docker exec video_factory_backend ffmpeg -version
+docker exec cinecrew_backend ffmpeg -version
 ```
 
 模板级打包接口：
@@ -648,3 +648,29 @@ GET  /api/templates/{template_id}/package/download
 - 如果 Job 仍成功但事件里出现 `VIDEO_COMPRESSION_SKIPPED`，说明压缩失败后系统已自动回退原视频。
 - 如果错误是 `ffmpeg executable was not found`，确认 backend 镜像已重建，并在容器内执行 `ffmpeg -version`。
 - 如果压缩后文件大于原文件，系统会保留原视频作为 Artifact，这是预期保护逻辑。
+
+---
+
+## 附录：从 AI Video Factory 升级到 CineCrew（改名说明）
+
+项目改名只影响对外品牌，**数据库、存储和接口保持不变**，已有部署不需要迁移数据。
+
+| 项目 | 改名前 | 改名后 | 说明 |
+|---|---|---|---|
+| 产品名称 | AI Video Factory | CineCrew 影组 | README、前端标题、镜像 LABEL、启动日志 |
+| 容器名 | `video_factory_db` / `_backend` / `_frontend` | `cinecrew_db` / `cinecrew_backend` / `cinecrew_frontend` | `docker exec` 等命令需改用新名称 |
+| 前端包名 | `ai-video-factory` | `cinecrew-frontend` | 仅 package.json |
+| MySQL 库名 | `video_factory` | **不变** | `MYSQL_DATABASE` 默认值保持 `video_factory` |
+| SQLite 文件 | `backend/storage/video_factory.db` | **不变** | |
+| Docker 卷 | `<项目名>_mysql_data` / `<项目名>_backend_storage` | **不变** | 卷名前缀取决于 Compose 项目名，见下方注意事项 |
+| API 路由 / 存储目录 / Python 包名 `app` | — | **不变** | |
+
+升级步骤与普通增量更新相同（`git pull` → `build` → `up -d`）。由于容器名变化，Compose 会删除旧名称的容器并按新名称重建，卷中的数据会保留。
+
+> ⚠️ **不要随部署目录一起改名，除非固定 Compose 项目名。** Docker Compose 默认以部署目录名作为项目名，卷的实际名称是 `<项目名>_mysql_data` 等（例如目录 `/opt/video-factory` 对应 `video-factory_mysql_data`）。如果把目录改名为 `/opt/cinecrew`，Compose 会创建**新的空卷**，旧数据虽未删除但不再挂载。需要改目录名时，请在 `.env.production` 或命令行中固定旧项目名：
+>
+> ```bash
+> COMPOSE_PROJECT_NAME=video-factory docker compose --env-file .env.production up -d
+> ```
+>
+> 改名前可用 `docker volume ls | grep mysql_data` 确认当前卷名。

@@ -1,7 +1,7 @@
 {
   "app": {
-    "title": "AI 视频工厂",
-    "subtitle": "AI 视频生成工作流平台",
+    "title": "影组",
+    "subtitle": "AI 视频创作与生产平台",
     "version": "v1.0.0"
   },
   "nav": {
@@ -45,7 +45,7 @@
   },
   "dashboard": {
     "title": "仪表板",
-    "subtitle": "欢迎回来！以下是您的视频工厂运行概况。",
+    "subtitle": "欢迎回来！以下是影组的运行概况。",
     "series": "系列数",
     "templates": "模板数",
     "totalJobs": "总作业数",

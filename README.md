@@ -1,10 +1,12 @@
-# AI Video Factory
+# CineCrew
 
 [中文文档](README_zh.md) | **English**
 
+> Formerly **AI Video Factory**. The project is being upgraded with a multi-agent creation mode (Director / Creative / Production agents) built on top of the existing workflow engine — see [docs/architecture](docs/architecture/) for the upgrade plan and progress.
+
 A full-stack AI video generation workflow platform featuring a DAG-based pipeline orchestrator, prompt versioning, model registry, and artifact management.
 
-AI Video Factory turns a source video into production-ready AI-generated videos through an automated, configurable multi-step workflow — from video understanding and prompt engineering to image generation, video synthesis, and quality testing.
+CineCrew turns a source video into production-ready AI-generated videos through an automated, configurable multi-step workflow — from video understanding and prompt engineering to image generation, video synthesis, and quality testing.
 
 ---
 
@@ -231,17 +233,17 @@ Key environment variables (see `.env.example` for the full list):
 
 | Variable | Description | Default |
 |---|---|---|
-| `DATABASE_URL` | Database connection string | `sqlite:///video_factory.db` |
+| `DATABASE_URL` | Database connection string | `sqlite:///backend/storage/video_factory.db` |
 | `SECRET_KEY` | Flask secret key | — |
 | `DASHSCOPE_API_KEY` | Aliyun DashScope API key | — |
 | `MODEL_ADAPTER_MODE` | `mock`, `real`, or `auto` | `auto` |
-| `T2V_ENABLED` | Enable text-to-video branch | `true` |
+| `T2V_ENABLED` | Enable text-to-video branch | `false` |
 | `I2V_ENABLED` | Enable image-to-video branch | `true` |
 | `R2V_FLASH_ENABLED` | Enable R2V flash branch | `false` |
 | `I2I_TEST_ENABLED` | Enable I2I test branch | `false` |
 | `WORKFLOW_PARALLEL_ENABLED` | Enable DAG parallel scheduling | `true` |
 | `VIDEO_COMPRESSION_ENABLED` | Enable ffmpeg video compression | `true` |
-| `FAILURE_AGENT_ENABLED` | Enable LLM failure diagnosis | `false` |
+| `FAILURE_AGENT_ENABLED` | Enable LLM failure diagnosis | `true` (inherits `FAILURE_AGENT_ON_ERROR`) |
 
 ---
 

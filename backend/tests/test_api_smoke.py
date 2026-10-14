@@ -53,7 +53,9 @@ def _create_job_via_api(client, headers) -> str:
 
 
 def test_protected_routes_require_token(client):
-    assert client.get("/api/health").status_code == 200
+    health = client.get("/api/health")
+    assert health.status_code == 200
+    assert health.json["data"]["app"] == "CineCrew"
     response = client.get("/api/jobs")
     assert response.status_code == 401
     assert response.json["success"] is False

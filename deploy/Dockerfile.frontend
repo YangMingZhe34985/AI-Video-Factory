@@ -1,4 +1,4 @@
-# ── AI Video Factory — Frontend (Vue 3 → Nginx) ──────────────
+# ── CineCrew — Frontend (Vue 3 → Nginx) ──────────────────────
 # Build context: project root  (docker-compose sets context: .)
 
 # ── Stage 1: Build ────────────────────────────────────────────

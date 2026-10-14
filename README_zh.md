@@ -1,10 +1,12 @@
-# AI Video Factory
+# CineCrew 影组
 
 **中文文档** | [English](README.md)
 
+> 原名 **AI Video Factory**。项目正在升级：在现有工作流引擎之上新增多 Agent 创作模式（Director / Creative / Production 三个 Agent），升级计划与进度见 [docs/architecture](docs/architecture/)。
+
 全栈 AI 视频生成工作流平台，集成 DAG 流水线调度、提示词版本管理、模型注册中心和工件管理系统。
 
-AI Video Factory 通过自动化、可配置的多步骤工作流，将一段源视频转化为 AI 生成的成品视频——涵盖视频理解、提示词工程、图像生成、视频合成和质量测试。
+CineCrew 通过自动化、可配置的多步骤工作流，将一段源视频转化为 AI 生成的成品视频——涵盖视频理解、提示词工程、图像生成、视频合成和质量测试。
 
 ---
 
@@ -231,17 +233,17 @@ docker compose up -d --build
 
 | 变量 | 说明 | 默认值 |
 |---|---|---|
-| `DATABASE_URL` | 数据库连接字符串 | `sqlite:///video_factory.db` |
+| `DATABASE_URL` | 数据库连接字符串 | `sqlite:///backend/storage/video_factory.db` |
 | `SECRET_KEY` | Flask 密钥 | — |
 | `DASHSCOPE_API_KEY` | 阿里云 DashScope API 密钥 | — |
 | `MODEL_ADAPTER_MODE` | `mock`、`real` 或 `auto` | `auto` |
-| `T2V_ENABLED` | 启用文生视频分支 | `true` |
+| `T2V_ENABLED` | 启用文生视频分支 | `false` |
 | `I2V_ENABLED` | 启用图生视频分支 | `true` |
 | `R2V_FLASH_ENABLED` | 启用 R2V Flash 分支 | `false` |
 | `I2I_TEST_ENABLED` | 启用 I2I 测试分支 | `false` |
 | `WORKFLOW_PARALLEL_ENABLED` | 启用 DAG 并行调度 | `true` |
 | `VIDEO_COMPRESSION_ENABLED` | 启用 ffmpeg 视频压缩 | `true` |
-| `FAILURE_AGENT_ENABLED` | 启用 LLM 故障诊断 | `false` |
+| `FAILURE_AGENT_ENABLED` | 启用 LLM 故障诊断 | `true`（继承 `FAILURE_AGENT_ON_ERROR`） |
 
 ---
 

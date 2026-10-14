@@ -1,7 +1,7 @@
 {
   "app": {
-    "title": "AI Video Factory",
-    "subtitle": "AI Video Generation Workflow Platform",
+    "title": "CineCrew",
+    "subtitle": "AI Video Creation & Production Platform",
     "version": "v1.0.0"
   },
   "nav": {
@@ -45,7 +45,7 @@
   },
   "dashboard": {
     "title": "Dashboard",
-    "subtitle": "Welcome back! Here's what's happening with your video factory.",
+    "subtitle": "Welcome back! Here's what's happening with your CineCrew workspace.",
     "series": "Series",
     "templates": "Templates",
     "totalJobs": "Total Jobs",

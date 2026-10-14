@@ -2,7 +2,7 @@
 set -e
 
 echo "============================================"
-echo "  AI Video Factory — Backend Startup"
+echo "  CineCrew — Backend Startup"
 echo "============================================"
 
 echo "[1/3] Running database migrations..."

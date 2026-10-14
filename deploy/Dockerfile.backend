@@ -1,8 +1,8 @@
-# ── AI Video Factory — Backend (Flask + Gunicorn) ────────────
+# ── CineCrew — Backend (Flask + Gunicorn) ────────────────────
 # Build context: project root  (docker-compose sets context: .)
 FROM python:3.12-slim
 
-LABEL org.opencontainers.image.title="AI Video Factory Backend"
+LABEL org.opencontainers.image.title="CineCrew Backend"
 
 WORKDIR /app
 

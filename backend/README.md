@@ -1,4 +1,6 @@
-# AI Video Factory Backend
+# CineCrew Backend
+
+> 原名 AI Video Factory Backend。
 
 这是一个全新的 Flask 后端服务，用于把视频生成流水线从命令行脚本重构为可由前端调用的 REST API。当前 MVP 使用后台线程触发工作流，支持 Mock 模式，也已经接入真实 DashScope/Qwen Adapter 调用路径。
 
