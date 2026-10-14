@@ -57,6 +57,16 @@ class SchemaService:
             migrated = SchemaService._ensure_default_series()
             repaired.extend(migrated)
 
+        # Databases created with create_all() before the skill layer existed
+        # have no Alembic history to upgrade; create the new ledger table here.
+        if inspector.has_table("jobs") and not inspector.has_table("tool_invocations"):
+            from app.models.tool_invocation import ToolInvocation
+
+            # Same connection as the session so SQLite's write lock is not contended.
+            ToolInvocation.__table__.create(bind=db.session.connection(), checkfirst=True)
+            db.session.commit()
+            repaired.append("tool_invocations")
+
         return repaired
 
     @staticmethod

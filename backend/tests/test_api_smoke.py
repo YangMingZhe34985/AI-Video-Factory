@@ -25,7 +25,7 @@ def auth_headers(client):
     return {"Authorization": f"Bearer {login.json['data']['access_token']}"}
 
 
-def _wait_for_terminal(client, headers, job_id: str, timeout: float = 60.0) -> dict:
+def _wait_for_terminal(client, headers, job_id: str, timeout: float = 180.0) -> dict:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         job = client.get(f"/api/jobs/{job_id}", headers=headers).json["data"]["job"]

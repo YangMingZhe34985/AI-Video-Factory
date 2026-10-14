@@ -138,3 +138,10 @@ def register_blueprints(app):
     app.register_blueprint(series_bp)
     app.register_blueprint(workflow_bp)
     app.register_blueprint(uploads_bp)
+
+    from app.agent import is_agent_mode_enabled
+
+    if is_agent_mode_enabled(app):
+        from .skills import bp as skills_bp
+
+        app.register_blueprint(skills_bp)

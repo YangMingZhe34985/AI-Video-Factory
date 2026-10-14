@@ -137,6 +137,11 @@ class Config:
     JOB_MAX_CONCURRENT_RUNS = int(os.getenv("JOB_MAX_CONCURRENT_RUNS", "2"))
     JOB_QUEUE_POLL_INTERVAL_SEC = int(os.getenv("JOB_QUEUE_POLL_INTERVAL_SEC", "1"))
 
+    # Agent mode (skill layer now, LangGraph agents later). Off by default so
+    # the classic workflow is unaffected unless explicitly enabled.
+    AGENT_MODE_ENABLED = _bool_env("AGENT_MODE_ENABLED", False)
+    SKILL_DEFAULT_BUDGET = float(os.getenv("SKILL_DEFAULT_BUDGET", "100"))
+
     DEFAULT_WORKFLOW_NODES = [
         {
             "node_key": "reverse_prompts",

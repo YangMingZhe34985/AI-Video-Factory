@@ -8,6 +8,7 @@ from .model_registry import ModelRegistry
 from .prompt_version import PromptVersion
 from .series import Series
 from .template import Template
+from .tool_invocation import ToolInvocation
 from .user import User
 from .workflow_node import WorkflowNode
 
@@ -22,6 +23,7 @@ __all__ = [
     "PromptVersion",
     "Series",
     "Template",
+    "ToolInvocation",
     "User",
     "WorkflowNode",
 ]

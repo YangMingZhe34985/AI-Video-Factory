@@ -1,6 +1,7 @@
 from flask import Blueprint, current_app, jsonify
 from sqlalchemy import func
 
+from app.agent import is_agent_mode_enabled
 from app.api import api_success
 from app.extensions import db
 from app.models import Artifact, Job, JobNodeRun, Template
@@ -51,5 +52,6 @@ def health():
             "app": "CineCrew",
             "status": "healthy",
             "mode": current_app.config.get("MODEL_ADAPTER_MODE", "auto"),
+            "agent_mode": is_agent_mode_enabled(),
         },
     })

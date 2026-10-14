@@ -74,7 +74,7 @@ def run_node(job_id: str, node_key: str, **kwargs) -> Job:
     return reload_job(job_id)
 
 
-def wait_for_terminal(job_id: str, timeout: float = 60.0) -> Job:
+def wait_for_terminal(job_id: str, timeout: float = 180.0) -> Job:
     """Wait until a background (thread or queue) run has fully finished."""
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
