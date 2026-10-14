@@ -75,6 +75,16 @@ CineCrew 通过自动化、可配置的多步骤工作流，将一段源视频�
         └─────────────────────────────┘
 ```
 
+### 分层
+
+| 层 | 状态 | 代码 |
+|---|---|---|
+| 经典工作流（19 节点 DAG + 异步任务系统） | ✅ 已上线 | `backend/app/services/` |
+| Skill 层：在工作流之上提供带校验、权限、预算、幂等约束的工具 | ✅ Phase 1，受 `AGENT_MODE_ENABLED` 控制 | `backend/app/skills/`、`/api/skills` |
+| 多 Agent 创作模式（LangGraph Director / Creative / Production） | 📋 Phase 2（目前只有计划协议） | `backend/app/agent/` |
+
+两种模式共享同一套业务服务：生成类工具创建的是普通工作流 Job，追踪、重试、打包都直接复用，不重复实现。详见 [docs/architecture/tool_registry.md](docs/architecture/tool_registry.md)。
+
 ### 工作流管线
 
 ```
@@ -191,12 +201,16 @@ docker compose up -d --build
 │   │   ├── api/                # 路由处理器（蓝图）
 │   │   ├── models/             # SQLAlchemy ORM 模型
 │   │   ├── schemas/            # Pydantic 请求/响应模式
-│   │   ├── services/           # 业务逻辑层
+│   │   ├── services/           # 业务逻辑层（经典工作流引擎）
+│   │   ├── skills/             # Tool Registry 与 Agent 可调用的工具（Phase 1）
+│   │   ├── agent/              # Agent 层骨架：功能开关、PlanSpec
 │   │   └── utils/              # 共享工具
 │   ├── migrations/             # Alembic 数据库迁移
+│   ├── tests/                  # pytest 回归测试（mock 模式，禁止外网）
 │   ├── storage/                # 运行时数据（git 忽略）
 │   ├── .env.example
 │   ├── requirements.txt
+│   ├── requirements-dev.txt
 │   └── run.py                  # WSGI 入口
 │
 ├── frontend-vue/               # Vue 3 + Vite 单页应用
@@ -218,6 +232,7 @@ docker compose up -d --build
 │   ├── entrypoint.sh
 │   └── .env.production.example
 │
+├── docs/architecture/          # 升级审计与 Tool Registry 设计文档
 ├── factory_prompts/            # 默认提示词模板（.md）
 ├── docker-compose.yml
 ├── DEPLOYMENT.md               # 生产部署指南
@@ -244,6 +259,8 @@ docker compose up -d --build
 | `WORKFLOW_PARALLEL_ENABLED` | 启用 DAG 并行调度 | `true` |
 | `VIDEO_COMPRESSION_ENABLED` | 启用 ffmpeg 视频压缩 | `true` |
 | `FAILURE_AGENT_ENABLED` | 启用 LLM 故障诊断 | `true`（继承 `FAILURE_AGENT_ON_ERROR`） |
+| `AGENT_MODE_ENABLED` | 开放 Skill 层接口 `/api/skills` | `false` |
+| `SKILL_DEFAULT_BUDGET` | 每个 `budget_scope` 的估算预算（credits） | `100` |
 
 ---
 
@@ -286,6 +303,18 @@ POST   /api/jobs/{id}/cancel              # 取消作业
 GET    /api/jobs/{id}/stream              # SSE 实时事件流
 POST   /api/jobs/{id}/package             # 生成结果 ZIP
 ```
+
+---
+
+## 🧪 测试
+
+```bash
+cd backend
+pip install -r requirements-dev.txt
+python -m pytest -q
+```
+
+测试覆盖经典工作流的全部路径、失败与部分成功语义、prompt 版本管理、打包、REST 接口以及 Skill 层端到端流程。每个用例使用独立的 SQLite 文件和存储目录，所有模型适配器强制走 mock，并拦截外部 HTTP 请求，不会调用任何付费 API。前端基线为在 `frontend-vue/` 下执行 `npm run build`。
 
 ---
 

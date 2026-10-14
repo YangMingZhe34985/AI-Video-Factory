@@ -75,6 +75,16 @@ CineCrew turns a source video into production-ready AI-generated videos through 
         └─────────────────────────────┘
 ```
 
+### Layers
+
+| Layer | Status | Code |
+|---|---|---|
+| Classic workflow (19-node DAG, async task system) | ✅ Production | `backend/app/services/` |
+| Skill layer — validated, permissioned, budgeted, idempotent tools over the workflow | ✅ Phase 1, behind `AGENT_MODE_ENABLED` | `backend/app/skills/`, `/api/skills` |
+| Multi-agent studio (LangGraph Director / Creative / Production) | 📋 Phase 2 (plan protocol only) | `backend/app/agent/` |
+
+Both modes share the same business services; generation tools create ordinary workflow jobs, so tracking, retries and packaging are reused rather than reimplemented. See [docs/architecture/tool_registry.md](docs/architecture/tool_registry.md).
+
 ### Workflow Pipeline
 
 ```
@@ -191,12 +201,16 @@ See [DEPLOYMENT.md](DEPLOYMENT.md) for the full production deployment guide.
 │   │   ├── api/                # Route handlers (blueprints)
 │   │   ├── models/             # SQLAlchemy ORM models
 │   │   ├── schemas/            # Pydantic request/response schemas
-│   │   ├── services/           # Business logic layer
+│   │   ├── services/           # Business logic layer (classic workflow engine)
+│   │   ├── skills/             # Tool registry + agent-callable tools (Phase 1)
+│   │   ├── agent/              # Agent layer skeleton: feature flag, PlanSpec
 │   │   └── utils/              # Shared utilities
 │   ├── migrations/             # Alembic database migrations
+│   ├── tests/                  # pytest regression suite (mock mode, no network)
 │   ├── storage/                # Runtime data (git-ignored)
 │   ├── .env.example
 │   ├── requirements.txt
+│   ├── requirements-dev.txt
 │   └── run.py                  # WSGI entry point
 │
 ├── frontend-vue/               # Vue 3 + Vite SPA
@@ -218,6 +232,7 @@ See [DEPLOYMENT.md](DEPLOYMENT.md) for the full production deployment guide.
 │   ├── entrypoint.sh
 │   └── .env.production.example
 │
+├── docs/architecture/          # Upgrade audit and tool registry design
 ├── factory_prompts/            # Default prompt templates (.md)
 ├── docker-compose.yml
 ├── DEPLOYMENT.md               # Production deployment guide
@@ -244,6 +259,8 @@ Key environment variables (see `.env.example` for the full list):
 | `WORKFLOW_PARALLEL_ENABLED` | Enable DAG parallel scheduling | `true` |
 | `VIDEO_COMPRESSION_ENABLED` | Enable ffmpeg video compression | `true` |
 | `FAILURE_AGENT_ENABLED` | Enable LLM failure diagnosis | `true` (inherits `FAILURE_AGENT_ON_ERROR`) |
+| `AGENT_MODE_ENABLED` | Expose the skill layer at `/api/skills` | `false` |
+| `SKILL_DEFAULT_BUDGET` | Estimated credit budget per `budget_scope` | `100` |
 
 ---
 
@@ -286,6 +303,18 @@ POST   /api/jobs/{id}/cancel              # Cancel job
 GET    /api/jobs/{id}/stream              # SSE live event stream
 POST   /api/jobs/{id}/package             # Generate result ZIP
 ```
+
+---
+
+## 🧪 Testing
+
+```bash
+cd backend
+pip install -r requirements-dev.txt
+python -m pytest -q
+```
+
+The suite runs every classic workflow path, failure/partial-success semantics, prompt versioning, packaging, the REST API and the skill layer end to end. Each test uses an isolated SQLite file and storage directory, all model adapters are forced into mock mode, and outbound HTTP is blocked, so no paid API is ever called. The frontend baseline is `npm run build` in `frontend-vue/`.
 
 ---
 
