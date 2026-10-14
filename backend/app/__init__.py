@@ -14,10 +14,14 @@ from app.services.schema_service import SchemaService
 from app.services.storage_service import StorageService
 
 
-def create_app(config_name: str | None = None) -> Flask:
+def create_app(config_name: str | None = None, config_overrides: dict | None = None) -> Flask:
     app = Flask(__name__)
     selected = config_name or os.getenv("FLASK_ENV", "development")
     app.config.from_object(config_by_name.get(selected, config_by_name["development"]))
+    if config_overrides:
+        # Applied before storage/db initialisation so tests can point the app
+        # at an isolated database and storage root.
+        app.config.update(config_overrides)
 
     StorageService.ensure_storage_dirs(app.config)
 
