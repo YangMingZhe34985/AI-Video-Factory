@@ -6,8 +6,8 @@ import zipfile
 
 import pytest
 
-from app.api import jobs as jobs_api
 from app.services.job_queue_service import JobQueueService
+from app.services.job_run_service import JobRunService
 
 TERMINAL_STATUSES = {"success", "failed", "partial_success", "cancelled"}
 
@@ -29,8 +29,9 @@ def _wait_for_terminal(client, headers, job_id: str, timeout: float = 60.0) -> d
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         job = client.get(f"/api/jobs/{job_id}", headers=headers).json["data"]["job"]
-        background = jobs_api._job_threads.get(job_id) or JobQueueService._running.get(job_id)
-        if job["status"] in TERMINAL_STATUSES and not (background and background.is_alive()):
+        queued = JobQueueService._running.get(job_id)
+        busy = JobRunService.is_running_in_thread(job_id) or bool(queued and queued.is_alive())
+        if job["status"] in TERMINAL_STATUSES and not busy:
             return job
         time.sleep(0.2)
     raise AssertionError(f"Job {job_id} did not finish within {timeout}s")

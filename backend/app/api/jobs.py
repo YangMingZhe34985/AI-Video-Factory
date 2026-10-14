@@ -1,14 +1,11 @@
 import json
-import threading
 import time
 from http import HTTPStatus
 
 from flask import Blueprint, Response, current_app, request
 
-from app.api import AppError, api_success
-from app.extensions import db
-from app.models import Job, JobEvent
-from app.services.error_detail_service import ErrorDetailService
+from app.api import api_success
+from app.models import JobEvent
 from app.schemas.job_schema import (
     CreateJobSchema,
     DeleteJobSchema,
@@ -19,16 +16,11 @@ from app.schemas.job_schema import (
 )
 from app.services.job_package_service import JobPackageService
 from app.services.job_queue_service import JobQueueService
-from app.services.job_run_state_service import JobRunStateService
+from app.services.job_run_service import JobRunService
 from app.services.job_service import JobService
-from app.services.workflow_service import WorkflowService
 
 
 bp = Blueprint("jobs", __name__, url_prefix="/api/jobs")
-
-_job_threads: dict[str, threading.Thread] = {}
-_job_event_cursors: dict[str, int] = {}
-_job_threads_lock = threading.RLock()
 
 
 def _maybe_json(value, fallback):
@@ -109,62 +101,25 @@ def package_job(job_id: str):
 @bp.post("/<job_id>/run-full")
 def run_full(job_id: str):
     payload = RunFullSchema.model_validate(request.get_json(silent=True) or {})
-    job = JobService.get_job(job_id)
-    if current_app.config.get("JOB_QUEUE_ENABLED", True):
-        return api_success(
-            JobQueueService.enqueue(
-                job_id,
-                "run_full",
-                force=payload.force,
-                restart=payload.restart,
-            )
-        )
-    if payload.restart:
-        nodes = [
-            node.node_key
-            for node in WorkflowService.list_nodes()
-            if WorkflowService.is_node_enabled(job, node)
-        ]
-        JobRunStateService.begin_restart(job, nodes)
-        db.session.commit()
-    _start_async_run(job_id, lambda: WorkflowService.run_full(job_id, force=payload.force))
-    return api_success({"job_id": job_id, "status": "running"})
+    return api_success(
+        JobRunService.start(job_id, "run_full", force=payload.force, restart=payload.restart)
+    )
 
 
 @bp.post("/<job_id>/run-from")
 def run_from(job_id: str):
     payload = RunFromSchema.model_validate(request.get_json(silent=True) or {})
-    job = JobService.get_job(job_id)
-    _validate_start_node(job, payload.node_key)
-    if current_app.config.get("JOB_QUEUE_ENABLED", True):
-        return api_success(
-            JobQueueService.enqueue(
-                job_id,
-                "run_from",
-                node_key=payload.node_key,
-                force=payload.force,
-            )
-        )
-    _start_async_run(job_id, lambda: WorkflowService.run_from(job_id, payload.node_key, force=payload.force))
-    return api_success({"job_id": job_id, "status": "running"})
+    return api_success(
+        JobRunService.start(job_id, "run_from", node_key=payload.node_key, force=payload.force)
+    )
 
 
 @bp.post("/<job_id>/run-node")
 def run_node(job_id: str):
     payload = RunNodeSchema.model_validate(request.get_json(silent=True) or {})
-    job = JobService.get_job(job_id)
-    _validate_start_node(job, payload.node_key, check_dependencies=True)
-    if current_app.config.get("JOB_QUEUE_ENABLED", True):
-        return api_success(
-            JobQueueService.enqueue(
-                job_id,
-                "run_node",
-                node_key=payload.node_key,
-                force=payload.force,
-            )
-        )
-    _start_async_run(job_id, lambda: WorkflowService.run_node(job_id, payload.node_key, force=payload.force))
-    return api_success({"job_id": job_id, "status": "running"})
+    return api_success(
+        JobRunService.start(job_id, "run_node", node_key=payload.node_key, force=payload.force)
+    )
 
 
 @bp.get("/queue/status")
@@ -172,67 +127,6 @@ def queue_status():
     if not current_app.config.get("JOB_QUEUE_ENABLED", True):
         return api_success({"enabled": False})
     return api_success(JobQueueService.status())
-
-
-def _start_async_run(job_id: str, target):
-    with _job_threads_lock:
-        if job_id in _job_threads and _job_threads[job_id].is_alive():
-            return
-        app = current_app._get_current_object()
-        thread = threading.Thread(target=_run_in_app_context, args=(app, job_id, target), daemon=True)
-        _job_threads[job_id] = thread
-        thread.start()
-
-
-def _run_in_app_context(app, job_id: str, target):
-    with app.app_context():
-        try:
-            target()
-        except Exception as error:
-            app.logger.exception("Async job execution failed: %s", error)
-            job = Job.query.filter_by(job_id=job_id).first()
-            if not job:
-                return
-            code = getattr(error, "code", "INTERNAL_ERROR")
-            payload = getattr(error, "payload", None)
-            error_detail = ErrorDetailService.build(
-                job=job,
-                code=code,
-                message=getattr(error, "message", str(error)),
-                error=error,
-                payload=payload,
-                extra={"async_runner": True},
-            )
-            job.status = "failed"
-            job.current_node = None
-            job.error_summary = error_detail["summary"]
-            from app.services.event_service import EventService
-
-            EventService.record(
-                job,
-                "JOB_FAILED",
-                message=error_detail["summary"],
-                payload={"code": code, "error_detail": error_detail},
-                level="error",
-            )
-            db.session.commit()
-        finally:
-            db.session.remove()
-
-
-def _validate_start_node(job: Job, node_key: str, check_dependencies: bool = False) -> None:
-    node = WorkflowService.get_node(node_key)
-    if not WorkflowService.is_node_enabled(job, node):
-        raise AppError("NODE_DISABLED", "Workflow node is disabled", 400)
-    if check_dependencies:
-        missing = WorkflowService._missing_dependencies(job, node)
-        if missing:
-            raise AppError(
-                "DEPENDENCY_MISSING",
-                f"Dependencies not satisfied: {', '.join(missing)}",
-                400,
-                payload={"missing": missing},
-            )
 
 
 @bp.get("/<job_id>/stream")

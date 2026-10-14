@@ -1,12 +1,18 @@
 """Helpers shared by the regression tests (require an active app context)."""
 
+import time
+
 from app.config import Config
 from app.extensions import db
 from app.models import Job, JobNodeRun
 from app.services.artifact_service import ArtifactService
+from app.services.job_queue_service import JobQueueService
+from app.services.job_run_service import JobRunService
 from app.services.job_run_state_service import JobRunStateService
 from app.services.job_service import JobService
 from app.services.workflow_service import WorkflowService
+
+TERMINAL_STATUSES = {"success", "failed", "partial_success", "cancelled"}
 
 
 # Mirrors WORKFLOW_PATHS in frontend-vue/src/stores/workflow.js so tests submit
@@ -66,6 +72,19 @@ def run_from(job_id: str, node_key: str, **kwargs) -> Job:
 def run_node(job_id: str, node_key: str, **kwargs) -> Job:
     WorkflowService.run_node(job_id, node_key, **kwargs)
     return reload_job(job_id)
+
+
+def wait_for_terminal(job_id: str, timeout: float = 60.0) -> Job:
+    """Wait until a background (thread or queue) run has fully finished."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        job = reload_job(job_id)
+        queued = JobQueueService._running.get(job_id)
+        busy = JobRunService.is_running_in_thread(job_id) or bool(queued and queued.is_alive())
+        if job.status in TERMINAL_STATUSES and not busy:
+            return job
+        time.sleep(0.1)
+    raise AssertionError(f"Job {job_id} did not finish within {timeout}s")
 
 
 def artifacts(job: Job, include_history: bool = False) -> list[dict]:
