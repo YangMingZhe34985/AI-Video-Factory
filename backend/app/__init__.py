@@ -59,6 +59,12 @@ def create_app(config_name: str | None = None, config_overrides: dict | None = N
 
 
 def register_cli(app: Flask) -> None:
+    @app.cli.command("agent-worker")
+    @click.option("--once", is_flag=True, help="Advance each runnable Agent session once.")
+    def agent_worker_command(once):
+        from app.agent.worker import run_worker
+        run_worker(once=once)
+
     def seed_default_data() -> dict:
         from app.models.template import Template
         from app.services.prompt_service import PromptService

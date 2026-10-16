@@ -1,4 +1,5 @@
 from .api_task import ApiTask
+from .agent_run import AgentRun
 from .artifact import Artifact
 from .job import Job
 from .job_event import JobEvent
@@ -13,6 +14,7 @@ from .user import User
 from .workflow_node import WorkflowNode
 
 __all__ = [
+    "AgentRun",
     "ApiTask",
     "Artifact",
     "Job",

@@ -72,13 +72,16 @@ class BaseModelAdapter(ABC):
     @staticmethod
     def http_session() -> requests.Session:
         session = requests.Session()
+        # The dedicated Agent worker must not retry billable POSTs underneath
+        # the tool ledger. Classic mode retains its existing transport policy.
+        agent_worker = has_app_context() and current_app.config.get("AGENT_WORKER_ACTIVE", False)
         retry = Retry(
             total=5,
             connect=5,
             read=5,
             backoff_factor=1.5,
             status_forcelist=[429, 500, 502, 503, 504],
-            allowed_methods=frozenset(["GET", "POST"]),
+            allowed_methods=frozenset(["GET"] if agent_worker else ["GET", "POST"]),
             raise_on_status=False,
         )
         adapter = HTTPAdapter(max_retries=retry)

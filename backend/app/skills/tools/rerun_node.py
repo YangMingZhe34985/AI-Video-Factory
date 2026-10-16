@@ -59,6 +59,8 @@ def run(data: RerunNodeInput, ctx: ToolContext):
             "Agents may only re-run jobs created by the skill layer",
             403,
         )
+    from app.agent.model_policy import validate_job_policy
+    validate_job_policy(job)
     run_type = "run_node" if data.mode == "node" else "run_from"
     result = JobRunService.start(job.job_id, run_type, node_key=data.node_key, force=data.force)
     return RerunNodeOutput(

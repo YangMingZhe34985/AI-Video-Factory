@@ -1,6 +1,17 @@
 # CineCrew Backend
 
+Phase 4 的离线回归、故障注入、成本监控和灰度回滚见
+[稳定性与系统评估](../docs/architecture/phase4_stability_evaluation.md)，
+消息队列部分见 [只读审计](../docs/architecture/phase4_mq_audit.md)。
+
 > 原名 AI Video Factory Backend。
+
+Phase 2 Agent Studio 的启动、API、状态图、恢复策略与隔离 Mock 演示见
+[Phase 2 实施与验收说明](../docs/architecture/phase2_langgraph_mvp.md)。
+
+Phase 3 原视频上传、保留／重生成、单镜头修改、Prompt 血缘及打包协议见
+[Phase 3 实施说明](../docs/architecture/phase3_video_remix.md)。本地需配置 `FFMPEG_BINARY` 或将 FFmpeg 加入 PATH；Docker 镜像已包含 FFmpeg。
+启用 `AGENT_MODE_ENABLED=true` 后，需额外运行 `flask --app run.py agent-worker`。
 
 这是一个全新的 Flask 后端服务，用于把视频生成流水线从命令行脚本重构为可由前端调用的 REST API。当前 MVP 使用后台线程触发工作流，支持 Mock 模式，也已经接入真实 DashScope/Qwen Adapter 调用路径。
 

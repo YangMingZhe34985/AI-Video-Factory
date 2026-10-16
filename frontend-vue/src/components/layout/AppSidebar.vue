@@ -86,6 +86,7 @@ const { t } = useI18n()
 const route = useRoute()
 const authStore = useAuthStore()
 const healthConnected = ref(true)
+const agentEnabled = ref(false)
 
 const { width: sidebarWidth, startDrag } = useResizablePanel('sidebar:width', {
   defaultWidth: 260,
@@ -98,9 +99,11 @@ const iconMap = {
   PhSquaresFour, PhFolder, PhChatText, PhCube, PhBriefcase, PhGitMerge, PhImage, PhGear,
 }
 
-const navItems = computed(() => NAV_ITEMS.map(item => ({
+const navItems = computed(() => [...NAV_ITEMS, ...(agentEnabled.value ? [
+  { to: '/agent-studio', icon: 'PhChatText', labelKey: 'Agent Studio' },
+] : [])].map(item => ({
   ...item,
-  label: t(item.labelKey),
+  label: item.to === '/agent-studio' ? 'Agent Studio' : t(item.labelKey),
 })))
 
 function isActive(path) {
@@ -112,6 +115,7 @@ onMounted(async () => {
   try {
     const res = await fetch('/api/health', { signal: AbortSignal.timeout(3000) })
     healthConnected.value = res.ok
+    if (res.ok) agentEnabled.value = Boolean((await res.json()).data?.agent_mode)
   } catch {
     healthConnected.value = false
   }

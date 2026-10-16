@@ -109,6 +109,7 @@ class JobPackageService:
         first_frame = JobPackageService._latest_existing_artifact(job, "first_frame_image")
         i2i_images = JobPackageService._existing_artifacts(job, JobPackageService.I2I_IMAGE_TYPES)
         reference_images = JobPackageService._existing_artifacts(job, ["reference_image"])
+        retained_video = JobPackageService._latest_existing_artifact(job, "retained_video")
 
         has_i2v = i2v_video is not None
         has_i2i = bool(
@@ -142,6 +143,13 @@ class JobPackageService:
             video_artifacts.extend(r2v_videos)
             image_artifacts.extend(reference_images)
             prompt_types.append("r2v_flash")
+
+        if retained_video:
+            video_artifacts.append(retained_video)
+        if (job.config or {}).get("remix"):
+            prompt_types.extend(["source_analysis", "edit_instruction", "first_frame_image", "i2v"])
+            if first_frame and not has_i2v:
+                image_artifacts.append(first_frame)
 
         return {
             "video_artifacts": JobPackageService._dedupe_artifacts(video_artifacts),
@@ -320,6 +328,7 @@ class JobPackageService:
             "template_id": job.external_template_id,
             "source_video": job.source_video_path,
             "source_hash": job.source_hash,
+            "lineage": (job.config or {}).get("remix"),
             "packaged_at": isoformat(utc_now()),
             "package_status": package_status,
             "selected_final_artifact_id": video_artifacts[0].artifact_id if video_artifacts else None,

@@ -59,7 +59,7 @@ class GenerateVideoInput(BaseModel):
 def run(data: GenerateVideoInput, ctx: ToolContext):
     mode = MODES[data.mode]
     config = {}
-    job_backed.pin_model(config, mode["nodes"][0], mode["capability"], data.model_id, data.params)
+    job_backed.pin_model(config, mode["nodes"][0], mode["capability"], data.model_id, data.params, ctx=ctx)
     initial_artifacts = {}
     if data.first_frame_artifact_id:
         frame = job_backed.resolve_artifact(data.first_frame_artifact_id, image_only=True)

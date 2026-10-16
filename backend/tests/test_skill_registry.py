@@ -32,6 +32,7 @@ def test_registry_exposes_all_tools_with_schemas(app_ctx):
         "get_task_status",
         "package_project",
         "produce_shot",
+        "remix_shot",
         "rerun_node",
         "rewrite_prompt",
     ]

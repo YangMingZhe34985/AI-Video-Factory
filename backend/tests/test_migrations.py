@@ -37,7 +37,8 @@ def test_alembic_upgrade_creates_ledger_table(tmp_path):
         assert inspector.has_table("tool_invocations")
         columns = {column["name"] for column in inspector.get_columns("tool_invocations")}
         assert {"idempotency_key", "budget_scope", "job_id", "started_at", "estimated_cost"} <= columns
-        assert _version() == "20261014_001"
+        assert inspector.has_table("agent_runs")
+        assert _version() == "20261016_001"
         db.engine.dispose()
 
 
@@ -50,7 +51,8 @@ def test_upgrade_tolerates_table_created_by_schema_repair(tmp_path):
 
         upgrade(directory=MIGRATIONS_DIR)
 
-        assert _version() == "20261014_001"
+        assert inspect(db.engine).has_table("agent_runs")
+        assert _version() == "20261016_001"
         db.engine.dispose()
 
 

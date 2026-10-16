@@ -13,7 +13,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.api import AppError
 from app.extensions import db
-from app.models import Artifact, Job, ModelRegistry, Series, Template
+from app.models import Artifact, Job, ModelRegistry, Series, Template, ToolInvocation
 from app.services.artifact_service import ArtifactService
 from app.services.job_run_service import JobRunService
 from app.services.job_service import JobService
@@ -83,9 +83,15 @@ def pin_model(
     capability: str,
     model_id: str | None,
     params: dict | None = None,
+    ctx: ToolContext | None = None,
 ) -> ModelRegistry:
     """Validate the node's model and params, then pin both into job_config."""
-    model = model_guard.effective_model(capability, node_key, model_id)
+    from app.agent.model_policy import scope_policy, select_video_model
+    policy = scope_policy(ctx.budget_scope) if ctx and capability in {"t2v", "i2v", "r2v"} else None
+    model = (select_video_model(policy, capability, model_id) if policy
+             else model_guard.effective_model(capability, node_key, model_id))
+    if policy:
+        job_config["video_model_policy"] = policy
     validated = model_guard.validate_params(model, params or {})
     job_config.setdefault("node_models", {})[node_key] = model.model_id
     if validated:
@@ -121,6 +127,8 @@ def launch(
     # succeeded are skipped, so nothing paid is submitted twice.
     if ctx.previous is not None and ctx.previous.job is not None:
         job = ctx.previous.job
+        from app.agent.model_policy import scope_policy, validate_job_policy
+        validate_job_policy(job, scope_policy(ctx.budget_scope))
         JobRunService.start(job.job_id, "run_full")
         return job
 
@@ -142,6 +150,12 @@ def launch(
             "job_config": config,
         }
     )
+    # Persist the Job link before starting asynchronous work so a worker crash
+    # cannot hide an already submitted task from its invocation ledger.
+    if ctx.invocation_id:
+        invocation = ToolInvocation.query.filter_by(invocation_id=ctx.invocation_id).one()
+        invocation.job = job
+        db.session.commit()
     JobRunService.start(job.job_id, "run_full")
     return job
 

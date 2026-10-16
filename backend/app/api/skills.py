@@ -17,6 +17,8 @@ def list_skills():
 
 @bp.post("/<name>/invoke")
 def invoke_skill(name: str):
+    from app.agent.release import ensure_admission
+    ensure_admission()
     payload = InvokeSkillSchema.model_validate(request.get_json(silent=True) or {})
     ctx = ToolContext(
         role=payload.role,

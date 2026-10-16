@@ -67,6 +67,12 @@ class SchemaService:
             db.session.commit()
             repaired.append("tool_invocations")
 
+        if not inspector.has_table("agent_runs"):
+            from app.models.agent_run import AgentRun
+            AgentRun.__table__.create(bind=db.session.connection(), checkfirst=True)
+            db.session.commit()
+            repaired.append("agent_runs")
+
         return repaired
 
     @staticmethod

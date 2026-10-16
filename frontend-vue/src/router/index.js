@@ -3,6 +3,11 @@ import { useAuthStore } from '@/stores/auth'
 
 const routes = [
   {
+    path: '/agent-studio',
+    name: 'AgentStudio',
+    component: () => import('@/views/AgentStudioView.vue'),
+  },
+  {
     path: '/login',
     name: 'Login',
     component: () => import('@/views/LoginView.vue'),

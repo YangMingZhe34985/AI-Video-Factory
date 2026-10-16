@@ -137,10 +137,17 @@ class Config:
     JOB_MAX_CONCURRENT_RUNS = int(os.getenv("JOB_MAX_CONCURRENT_RUNS", "2"))
     JOB_QUEUE_POLL_INTERVAL_SEC = int(os.getenv("JOB_QUEUE_POLL_INTERVAL_SEC", "1"))
 
-    # Agent mode (skill layer now, LangGraph agents later). Off by default so
+    # Agent mode (skill layer and LangGraph). Off by default so
     # the classic workflow is unaffected unless explicitly enabled.
     AGENT_MODE_ENABLED = _bool_env("AGENT_MODE_ENABLED", False)
+    # Admission-only controls: existing sessions can finish during a rollback drain.
+    AGENT_ACCEPT_NEW_RUNS = _bool_env("AGENT_ACCEPT_NEW_RUNS", True)
+    AGENT_ALLOWED_USERS = os.getenv("AGENT_ALLOWED_USERS", "")
     SKILL_DEFAULT_BUDGET = float(os.getenv("SKILL_DEFAULT_BUDGET", "100"))
+    AGENT_MAX_BUDGET = float(os.getenv("AGENT_MAX_BUDGET", "500"))
+    AGENT_PLANNER_MODEL = os.getenv("AGENT_PLANNER_MODEL", "")
+    AGENT_CHECKPOINT_PATH = os.getenv("AGENT_CHECKPOINT_PATH", "")
+    AGENT_POLL_INTERVAL_SEC = float(os.getenv("AGENT_POLL_INTERVAL_SEC", "3"))
 
     DEFAULT_WORKFLOW_NODES = [
         {

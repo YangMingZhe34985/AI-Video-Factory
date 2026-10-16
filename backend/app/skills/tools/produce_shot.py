@@ -14,7 +14,7 @@ class ProduceShotInput(ShotSpec):
 def run(data: ProduceShotInput, ctx: ToolContext):
     config = {"shot": {"shot_id": data.shot_id}}
     job_backed.pin_model(config, "submit_first_frame_image", "image", data.image_model_id, data.image_params)
-    job_backed.pin_model(config, "submit_i2v", "i2v", data.video_model_id, data.video_params)
+    job_backed.pin_model(config, "submit_i2v", "i2v", data.video_model_id, data.video_params, ctx=ctx)
     # One job for both stages: the DAG dependency submit_i2v -> poll_first_frame_image
     # hands the generated first frame to the i2v model.
     job = job_backed.launch(

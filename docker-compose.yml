@@ -54,6 +54,34 @@ services:
     networks:
       - internal
 
+  # Optional Phase 2 worker: set AGENT_MODE_ENABLED=true in .env.production,
+  # then run docker compose --profile agent up -d --build.
+  agent-worker:
+    profiles: ["agent"]
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      backend:
+        condition: service_started
+    env_file:
+      - .env.production
+    environment:
+      DATABASE_URL: "mysql+pymysql://root:${MYSQL_ROOT_PASSWORD}@db:3306/${MYSQL_DATABASE:-video_factory}"
+      FLASK_ENV: production
+      FACTORY_PROMPTS_DIR: /factory_prompts
+    entrypoint: ["flask", "--app", "run.py", "agent-worker"]
+    healthcheck:
+      disable: true
+    volumes:
+      - backend_storage:/app/storage
+      - ./workspace:/workspace:ro
+    networks:
+      - internal
+
   # ── Nginx + Vue 3 前端 ────────────────────────────────────────
   frontend:
     build:

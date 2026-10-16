@@ -316,6 +316,8 @@ class JobService:
                     "content": content,
                     "content_format": "markdown",
                     "source": normalized.get("source") or "manual",
+                    "parent_version": normalized.get("parent_version"),
+                    "note": normalized.get("note"),
                     "activate": True,
                 },
             )
@@ -348,6 +350,8 @@ class JobService:
                 "source": value.get("source") or "manual",
                 "prompt_key": value.get("prompt_key") or "default",
                 "title": value.get("title"),
+                "parent_version": value.get("parent_version"),
+                "note": value.get("note"),
             }
 
         prompt = None

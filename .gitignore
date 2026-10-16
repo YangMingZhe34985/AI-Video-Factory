@@ -29,6 +29,8 @@ private/
 .claude/
 .codex/
 .codex_smoke/
+.playwright-mcp/
+.VSCodeCounter/
 .agents/
 claude.md
 codex.md

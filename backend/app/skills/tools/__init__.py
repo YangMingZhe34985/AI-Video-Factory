@@ -5,6 +5,7 @@ from app.skills.tools import (
     get_task_status,
     package_project,
     produce_shot,
+    remix_shot,
     rerun_node,
     rewrite_prompt,
 )
@@ -18,4 +19,5 @@ ALL_SPECS = [
     rerun_node.SPEC,
     package_project.SPEC,
     produce_shot.SPEC,
+    remix_shot.SPEC,
 ]

@@ -143,5 +143,7 @@ def register_blueprints(app):
 
     if is_agent_mode_enabled(app):
         from .skills import bp as skills_bp
+        from .agent import bp as agent_bp
 
         app.register_blueprint(skills_bp)
+        app.register_blueprint(agent_bp)
