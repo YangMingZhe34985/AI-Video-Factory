@@ -118,6 +118,8 @@
     "pending": "Pending",
     "queued": "Queued",
     "running": "Running",
+    "waiting": "Waiting for model result",
+    "submitUnknown": "Submission needs reconciliation",
     "success": "Success",
     "failed": "Failed",
     "paused": "Paused",

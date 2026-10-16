@@ -39,6 +39,7 @@ class Job(db.Model, SerializerMixin):
     api_tasks = db.relationship(
         "ApiTask", back_populates="job", lazy=True, cascade="all, delete-orphan"
     )
+    queue_dispatch = db.relationship("JobDispatch", uselist=False, cascade="all, delete-orphan")
     artifacts = db.relationship(
         "Artifact", back_populates="job", lazy=True, cascade="all, delete-orphan"
     )

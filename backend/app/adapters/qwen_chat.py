@@ -154,7 +154,7 @@ class QwenChatAdapter(MockChatAdapter):
         try:
             return self.request_json("POST", url, headers=headers, json=payload, timeout=timeout)
         except AppError:
-            if self.config("AGENT_WORKER_ACTIVE", False):
+            if self.config("AGENT_WORKER_ACTIVE", False) or self.config("MQ_WORKER_ACTIVE", False):
                 # No implicit additional paid planning calls on schema errors.
                 raise
             if payload.get("response_format", {}).get("type") == "json_schema":

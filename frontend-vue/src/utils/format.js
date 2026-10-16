@@ -11,6 +11,8 @@ export function statusColors(status) {
   const map = {
     queued: 'bg-indigo-50 text-indigo-600 border-indigo-100',
     running: 'bg-blue-50 text-blue-600 border-blue-100',
+    waiting: 'bg-blue-50 text-blue-600 border-blue-100',
+    submit_unknown: 'bg-amber-50 text-amber-700 border-amber-100',
     success: 'bg-green-50 text-green-600 border-green-100',
     failed: 'bg-red-50 text-red-600 border-red-100',
     paused: 'bg-yellow-50 text-yellow-600 border-yellow-100',
@@ -27,6 +29,8 @@ export function statusDotColor(status) {
   const map = {
     queued: 'bg-indigo-500',
     running: 'bg-blue-500',
+    waiting: 'bg-blue-500',
+    submit_unknown: 'bg-amber-500',
     success: 'bg-green-500',
     failed: 'bg-red-500',
     paused: 'bg-yellow-500',

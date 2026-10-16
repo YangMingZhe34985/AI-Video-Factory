@@ -83,7 +83,10 @@ class DashScopeMultimodalSyncAdapter(DashScopeGenerationAdapter):
         # success immediately without a second network call.
         return {
             "provider_task_id": f"{_SYNC_PREFIX}{image_url}",
-            "status": "submitted",
+            "status": "success",
+            "synchronous": True,
+            "output_kind": "image",
+            "result_url": image_url,
             "request_id": data.get("request_id"),
             "raw_response": data,
         }

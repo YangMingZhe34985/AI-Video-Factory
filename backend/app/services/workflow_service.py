@@ -1,6 +1,6 @@
 from http import HTTPStatus
 
-from flask import current_app
+from flask import current_app, g
 
 from app.api import AppError
 from app.extensions import db
@@ -96,6 +96,14 @@ class WorkflowService:
         job = WorkflowService._get_job(job_id)
         node = WorkflowService.get_node(node_key)
         WorkflowService._validate_job_workflow(job)
+        if g.get("mq_dispatch"):
+            from app.services.workflow_scheduler import WorkflowScheduler
+            result = WorkflowScheduler().run(job, [node], force=force)
+            if result["status"] == "success":
+                job.status = "partial_success"
+                db.session.commit()
+                result["status"] = "partial_success"
+            return result
         ok = WorkflowService._execute_node(job, node, force=force, explicit=True)
         db.session.refresh(job)
         if ok and job.status == "running":
@@ -124,7 +132,7 @@ class WorkflowService:
         force: bool,
         skip_scope_nodes: list[WorkflowNode] | None = None,
     ) -> dict:
-        if current_app.config.get("WORKFLOW_PARALLEL_ENABLED", True):
+        if g.get("mq_dispatch") or current_app.config.get("WORKFLOW_PARALLEL_ENABLED", True):
             from app.services.workflow_scheduler import WorkflowScheduler
 
             return WorkflowScheduler().run(
@@ -373,13 +381,13 @@ class WorkflowService:
         if current_run_id:
             run = (
                 query.filter(JobNodeRun.input_snapshot["run_id"].as_string() == current_run_id)
-                .order_by(JobNodeRun.created_at.desc())
+                .order_by(JobNodeRun.id.desc())
                 .first()
             )
             if run:
                 return run
             return None
-        return query.order_by(JobNodeRun.created_at.desc()).first()
+        return query.order_by(JobNodeRun.id.desc()).first()
 
     @staticmethod
     def _missing_dependencies(job: Job, node: WorkflowNode) -> list[str]:

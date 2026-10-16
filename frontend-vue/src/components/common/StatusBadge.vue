@@ -24,6 +24,8 @@ const STATUS_KEY_MAP = {
   pending: 'jobs.pending',
   queued: 'jobs.queued',
   running: 'jobs.running',
+  waiting: 'jobs.waiting',
+  submit_unknown: 'jobs.submitUnknown',
   success: 'jobs.success',
   failed: 'jobs.failed',
   paused: 'jobs.paused',

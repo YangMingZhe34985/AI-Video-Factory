@@ -74,7 +74,8 @@ class BaseModelAdapter(ABC):
         session = requests.Session()
         # The dedicated Agent worker must not retry billable POSTs underneath
         # the tool ledger. Classic mode retains its existing transport policy.
-        agent_worker = has_app_context() and current_app.config.get("AGENT_WORKER_ACTIVE", False)
+        agent_worker = has_app_context() and (current_app.config.get("AGENT_WORKER_ACTIVE", False)
+                                             or current_app.config.get("MQ_WORKER_ACTIVE", False))
         retry = Retry(
             total=5,
             connect=5,
@@ -112,7 +113,7 @@ class BaseModelAdapter(ABC):
                 "API_TASK_FAILED",
                 user_msg,
                 response.status_code,
-                payload={"url": url, "response": data},
+                payload={"url": url, "response": data, "retry_after": response.headers.get("Retry-After")},
             )
         return data
 

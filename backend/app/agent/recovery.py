@@ -17,6 +17,9 @@ def recover_job(job: Job, scope: str) -> None:
         raise AppError("TOOL_FORBIDDEN", "Cannot recover another run's job", 403)
     if job.status not in {"created", "pending", "queued", "running"}:
         return
+    from app.models import JobDispatch
+    if JobDispatch.query.filter_by(job_id=job.id).first():
+        return  # Shared MQ recovery owns these tasks, including submit_unknown.
     if JobRunService.is_running_in_thread(job.job_id) or JobQueueService._is_known(job.job_id):
         return
     # A disabled model must block new submissions, but completed/in-flight

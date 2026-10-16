@@ -37,6 +37,11 @@ class JobRunService:
         restart: bool = False,
     ) -> dict:
         job = cls._prepare(job_id, run_type, node_key)
+        from app.models import JobDispatch
+        # Queue ownership survives admission being switched off during drain.
+        if current_app.config.get("MQ_ENABLED", False) or JobDispatch.query.filter_by(job_id=job.id).first():
+            from app.queue.dispatch import enqueue_job
+            return enqueue_job(job, run_type, node_key, force, restart)
         if current_app.config.get("JOB_QUEUE_ENABLED", True):
             return JobQueueService.enqueue(
                 job_id,

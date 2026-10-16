@@ -82,6 +82,59 @@ services:
     networks:
       - internal
 
+  # Shared Agent/classic execution. Enable MQ_ENABLED in .env.production,
+  # then start the mq profile. Workers share the SAME DB, Redis and storage.
+  redis:
+    profiles: ["mq"]
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
+    volumes:
+      - redis_data:/data
+    networks: [internal]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  mq-scheduler: &mq-worker
+    profiles: ["mq"]
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.backend
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file: [.env.production]
+    environment:
+      DATABASE_URL: "mysql+pymysql://root:${MYSQL_ROOT_PASSWORD}@db:3306/${MYSQL_DATABASE:-video_factory}"
+      REDIS_URL: "redis://redis:6379/0"
+      FLASK_ENV: production
+      FACTORY_PROMPTS_DIR: /factory_prompts
+    entrypoint: ["flask", "--app", "run.py", "mq-worker", "--role", "scheduler"]
+    healthcheck:
+      disable: true
+    volumes:
+      - backend_storage:/app/storage
+      - ./workspace:/workspace:ro
+    networks: [internal]
+
+  mq-submit:
+    <<: *mq-worker
+    entrypoint: ["flask", "--app", "run.py", "mq-worker", "--role", "submit"]
+
+  mq-poll:
+    <<: *mq-worker
+    entrypoint: ["flask", "--app", "run.py", "mq-worker", "--role", "poll"]
+
+  mq-download:
+    <<: *mq-worker
+    entrypoint: ["flask", "--app", "run.py", "mq-worker", "--role", "download"]
+
   # ── Nginx + Vue 3 前端 ────────────────────────────────────────
   frontend:
     build:
@@ -103,6 +156,8 @@ networks:
 
 # ── 持久卷 ────────────────────────────────────────────────────────
 volumes:
+  redis_data:
+    driver: local
   mysql_data:
     driver: local        # MySQL 数据持久化
   backend_storage:

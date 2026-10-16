@@ -22,6 +22,15 @@ class ApiTask(db.Model, SerializerMixin):
     response_payload = db.Column(db.JSON, nullable=False, default=dict)
     error_message = db.Column(db.Text)
     expected_artifact_path = db.Column(db.String(1024))
+    operation_key = db.Column(db.String(100), unique=True)
+    queue_phase = db.Column(db.String(24), index=True)
+    queue_generation = db.Column(db.Integer, nullable=False, default=0, server_default="0")
+    queue_data = db.Column(db.JSON)
+    next_poll_at = db.Column(db.DateTime(timezone=True), index=True)
+    lease_token = db.Column(db.String(80))
+    lease_until = db.Column(db.DateTime(timezone=True))
+    queue_attempts = db.Column(db.Integer, nullable=False, default=0, server_default="0")
+    poll_count = db.Column(db.Integer, nullable=False, default=0, server_default="0")
     submitted_at = db.Column(db.DateTime(timezone=True))
     completed_at = db.Column(db.DateTime(timezone=True))
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utc_now)
@@ -32,3 +41,12 @@ class ApiTask(db.Model, SerializerMixin):
     job = db.relationship("Job", back_populates="api_tasks")
     node_run = db.relationship("JobNodeRun", back_populates="api_tasks")
     artifacts = db.relationship("Artifact", back_populates="api_task", lazy=True)
+    outbox_events = db.relationship("TaskOutbox", cascade="all, delete-orphan")
+
+    def to_dict(self):
+        data = super().to_dict()
+        # Wire payloads may be large and contain temporary signed URLs; the public
+        # task view already includes the logical request and provider response.
+        for key in ("queue_data", "lease_token"):
+            data.pop(key, None)
+        return data

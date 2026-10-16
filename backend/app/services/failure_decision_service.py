@@ -17,6 +17,7 @@ class FailureDecisionService:
     """Lightweight decision hook used after a workflow node fails."""
 
     NON_RETRYABLE_CODES = {
+        "MQ_TASK_FAILED",
         "DEPENDENCY_MISSING",
         "PROMPT_NOT_FOUND",
         "MODEL_NOT_FOUND",

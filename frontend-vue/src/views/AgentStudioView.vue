@@ -186,6 +186,7 @@ const { t } = useI18n({ useScope: 'local', messages: {
     approve: '确认分镜并开始生成', reject: '放弃此计划', deliver: '一键打包可用素材', resume: '恢复执行', pendingAction: '操作已保存，等待处理…',
     storyboard: '分镜计划', editHint: '确认前可修改各镜头的首帧与动作提示词。确认后将按此计划消耗生成预算。', job: '任务详情与日志', frame: '首帧', video: '视频动作', download: '下载',
     packages: '交付素材', packageHint: '每个镜头一个 ZIP，包含视频、图片、提示词与清单。当前不自动拼接成片。',
+    waiting: '等待模型结果', submit_unknown: '提交结果待核实',
     queued: '已排队', planning: '规划中', awaiting_approval: '等待确认', producing: '生成中', awaiting_delivery: '可预览与打包', delivering: '打包中', success: '成功', partial_success: '部分成功', failed: '失败', cancelled: '已取消', needs_attention: '需要处理', pending: '待执行', running: '执行中', skipped: '已跳过', path_failed: '上游失败',
   },
   en: {
@@ -201,6 +202,7 @@ const { t } = useI18n({ useScope: 'local', messages: {
     subtitle: 'Turn an idea into a storyboard, video assets and downloadable packages', disabled: 'Agent mode is not enabled.', newProject: 'Start creating', goal: 'Describe your video', placeholder: 'An orange cat enters a bookstore after the rain, warm cinematic light, three connected shots…', shots: 'Shots', budget: 'Budget limit',
     modelPreference: 'Video model or family (optional)', modelPlaceholder: 'e.g. wan2.7; leave blank to detect from goal',
     videoModelRule: 'Video model constraint', userModelRule: 'User requirement', defaultModelRule: 'Server default', excludedModels: 'Excluded',
+    waiting: 'Waiting for model result', submit_unknown: 'Submission needs reconciliation',
     modelRuleHint: 'Applies to video generation in every shot. Incompatible models stop execution rather than switching families. First-frame image models are independent.',
     estimate: 'Estimated {count} credits, including 2 for planning. Resource estimate, not a provider bill.', plan: 'Create storyboard', history: 'Projects', noHistory: 'No projects yet', welcome: 'Describe an idea. Director and Creative will prepare a storyboard.',
     progress: '{total} shots · {success} succeeded · {failed} failed · {pending} pending', spent: '{spent} / {budget} credits used', mock: 'Mock demo mode: results are test assets.', mockVideo: 'Mock video placeholder. Download to inspect delivery; playback is unavailable.', auto: 'Auto mode: models without credentials use mock assets.', queueHint: 'Waiting for the background creation service.',

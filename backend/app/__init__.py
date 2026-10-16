@@ -59,6 +59,34 @@ def create_app(config_name: str | None = None, config_overrides: dict | None = N
 
 
 def register_cli(app: Flask) -> None:
+    @app.cli.command("mq-status")
+    def mq_status_command():
+        import json
+        from app.queue.operations import status
+        click.echo(json.dumps(status(), ensure_ascii=False, indent=2))
+
+    @app.cli.command("mq-reconcile")
+    @click.argument("api_task_id")
+    @click.option("--provider-id", help="Provider ID confirmed by an operator; never submits a generation request.")
+    @click.option("--terminate", is_flag=True)
+    @click.option("--retry", is_flag=True, help="Retry only a stopped poll/download.")
+    @click.option("--reason", required=True)
+    def mq_reconcile_command(api_task_id, provider_id, terminate, retry, reason):
+        from app.api import AppError
+        from app.queue.operations import reconcile
+        try:
+            click.echo(reconcile(api_task_id, provider_id=provider_id, terminate=terminate, retry=retry, reason=reason))
+        except AppError as error:
+            db.session.rollback()
+            raise click.ClickException(error.message) from error
+
+    @app.cli.command("mq-worker")
+    @click.option("--role", type=click.Choice(["all", "scheduler", "submit", "poll", "download"]), default="all")
+    @click.option("--once", is_flag=True)
+    def mq_worker_command(role, once):
+        from app.queue.worker import run_worker
+        run_worker(role=role, once=once)
+
     @app.cli.command("agent-worker")
     @click.option("--once", is_flag=True, help="Advance each runnable Agent session once.")
     def agent_worker_command(once):

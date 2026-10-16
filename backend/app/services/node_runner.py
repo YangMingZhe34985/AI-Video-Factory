@@ -19,6 +19,7 @@ from app.services.prompt_sync_service import PromptSyncService
 from app.services.storage_service import StorageService
 from app.services.video_compression_service import VideoCompressionService
 from app.utils.time_utils import utc_now
+from app.queue import TaskPending
 
 
 class NodeRunner:
@@ -46,19 +47,21 @@ class NodeRunner:
         })
 
     def run(self, job: Job, node, node_run: JobNodeRun) -> dict:
+        self._node_run = node_run
+        self._mq = bool((node_run.input_snapshot or {}).get("mq_dispatch"))
         handler = getattr(self, f"_run_{node.node_key}", None)
         if handler is None:
             raise AppError("NODE_NOT_FOUND", f"Node handler not found: {node.node_key}", 404)
         return handler(job, node, node_run)
 
-    def _get_model(self, model_id: str) -> ModelRegistry:
+    def _get_model(self, model_id: str, require_enabled: bool = True) -> ModelRegistry:
         try:
-            return ModelService.get_model(model_id, require_enabled=True)
+            return ModelService.get_model(model_id, require_enabled=require_enabled)
         except AppError as error:
             if error.code != "MODEL_NOT_FOUND":
                 raise
             ModelService.seed_defaults()
-            return ModelService.get_model(model_id, require_enabled=True)
+            return ModelService.get_model(model_id, require_enabled=require_enabled)
 
     def _model_for(self, job: Job, node, key: str, default_config_key: str) -> ModelRegistry:
         job_config = job.config or {}
@@ -107,10 +110,10 @@ class NodeRunner:
         if job and effective_node_key:
             merged_params.update(((job.config or {}).get("node_model_params") or {}).get(effective_node_key) or {})
         merged_params.update(params or {})
-        payload = adapter.build_payload(inputs, merged_params)
+        payload = self._build_adapter_payload(adapter, model, inputs, merged_params)
         self._release_db_connection()
         try:
-            response = adapter.submit(payload)
+            response = self._submit_adapter(adapter, model, payload, inputs, merged_params, job, model.adapter_name, effective_node_key)
         except AppError as error:
             enriched_payload = dict(error.payload or {})
             enriched_payload.update(
@@ -168,10 +171,10 @@ class NodeRunner:
         if job and effective_node_key:
             merged_params.update(((job.config or {}).get("node_model_params") or {}).get(effective_node_key) or {})
 
-        payload = adapter.build_payload(inputs, merged_params)
+        payload = self._build_adapter_payload(adapter, model, inputs, merged_params)
         self._release_db_connection()
         try:
-            response = adapter.submit(payload)
+            response = self._submit_adapter(adapter, model, payload, inputs, merged_params, job, effective_adapter_name, effective_node_key)
         except AppError as error:
             enriched = dict(error.payload or {})
             enriched.update({
@@ -183,6 +186,23 @@ class NodeRunner:
             })
             raise AppError(error.code, error.message, error.status_code, payload=enriched) from error
         return adapter, effective_adapter_name, payload, response
+
+    def _submit_adapter(self, adapter, model, payload, inputs, params, job, adapter_name, operation):
+        if getattr(self, "_mq", False):
+            from app.queue.dispatch import require_lease
+            require_lease(job.job_id, getattr(self, "_dispatch_token", None))
+            from app.queue.bridge import submit
+            return submit(self._node_run, job, model, adapter_name, payload,
+                          {"inputs": inputs, "params": params, "operation": operation},
+                          generation=getattr(adapter, "output_kind", None) in {"image", "video"})
+        return adapter.submit(payload)
+
+    def _build_adapter_payload(self, adapter, model, inputs, params):
+        if getattr(self, "_mq", False):
+            # Signed upload URLs are built by the submit consumer when it is ready,
+            # not while a job may still wait in the queue for hours.
+            return {"model": model.model_id, "inputs": inputs, "parameters": params}
+        return adapter.build_payload(inputs, params)
 
     def _negative_prompt(self, job: Job) -> str | None:
         """Return the effective negative prompt for generation nodes.
@@ -299,6 +319,8 @@ class NodeRunner:
         return None
 
     def _poll_until_complete(self, adapter, task: ApiTask) -> dict:
+        if getattr(self, "_mq", False) and task.operation_key:
+            return task.response_payload or {}
         max_rounds = int(current_app.config.get("MAX_POLL_ROUNDS", 90))
         interval = int(current_app.config.get("POLL_INTERVAL_SEC", 10))
         rounds = max(max_rounds, 1)
@@ -328,6 +350,9 @@ class NodeRunner:
         metadata: dict | None = None,
         artifact_branch_key: str | None = None,
     ) -> Artifact:
+        if getattr(self, "_mq", False) and task.operation_key:
+            from app.queue.bridge import complete
+            return complete(task, node_run, artifact_type, prompt_version, metadata, artifact_branch_key)
         status = response.get("status")
         task.response_payload = response
         if status != "success":
@@ -354,6 +379,11 @@ class NodeRunner:
                 job, node_run, downloaded, artifact_type
             )
             artifact_metadata["compression"] = compression
+        return self._register_task_output(job, node_run, task, response, registered_path,
+            artifact_type, prompt_version, artifact_metadata, artifact_branch_key)
+
+    def _register_task_output(self, job, node_run, task, response, registered_path,
+                              artifact_type, prompt_version, artifact_metadata, artifact_branch_key):
         file_path = StorageService.relative_path(registered_path)
         task.status = "success"
         task.response_payload = response
@@ -567,6 +597,9 @@ class NodeRunner:
         expected_artifact_path: str,
         adapter_name: str | None = None,
     ) -> ApiTask:
+        if response_payload.get("_mq_task_id"):
+            from app.queue.bridge import adopt
+            return adopt(job, response_payload["_mq_task_id"], branch_key, request_payload, expected_artifact_path)
         task = ApiTask(
             job_id=job.id,
             node_run_id=node_run.id,
@@ -634,11 +667,11 @@ class NodeRunner:
         if current_run_id:
             task = (
                 query.filter(ApiTask.request_payload["_run_id"].as_string() == current_run_id)
-                .order_by(ApiTask.created_at.desc())
+                .order_by(ApiTask.id.desc())
                 .first()
             )
         else:
-            task = query.order_by(ApiTask.created_at.desc()).first()
+            task = query.order_by(ApiTask.id.desc()).first()
         if not task:
             raise AppError(
                 "DEPENDENCY_MISSING",
@@ -646,6 +679,24 @@ class NodeRunner:
                 400,
             )
         return task
+
+    def _task_model(self, task: ApiTask) -> ModelRegistry:
+        # Disabling admission must not strand an already accepted MQ result.
+        return self._get_model(task.model_id, require_enabled=not bool(task.operation_key))
+
+    def _branch_tasks(self, job: Job, branch_key: str) -> list[ApiTask]:
+        query = ApiTask.query.filter_by(job_id=job.id, branch_key=branch_key)
+        current_run = JobRunStateService.current_run_id(job)
+        if current_run:
+            query = query.filter(ApiTask.request_payload["_run_id"].as_string() == current_run)
+        tasks = query.order_by(ApiTask.id.asc()).all()
+        if getattr(self, "_mq", False):
+            # One current operation per sample; explicit reruns retain old tasks as history.
+            latest = {}
+            for task in tasks:
+                latest[(task.request_payload or {}).get("test_index", 0)] = task
+            return list(latest.values())
+        return tasks
 
     def _prompt(self, job: Job, prompt_type: str, required: bool = True):
         def usable(candidate):
@@ -810,7 +861,7 @@ class NodeRunner:
 
     def _run_poll_t2v(self, job: Job, node, node_run: JobNodeRun) -> dict:
         task = self._latest_task(job, "t2v")
-        model = self._get_model(task.model_id)
+        model = self._task_model(task)
         adapter = get_adapter(task.adapter_name, model=model)
         response = self._poll_until_complete(adapter, task)
         artifact = self._complete_task_from_adapter(
@@ -877,7 +928,7 @@ class NodeRunner:
 
     def _run_poll_first_frame_image(self, job: Job, node, node_run: JobNodeRun) -> dict:
         task = self._latest_task(job, "first_frame_image")
-        model = self._get_model(task.model_id)
+        model = self._task_model(task)
         adapter = get_adapter(task.adapter_name, model=model)
         response = self._poll_until_complete(adapter, task)
         artifact = self._complete_task_from_adapter(
@@ -1212,17 +1263,13 @@ class NodeRunner:
         return []
 
     def _run_poll_r2v_flash(self, job: Job, node, node_run: JobNodeRun) -> dict:
-        tasks = (
-            ApiTask.query.filter_by(job_id=job.id, branch_key="r2v_flash")
-            .order_by(ApiTask.created_at.asc())
-            .all()
-        )
+        tasks = self._branch_tasks(job, "r2v_flash")
         if not tasks:
             raise AppError("DEPENDENCY_MISSING", "No R2V API tasks found", 400)
         artifacts = []
         prompt = self._prompt(job, "r2v_flash")
         for task in tasks:
-            model = self._get_model(task.model_id)
+            model = self._task_model(task)
             adapter = get_adapter(task.adapter_name, model=model)
             response = self._poll_until_complete(adapter, task)
             artifact = self._complete_task_from_adapter(
@@ -1279,7 +1326,7 @@ class NodeRunner:
 
     def _run_poll_i2v(self, job: Job, node, node_run: JobNodeRun) -> dict:
         task = self._latest_task(job, "i2v")
-        model = self._get_model(task.model_id)
+        model = self._task_model(task)
         adapter = get_adapter(task.adapter_name, model=model)
         response = self._poll_until_complete(adapter, task)
         artifact = self._complete_task_from_adapter(
@@ -1465,11 +1512,7 @@ class NodeRunner:
         video generation starts without waiting for all images to complete.
         The node only fails when ALL samples fail.
         """
-        tasks = (
-            ApiTask.query.filter_by(job_id=job.id, branch_key="i2i_test_image")
-            .order_by(ApiTask.created_at.asc())
-            .all()
-        )
+        tasks = self._branch_tasks(job, "i2i_test_image")
         if not tasks:
             raise AppError("DEPENDENCY_MISSING", "No I2I test image API tasks found", 400)
 
@@ -1487,9 +1530,10 @@ class NodeRunner:
 
         success_artifacts = []
         failure_count = 0
+        pending_count = 0
 
         for task in tasks:
-            model = self._get_model(task.model_id)
+            model = self._task_model(task)
             adapter = get_adapter(task.adapter_name, model=model)
             request_payload = task.request_payload or {}
             test_index = int(request_payload.get("test_index") or 0)
@@ -1542,6 +1586,9 @@ class NodeRunner:
                         level="warning",
                     )
 
+            except TaskPending:
+                pending_count += 1
+                item["image_status"] = "running"
             except AppError as err:
                 failure_count += 1
                 item["image_status"] = "failed"
@@ -1573,6 +1620,8 @@ class NodeRunner:
         job.config = {**(job.config or {}), "i2i_test_batch": batch}
         db.session.flush()
 
+        if pending_count:
+            raise TaskPending()
         if not success_artifacts:
             sample_errors = [
                 f"#{ti}: {itm.get('image_error', 'unknown')}"
@@ -1767,11 +1816,7 @@ class NodeRunner:
         Fault-tolerant: a single sample failure does not abort the node.
         The node only fails when ALL samples fail.
         """
-        tasks = (
-            ApiTask.query.filter_by(job_id=job.id, branch_key="i2i_test_i2v")
-            .order_by(ApiTask.created_at.asc())
-            .all()
-        )
+        tasks = self._branch_tasks(job, "i2i_test_i2v")
         if not tasks:
             raise AppError("DEPENDENCY_MISSING", "No I2I test I2V API tasks found", 400)
 
@@ -1785,9 +1830,10 @@ class NodeRunner:
 
         success_artifacts = []
         failure_count = 0
+        pending_count = 0
 
         for task in tasks:
-            model = self._get_model(task.model_id)
+            model = self._task_model(task)
             adapter = get_adapter(task.adapter_name, model=model)
             request_payload = task.request_payload or {}
             test_index = request_payload.get("test_index")
@@ -1817,6 +1863,9 @@ class NodeRunner:
                 item["i2v_status"] = "success"
                 success_artifacts.append(artifact.to_dict())
 
+            except TaskPending:
+                pending_count += 1
+                item["i2v_status"] = "running"
             except AppError as err:
                 failure_count += 1
                 item["i2v_status"] = "failed"
@@ -1850,6 +1899,8 @@ class NodeRunner:
         job.config = {**(job.config or {}), "i2i_test_batch": batch}
         db.session.flush()
 
+        if pending_count:
+            raise TaskPending()
         if not success_artifacts:
             sample_errors = [
                 f"#{ti}: {itm.get('i2v_error', 'unknown')}"

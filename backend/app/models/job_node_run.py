@@ -13,6 +13,7 @@ class JobNodeRun(db.Model, SerializerMixin):
     )
     job_id = db.Column(db.Integer, db.ForeignKey("jobs.id"), nullable=False, index=True)
     node_key = db.Column(db.String(120), nullable=False, index=True)
+    execution_key = db.Column(db.String(220), unique=True)
     status = db.Column(db.String(40), nullable=False, default="pending")
     attempt = db.Column(db.Integer, nullable=False, default=1)
     force = db.Column(db.Boolean, nullable=False, default=False)

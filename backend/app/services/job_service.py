@@ -672,6 +672,12 @@ class JobService:
                 409,
             )
 
+        from app.models import ApiTask, JobDispatch
+        if (ApiTask.query.filter(ApiTask.job_id == job.id, ApiTask.queue_phase.in_(
+                ["submit_active", "poll_active", "download_active"])).first()
+                or JobDispatch.query.filter_by(job_id=job.id, status="running").first()):
+            raise AppError("JOB_RUNNING", "Wait for active MQ workers to release this job before deletion", 409)
+
         deleted_job_id = job.job_id
         cleanup = JobService._delete_cleanup_snapshot(job)
         JobPromptRef.query.filter_by(job_id=job.id).delete(synchronize_session=False)

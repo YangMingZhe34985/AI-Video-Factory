@@ -36,7 +36,7 @@ class VideoCompressionService:
         try:
             ffmpeg = VideoCompressionService.resolve_ffmpeg()
             command = VideoCompressionService._command(ffmpeg, source, target)
-            subprocess.run(command, check=True, capture_output=True, text=True)
+            subprocess.run(command, check=True, capture_output=True, text=True, timeout=180)
             compressed_size = target.stat().st_size if target.exists() else 0
             metadata.update(
                 {

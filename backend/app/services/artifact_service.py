@@ -33,6 +33,11 @@ class ArtifactService:
         prompt_version: str | None = None,
         metadata: dict | None = None,
     ) -> Artifact:
+        if node_run and (node_run.input_snapshot or {}).get("mq_dispatch"):
+            existing = Artifact.query.filter_by(job_id=job.id, node_run_id=node_run.id,
+                file_path=file_path, artifact_type=artifact_type).first()
+            if existing:
+                return existing
         resolved = StorageService.resolve(file_path)
         artifact = Artifact(
             job_id=job.id,

@@ -1341,4 +1341,10 @@ Job-level business prompts are now the source of truth. When a Job creates, edit
 
 Runtime prompt lookup remains Job-first for business prompts. If a Job has no active prompt, the backend may fall back to a usable template prompt, but old factory business mocks are ignored and do not satisfy workflow validation or template packaging.
 
-Redis is not introduced in this phase. The current process-local `JobQueueService` is suitable for single-machine practice. Redis/RQ/Celery would be a medium-difficulty production upgrade: it improves queue durability, crash recovery, multi-process worker safety, and throughput across many jobs, but it will not significantly shorten a single job because the dominant latency comes from remote DashScope/Qwen model tasks and polling.
+The original process-local queue remains available when MQ is disabled. The optional shared Redis Streams execution layer is described below.
+
+## 共用消息队列（可选）
+
+Agent 的分析/媒体 Job 和经典工作流共用持久化执行层。启用前执行 `flask --app run.py db upgrade`，设置 `MQ_ENABLED=true`，启动 Redis 7 与 `flask --app run.py mq-worker`。生产使用 Compose 的 `mq` profile，分开 scheduler、submit、poll、download 角色。
+
+默认保持关闭；已进入 MQ 的 Job 在关闭入口后仍由 MQ 排空。`flask --app run.py mq-status` 查看积压和提交未知状态。部署、人工对账、测试及回滚步骤见 [共用执行队列说明](../docs/architecture/mq_implementation.md)。

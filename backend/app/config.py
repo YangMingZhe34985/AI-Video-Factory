@@ -134,6 +134,11 @@ class Config:
     WORKFLOW_MAX_PARALLEL_NODES = int(os.getenv("WORKFLOW_MAX_PARALLEL_NODES", "4"))
     WORKFLOW_MAX_PARALLEL_POLLS = int(os.getenv("WORKFLOW_MAX_PARALLEL_POLLS", "2"))
     JOB_QUEUE_ENABLED = _bool_env("JOB_QUEUE_ENABLED", True)
+    MQ_ENABLED = _bool_env("MQ_ENABLED", False)
+    REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+    MQ_LEASE_SEC = int(os.getenv("MQ_LEASE_SEC", "900"))
+    MQ_MAX_ATTEMPTS = int(os.getenv("MQ_MAX_ATTEMPTS", "3"))
+    MQ_TICK_SEC = int(os.getenv("MQ_TICK_SEC", "2"))
     JOB_MAX_CONCURRENT_RUNS = int(os.getenv("JOB_MAX_CONCURRENT_RUNS", "2"))
     JOB_QUEUE_POLL_INTERVAL_SEC = int(os.getenv("JOB_QUEUE_POLL_INTERVAL_SEC", "1"))
 

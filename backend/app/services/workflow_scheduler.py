@@ -5,7 +5,8 @@ from dataclasses import dataclass
 from http import HTTPStatus
 from typing import Any
 
-from flask import current_app
+from flask import current_app, g
+from sqlalchemy.exc import IntegrityError
 
 from app.api import AppError
 from app.extensions import db
@@ -16,6 +17,7 @@ from app.services.failure_decision_service import FailureDecisionService
 from app.services.job_run_state_service import JobRunStateService
 from app.services.node_runner import NodeRunner
 from app.utils.time_utils import utc_now
+from app.queue import DispatchLost, TaskPending
 
 
 @dataclass
@@ -25,6 +27,7 @@ class _WorkerResult:
     node_run_id: int | None = None
     error_message: str | None = None
     error_code: str | None = None
+    pending: bool = False
 
 
 class WorkflowScheduler:
@@ -36,6 +39,8 @@ class WorkflowScheduler:
     """
 
     def __init__(self) -> None:
+        self.dispatch = g.get("mq_dispatch")
+        self.dispatch_token = g.get("mq_dispatch_token")
         self.app = current_app._get_current_object()
         self.max_workers = max(
             1, int(current_app.config.get("WORKFLOW_MAX_PARALLEL_NODES", 4))
@@ -88,6 +93,11 @@ class WorkflowScheduler:
 
         for node in nodes:
             latest = self._latest_run(job_pk, node.node_key)
+            same_dispatch = bool(latest and (latest.input_snapshot or {}).get("mq_dispatch") == self.dispatch)
+            if self.dispatch and latest and ((not force and latest.status == "success") or
+                    (same_dispatch and latest.status in {"success", "skipped", "failed", "path_failed"})):
+                states[node.node_key] = "path_failed" if latest.status == "failed" else latest.status
+                continue
             if latest and latest.status == "success" and not force:
                 self._record_skipped_if_needed(job, node, force, "already_success")
                 states[node.node_key] = "skipped"
@@ -101,6 +111,10 @@ class WorkflowScheduler:
 
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             while pending or futures:
+                if self.dispatch_token:
+                    from app.queue.dispatch import require_lease
+                    require_lease(job_id, self.dispatch_token)
+                    db.session.commit()
                 # Expire cached objects so each iteration re-reads fresh DB state
                 db.session.expire_all()
                 job = db.session.get(Job, job_pk)
@@ -126,6 +140,8 @@ class WorkflowScheduler:
                         continue
 
                     if pending and not futures:
+                        if self.dispatch and "waiting" in states.values():
+                            break
                         blocked_key = self._first_blocked_node(
                             pending, node_by_key, states, all_node_by_key, active_keys, job
                         )
@@ -165,6 +181,10 @@ class WorkflowScheduler:
                     node_key = futures.pop(future)
                     self.running_node_keys.discard(node_key)
                     result = self._future_result(node_key, future)
+                    if result.pending:
+                        states[node_key] = "waiting"
+                        self._update_current_nodes(job_pk)
+                        continue
                     states[node_key] = "success" if result.ok else "failed"
                     self._update_current_nodes(job_pk)
                     if not result.ok:
@@ -182,6 +202,8 @@ class WorkflowScheduler:
                             stop_submitting = True
 
         job = db.session.get(Job, job_pk)
+        if self.dispatch and "waiting" in states.values():
+            return self._job_run_summary(job_pk)
         if job and job.status not in {"paused", "cancelled"}:
             unresolved_failure = self._has_unresolved_failure(job_pk, active_keys)
             if unresolved_failure:
@@ -257,6 +279,7 @@ class WorkflowScheduler:
                 node.node_key,
                 node_run_id,
                 force,
+                self.dispatch_token,
             )
             futures[future] = node.node_key
             capacity -= 1
@@ -267,6 +290,8 @@ class WorkflowScheduler:
         return submitted
 
     def _start_job(self, job: Job) -> None:
+        if self.dispatch and job.status == "running":
+            return
         job.status = "running"
         EventService.record(
             job,
@@ -281,6 +306,12 @@ class WorkflowScheduler:
         db.session.commit()
 
     def _declare_node_run(self, job: Job, node: WorkflowNode, force: bool) -> int:
+        if self.dispatch:
+            latest = self._latest_run(job.id, node.node_key)
+            if latest and (latest.input_snapshot or {}).get("mq_dispatch") == self.dispatch and latest.status in {"waiting", "running"}:
+                latest.status = "running"
+                db.session.commit()
+                return latest.id
         attempt = (
             JobNodeRun.query.filter_by(job_id=job.id, node_key=node.node_key).count() + 1
         )
@@ -291,8 +322,11 @@ class WorkflowScheduler:
             attempt=attempt,
             force=force,
             started_at=utc_now(),
+            execution_key=f"{self.dispatch}:{node.node_key}" if self.dispatch else None,
         )
         node_run.input_snapshot = NodeRunner().build_input_snapshot(job, node)
+        if self.dispatch:
+            node_run.input_snapshot = {**node_run.input_snapshot, "mq_dispatch": self.dispatch}
         db.session.add(node_run)
         EventService.record(
             job,
@@ -301,7 +335,16 @@ class WorkflowScheduler:
             node_key=node.node_key,
             payload={"scheduler": "dag_parallel"},
         )
-        db.session.commit()
+        try:
+            db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
+            if not self.dispatch:
+                raise
+            existing = JobNodeRun.query.filter_by(execution_key=f"{self.dispatch}:{node.node_key}").first()
+            if not existing:
+                raise
+            return existing.id
         return node_run.id
 
     @staticmethod
@@ -311,6 +354,7 @@ class WorkflowScheduler:
         node_key: str,
         node_run_id: int,
         force: bool,
+        dispatch_token: str | None = None,
     ) -> dict[str, Any]:
         with app.app_context():
             try:
@@ -324,7 +368,12 @@ class WorkflowScheduler:
                 if not node or not node_run:
                     raise AppError("NODE_NOT_FOUND", f"Node not found: {node_key}", 404)
 
-                output = NodeRunner().run(job, node, node_run)
+                runner = NodeRunner()
+                runner._dispatch_token = dispatch_token
+                output = runner.run(job, node, node_run)
+                if dispatch_token:
+                    from app.queue.dispatch import require_lease
+                    require_lease(job_id, dispatch_token)
                 node_run.status = "success"
                 node_run.output_snapshot = output or {}
                 node_run.ended_at = utc_now()
@@ -336,6 +385,20 @@ class WorkflowScheduler:
                 )
                 db.session.commit()
                 return {"ok": True, "node_key": node_key, "node_run_id": node_run_id}
+            except TaskPending:
+                if dispatch_token:
+                    from app.queue.dispatch import require_lease
+                    try:
+                        require_lease(job_id, dispatch_token)
+                    except DispatchLost:
+                        db.session.rollback()
+                        return {"ok": False, "pending": True, "node_key": node_key, "node_run_id": node_run_id}
+                node_run.status = "waiting"
+                db.session.commit()
+                return {"ok": False, "pending": True, "node_key": node_key, "node_run_id": node_run_id}
+            except DispatchLost:
+                db.session.rollback()
+                return {"ok": False, "pending": True, "node_key": node_key, "node_run_id": node_run_id}
             except AppError as error:
                 WorkflowScheduler._safe_rollback()
                 WorkflowScheduler._mark_worker_failed(
@@ -446,7 +509,8 @@ class WorkflowScheduler:
         reason: str,
     ) -> None:
         latest = self._latest_run(job.id, node.node_key)
-        if latest and latest.status == "skipped" and not force:
+        if latest and latest.status == "skipped" and (not force or (
+                self.dispatch and (latest.input_snapshot or {}).get("mq_dispatch") == self.dispatch)):
             return
         run = JobNodeRun(
             job_id=job.id,
@@ -454,7 +518,7 @@ class WorkflowScheduler:
             status="skipped",
             attempt=JobNodeRun.query.filter_by(job_id=job.id, node_key=node.node_key).count() + 1,
             force=force,
-            input_snapshot=JobRunStateService.attach_to_snapshot(job, {"reason": reason}),
+            input_snapshot=self._snapshot(job, {"reason": reason}),
             output_snapshot={"reason": reason},
             started_at=utc_now(),
             ended_at=utc_now(),
@@ -482,7 +546,7 @@ class WorkflowScheduler:
             status="path_failed",
             attempt=JobNodeRun.query.filter_by(job_id=job.id, node_key=node.node_key).count() + 1,
             force=force,
-            input_snapshot=JobRunStateService.attach_to_snapshot(
+            input_snapshot=self._snapshot(
                 job, {"depends_on": node.depends_on}
             ),
             output_snapshot={},
@@ -534,7 +598,7 @@ class WorkflowScheduler:
             status="path_failed",
             attempt=JobNodeRun.query.filter_by(job_id=job.id, node_key=node.node_key).count() + 1,
             force=force,
-            input_snapshot=JobRunStateService.attach_to_snapshot(
+            input_snapshot=self._snapshot(
                 job, {"reason": reason, "upstream_node": upstream_node}
             ),
             output_snapshot={"reason": reason, "upstream_node": upstream_node},
@@ -615,6 +679,12 @@ class WorkflowScheduler:
             job.status = "running"
         db.session.commit()
         return decision
+
+    def _snapshot(self, job, data):
+        snapshot = JobRunStateService.attach_to_snapshot(job, data)
+        if self.dispatch:
+            snapshot["mq_dispatch"] = self.dispatch
+        return snapshot
 
     def _mark_retrying(
         self,
@@ -770,6 +840,7 @@ class WorkflowScheduler:
                 node_run_id=result.get("node_run_id"),
                 error_message=result.get("error_message"),
                 error_code=result.get("error_code"),
+                pending=bool(result.get("pending")),
             )
         except Exception as error:
             return _WorkerResult(
@@ -800,10 +871,10 @@ class WorkflowScheduler:
         if current_run_id:
             return (
                 query.filter(JobNodeRun.input_snapshot["run_id"].as_string() == current_run_id)
-                .order_by(JobNodeRun.created_at.desc())
+                .order_by(JobNodeRun.id.desc())
                 .first()
             )
-        return query.order_by(JobNodeRun.created_at.desc()).first()
+        return query.order_by(JobNodeRun.id.desc()).first()
 
     @staticmethod
     def _has_deliverable_artifact(job: Job) -> bool:
@@ -832,7 +903,7 @@ class WorkflowScheduler:
         latest_run_by_node: dict[str, JobNodeRun] = {}
         for run in (
             JobRunStateService.query_current_node_runs(job)
-            .order_by(JobNodeRun.created_at.asc())
+            .order_by(JobNodeRun.id.asc())
             .all()
         ):
             if active_keys is not None and run.node_key not in active_keys:
@@ -840,6 +911,9 @@ class WorkflowScheduler:
             latest_by_node[run.node_key] = run.status
             latest_run_by_node[run.node_key] = run
         for node_key, status in latest_by_node.items():
+            run = latest_run_by_node[node_key]
+            if (run.input_snapshot or {}).get("mq_dispatch") and (run.output_snapshot or {}).get("failed_count", 0):
+                return True
             if status in {"failed", "path_failed"}:
                 return True
             if status == "skipped":

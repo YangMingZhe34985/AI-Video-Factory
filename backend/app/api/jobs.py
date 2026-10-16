@@ -124,6 +124,10 @@ def run_node(job_id: str):
 
 @bp.get("/queue/status")
 def queue_status():
+    from app.models import JobDispatch
+    if current_app.config.get("MQ_ENABLED") or JobDispatch.query.filter(JobDispatch.status.in_(["ready", "running"])).first():
+        from app.queue.operations import ingress_status
+        return api_success(ingress_status())
     if not current_app.config.get("JOB_QUEUE_ENABLED", True):
         return api_success({"enabled": False})
     return api_success(JobQueueService.status())
