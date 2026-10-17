@@ -1,12 +1,14 @@
 """Caller roles and permission levels for skill-layer tools."""
 
-# Caller roles. The three agent roles come from the refactor plan; "system"
-# is a human operator calling through the REST API.
+# Caller roles include v1 and v2 agents; "system" is an operator calling
+# through the REST API. The API validates ownership for every caller role.
 DIRECTOR = "director"
 CREATIVE = "creative"
 PRODUCTION = "production"
 SYSTEM = "system"
-ROLES = (DIRECTOR, CREATIVE, PRODUCTION, SYSTEM)
+INTAKE = "intake"
+RESEARCH = "research"
+ROLES = (DIRECTOR, CREATIVE, PRODUCTION, SYSTEM, INTAKE, RESEARCH)
 
 # Permission levels, from least to most sensitive.
 READ = "read"          # pure query, not recorded in the ledger

@@ -12,7 +12,7 @@ from app.utils.time_utils import utc_now
 
 
 def recover_job(job: Job, scope: str) -> None:
-    from app.agent.model_policy import scope_policy, validate_job_policy
+    from app.agent.model_policy import validate_job_policy
     if (job.config or {}).get("skill", {}).get("budget_scope") != scope:
         raise AppError("TOOL_FORBIDDEN", "Cannot recover another run's job", 403)
     if job.status not in {"created", "pending", "queued", "running"}:
@@ -24,7 +24,7 @@ def recover_job(job: Job, scope: str) -> None:
         return
     # A disabled model must block new submissions, but completed/in-flight
     # work still owns valid results that must remain visible and deliverable.
-    validate_job_policy(job, scope_policy(scope))
+    validate_job_policy(job)
     # Only this worker starts Agent jobs. After a worker restart, successful
     # submit nodes are reused; interrupted polls resume their persisted task IDs.
     latest = {}

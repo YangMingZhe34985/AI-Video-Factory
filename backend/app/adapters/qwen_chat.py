@@ -194,18 +194,19 @@ class QwenChatAdapter(MockChatAdapter):
                 lines = lines[:-1]
             cleaned = "\n".join(lines).strip()
         try:
-            data = json.loads(cleaned)
-        except json.JSONDecodeError:
-            start = cleaned.find("{")
-            end = cleaned.rfind("}")
-            if start < 0 or end <= start:
-                raise AppError(
-                    "API_TASK_FAILED",
-                    "Qwen response did not contain a JSON object",
-                    502,
-                    payload={"content": text[:1000]},
-                )
-            data = json.loads(cleaned[start : end + 1])
-        if not isinstance(data, dict):
-            raise AppError("API_TASK_FAILED", "Qwen response JSON is not an object", 502)
+            try:
+                data = json.loads(cleaned)
+            except json.JSONDecodeError:
+                start = cleaned.find("{")
+                end = cleaned.rfind("}")
+                if start < 0 or end <= start:
+                    raise ValueError("Response does not contain a JSON object")
+                data = json.loads(cleaned[start : end + 1])
+            if not isinstance(data, dict):
+                raise ValueError("Response JSON is not an object")
+        except ValueError as error:
+            # Parsing only occurs after a completed response. Callers may
+            # repair its structure; transport failures never receive this flag.
+            raise AppError("API_TASK_FAILED", "Qwen response did not contain a valid JSON object", 502,
+                           payload={"content": text[:1000], "response_validation": True}) from error
         return data

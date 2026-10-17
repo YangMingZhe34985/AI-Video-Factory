@@ -158,12 +158,14 @@ def select_video_model(policy: dict, mode: str, requested: str | None = None):
 
 
 def validate_job_policy(job, policy=None):
+    enabled = set((job.node_overrides or {}).get("enabled_nodes") or [])
+    if not any(node in enabled for _task, node, _default in VIDEO_MODES.values()):
+        return
     config = job.config or {}
     scope = (config.get("skill") or {}).get("budget_scope")
     policy = policy or (scope_policy(scope) if scope else None) or config.get("video_model_policy")
     if not policy:
         return
-    enabled = set((job.node_overrides or {}).get("enabled_nodes") or [])
     for mode, (_task, node, _default) in VIDEO_MODES.items():
         if node in enabled:
             model_id = (config.get("node_models") or {}).get(node)

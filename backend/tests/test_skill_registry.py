@@ -26,6 +26,7 @@ def status(job_id=None, invocation_id=None):
 def test_registry_exposes_all_tools_with_schemas(app_ctx):
     registry = get_registry()
     assert registry.names() == [
+        "analyze_image",
         "analyze_video",
         "generate_image",
         "generate_video",
