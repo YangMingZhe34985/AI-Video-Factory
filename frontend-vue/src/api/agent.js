@@ -2,11 +2,22 @@ import request from './request'
 
 export const listAgentRuns = () => request.get('/agent/runs')
 export const getAgentRun = (id) => request.get(`/agent/runs/${id}`)
+// v2 contract (CONTRACTS A.2): text + attachment ids; the Agent decides everything else.
 export const createAgentRun = (input) => request.post('/agent/runs', input)
 export const actOnAgentRun = (id, action, plan) => request.post(`/agent/runs/${id}/actions`, { action, ...(plan ? { plan } : {}) })
 export const reviseAgentShot = (id, shot, requestKey) => request.post(`/agent/runs/${id}/actions`, { action: 'revise', shot, request_key: requestKey })
-export const uploadAgentSource = (file) => {
+// CONTRACTS A.9: answers to a clarification card.
+export const answerAgentCard = (id, cardId, answers, useDefaults = false) =>
+  request.post(`/agent/runs/${id}/actions`, { action: 'answer', card_id: cardId, answers, use_defaults: useDefaults })
+
+// CONTRACTS A.3: one file per request; images and videos.
+export const uploadAgentAttachment = (file, onProgress) => {
   const data = new FormData()
   data.append('file', file)
-  return request.post('/agent/sources', data, { timeout: 90000 })
+  return request.post('/agent/attachments', data, {
+    timeout: 180000,
+    onUploadProgress: (event) => onProgress?.(event.total ? Math.round((event.loaded / event.total) * 100) : null),
+  })
 }
+
+export const listModels = () => request.get('/models')
