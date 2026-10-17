@@ -99,9 +99,10 @@
               </ul>
             </details>
 
-            <section v-if="legacySource" class="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900">
-              <h3 class="text-sm font-semibold text-slate-900 dark:text-slate-100">{{ t('sourceVideo') }} · {{ legacySource.file_name }}</h3>
-              <video controls preload="metadata" :src="legacySource.preview_url" class="mt-3 max-h-64 w-full rounded-xl bg-black" />
+            <section v-if="sourceVideo" class="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900">
+              <h3 class="text-sm font-semibold text-slate-900 dark:text-slate-100">{{ t('sourceVideo') }} · {{ sourceVideo.file_name }}</h3>
+              <AuthedVideo :key="sourceVideo.preview_url" :src="sourceVideo.preview_url" class="mt-3 max-h-64 w-full rounded-xl bg-black"
+                           :label="t('loadPreview')" :loading-label="t('loadingPreview')" :error-label="t('previewFailed')" />
               <details v-if="selected.snapshot?.analysis" class="mt-3 text-sm">
                 <summary class="cursor-pointer text-slate-500">{{ t('sourceAnalysis') }}</summary>
                 <p class="mt-2 whitespace-pre-wrap text-slate-600 dark:text-slate-300">{{ selected.snapshot.analysis.content }}</p>
@@ -119,7 +120,7 @@
             <template v-if="draft?.shots">
               <ShotPlanEditor
                 :plan="draft" :shots="selected.snapshot?.shots" :history="selected.snapshot?.shot_history" :issues="selected.snapshot?.plan_issues || []"
-                :source-duration="legacySource?.duration ?? null" :mock="Boolean(selected.snapshot?.mock)"
+                :source-duration="sourceVideo?.duration ?? null" :mock="Boolean(selected.snapshot?.mock)"
                 :editable="shotEditable" :can-revise="canRevise" :disabled="actionDisabled"
                 @revise="revise" @invalid="paramsInvalid = $event"
               />
@@ -167,6 +168,7 @@ import ClarificationCard from '@/components/agent/ClarificationCard.vue'
 import SimplePlanEditor from '@/components/agent/SimplePlanEditor.vue'
 import ShotPlanEditor from '@/components/agent/ShotPlanEditor.vue'
 import AuthedImage from '@/components/agent/AuthedImage.vue'
+import AuthedVideo from '@/components/agent/AuthedVideo.vue'
 import messages from '@/components/agent/messages'
 import { actOnAgentRun, answerAgentCard, createAgentRun, getAgentRun, listAgentRuns, listModels, reviseAgentShot } from '@/api/agent'
 
@@ -189,7 +191,13 @@ const results = computed(() => pick(selected.value, 'results') || [])
 const clarifications = computed(() => selected.value?.snapshot?.clarifications || [])
 const assumptions = computed(() => selected.value?.snapshot?.assumptions || [])
 const plan = computed(() => pick(selected.value, 'plan'))
-const legacySource = computed(() => selected.value?.request?.source || null)
+const isRemix = computed(() => selected.value?.request?.mode === 'remix' || requestSpec.value?.recipe_hint === 'remix')
+// v1 stores the remix source on the request; v2 has it as the remix_source attachment.
+const sourceVideo = computed(() => {
+  if (selected.value?.request?.source) return selected.value.request.source
+  const use = requestSpec.value?.attachments?.find((item) => item.role === 'remix_source')
+  return use ? attachments.value.find((item) => item.attachment_id === use.attachment_id) || null : null
+})
 const requestText = computed(() => selected.value?.text || selected.value?.request?.text || selected.value?.request?.goal || '')
 const budgetLimit = computed(() => selected.value?.request?.budget_limit ?? selected.value?.budget_limit ?? null)
 const answeredCards = computed(() => clarifications.value.flatMap((record) =>
@@ -198,7 +206,7 @@ const answeredCards = computed(() => clarifications.value.flatMap((record) =>
   }))))
 
 const actionDisabled = computed(() => busy.value || Boolean(selected.value?.command) || paramsInvalid.value)
-const canRevise = computed(() => selected.value?.request?.mode === 'remix' && selected.value?.status === 'awaiting_delivery')
+const canRevise = computed(() => isRemix.value && selected.value?.status === 'awaiting_delivery')
 const shotEditable = computed(() => (selected.value?.status === 'awaiting_approval' || canRevise.value) && !busy.value && !selected.value?.command)
 const showRunActions = computed(() => ['awaiting_delivery', 'needs_attention'].includes(selected.value?.status) || selected.value?.command)
 

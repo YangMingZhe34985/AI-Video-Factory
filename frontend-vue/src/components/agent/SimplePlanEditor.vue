@@ -19,7 +19,7 @@
           <span class="tag">{{ t(`mode_${plan.image.mode}`) }}</span>
           <span class="ml-auto text-xs tabular-nums text-slate-500">{{ t('estimate', { cost: format(imageCost) }) }}</span>
         </div>
-        <div class="grid gap-4 md:grid-cols-[minmax(0,1fr)_14rem]">
+        <div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_14rem]">
           <label class="field-label">{{ t('prompt') }}
             <textarea v-model="plan.image.prompt" class="field" rows="5" maxlength="8000" :readonly="!editable" />
           </label>
@@ -49,7 +49,7 @@
           <span class="tag">{{ t(`mode_${plan.video.mode}`) }}</span>
           <span class="ml-auto text-xs tabular-nums text-slate-500">{{ t('estimate', { cost: format(videoCost) }) }}</span>
         </div>
-        <div class="grid gap-4 md:grid-cols-[minmax(0,1fr)_14rem]">
+        <div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_14rem]">
           <div class="space-y-3">
             <div class="flex items-center gap-3 rounded-xl bg-slate-50 p-2 dark:bg-slate-800/60">
               <AuthedImage v-if="plan.video.first_frame === 'user_attachment'" :src="previewOf(plan.video.first_frame_attachment_id)" class="h-12 w-12 flex-none rounded-lg object-cover" />

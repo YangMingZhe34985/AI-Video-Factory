@@ -60,7 +60,7 @@ export default {
     generationSettings: '模型与参数', invalidParams: '参数必须是有效的 JSON 对象',
     reviseShot: '确认修改此镜头（约 {cost} credits）', shotHistory: '历史版本',
     invalidDraft: '请修改后再确认：',
-    sourceVideo: '原视频', sourceAnalysis: '原片分析',
+    sourceVideo: '原视频', sourceAnalysis: '原片分析', loadPreview: '加载预览', loadingPreview: '加载中…', previewFailed: '预览加载失败',
     // results / delivery
     results: '生成结果', download: '下载', mockVideo: 'Mock 视频占位文件，可以下载检查交付流程。',
     deliver: '打包可用素材', resume: '恢复执行', packages: '素材包', packageHint: '每个任务一个 ZIP，包含视频、图片、提示词与清单。',
@@ -124,7 +124,7 @@ export default {
     generationSettings: 'Model and parameters', invalidParams: 'Parameters must be a valid JSON object',
     reviseShot: 'Confirm this shot edit (~{cost} credits)', shotHistory: 'Previous versions',
     invalidDraft: 'Fix before approving:',
-    sourceVideo: 'Source video', sourceAnalysis: 'Source analysis',
+    sourceVideo: 'Source video', sourceAnalysis: 'Source analysis', loadPreview: 'Load preview', loadingPreview: 'Loading…', previewFailed: 'Preview unavailable',
     results: 'Results', download: 'Download', mockVideo: 'Mock video placeholder. Download it to check the delivery flow.',
     deliver: 'Package assets', resume: 'Resume', packages: 'Packages', packageHint: 'One ZIP per job with videos, images, prompts and manifest.',
     queued: 'Queued', understanding: 'Understanding', researching: 'Researching', analyzing: 'Analyzing', awaiting_input: 'Waiting for you', planning: 'Planning', awaiting_approval: 'Awaiting review',
