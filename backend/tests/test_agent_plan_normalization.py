@@ -74,7 +74,7 @@ def test_null_misplaced_ids_leave_server_selection_available(app_ctx):
     raw = misplaced_plan()
     for kind in ("image", "video"):
         raw["shots"][0][f"{kind}_params"] = {"model_id": None}
-    result = validate_plan(raw, 1, 14, build_policy("a dancing dog"))
+    result = validate_plan(raw, 1, 18, build_policy("a dancing dog"))
     shot = result["shots"][0]
     assert shot["image_model_id"] == app_ctx.config["DEFAULT_IMAGE_MODEL"]
     assert shot["video_model_id"] == app_ctx.config["DEFAULT_I2V_MODEL"]
@@ -84,7 +84,7 @@ def test_null_misplaced_ids_leave_server_selection_available(app_ctx):
 
 def test_historical_paid_output_validates_and_retains_parameters(app_ctx):
     raw = misplaced_plan()
-    validated = validate_plan(raw, 1, 14, build_policy("a dancing dog"))
+    validated = validate_plan(raw, 1, 18, build_policy("a dancing dog"))
     shot = validated["shots"][0]
     assert shot["image_model_id"] == "wan2.7-image"
     assert shot["video_model_id"] == "wan2.7-i2v"

@@ -73,3 +73,4 @@ def test_migration_and_schema_repair_are_repeatable(tmp_path):
         upgrade(directory=MIGRATIONS_DIR)
         db.session.remove()
         db.engine.dispose()
+        assert not app.logger.disabled  # Migrations must preserve cost/operational warnings.

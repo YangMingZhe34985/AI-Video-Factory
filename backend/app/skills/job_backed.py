@@ -17,6 +17,7 @@ from app.models import Artifact, Job, ModelRegistry, Series, Template, ToolInvoc
 from app.services.artifact_service import ArtifactService
 from app.services.job_run_service import JobRunService
 from app.services.job_service import JobService
+from app.services.model_service import ModelService
 from app.services.prompt_service import PromptService
 from app.services.workflow_service import WorkflowService
 from app.skills import model_guard
@@ -92,7 +93,15 @@ def pin_model(
              else model_guard.effective_model(capability, node_key, model_id))
     if policy:
         job_config["video_model_policy"] = policy
-    validated = model_guard.validate_params(model, params or {})
+    supplied = model_guard.validate_params(model, params or {})
+    defaults = ModelService.effective_params(model)
+    defaults.update((WorkflowService.get_node(node_key).config or {}).get("model_params") or {})
+    # Freeze the exposed effective parameters at submission, including catalog
+    # duration fallback; queued jobs must not drift when model defaults change.
+    validated = model_guard.validate_params(model, {
+        **{key: value for key, value in defaults.items() if key in (model.parameter_schema or {})},
+        **supplied,
+    })
     job_config.setdefault("node_models", {})[node_key] = model.model_id
     if validated:
         job_config.setdefault("node_model_params", {})[node_key] = validated

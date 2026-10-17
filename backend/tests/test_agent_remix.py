@@ -78,7 +78,7 @@ def test_invalid_duration_draft_can_be_corrected_without_replanning(app_ctx, cli
     assert result["status"] == "awaiting_delivery"
     assert result["snapshot"]["plan_issues"] == []
     assert result["summary"]["success"] == 2
-    assert result["estimated_spent"] == 13
+    assert result["estimated_spent"] == 8  # analysis/planning (3) + 5 generated seconds at 1 credit/sec
     assert ApiTask.query.count() == 1
     assert ApiTask.query.one().request_payload["parameters"]["duration"] == 5
     for name in ("analyze_video", "agent_director", "agent_creative"):

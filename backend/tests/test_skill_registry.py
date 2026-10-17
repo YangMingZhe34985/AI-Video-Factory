@@ -77,7 +77,7 @@ def test_billed_tools_require_approval(app_ctx):
 
 @pytest.mark.parametrize(
     "params",
-    [{"size": "999*999"}, {"not_a_param": 1}, {"n": "two"}],
+    [{"size": "999*999"}, {"not_a_param": 1}],
 )
 def test_invalid_model_params_are_rejected_without_spending(app_ctx, params):
     with pytest.raises(AppError) as exc:
@@ -89,6 +89,14 @@ def test_invalid_model_params_are_rejected_without_spending(app_ctx, params):
     assert invocation.job_id is None
     assert BudgetGuard.spent("params") == 0
     assert Job.query.count() == 0
+
+
+def test_invalid_billable_quantity_is_rejected_before_ledger(app_ctx):
+    with pytest.raises(AppError) as exc:
+        invoke("generate_image", {"prompt": "a cat", "params": {"n": "two"}}, budget_scope="params")
+    assert exc.value.code == "INVALID_INPUT"
+    assert ToolInvocation.query.count() == Job.query.count() == ApiTask.query.count() == 0
+    assert BudgetGuard.spent("params") == 0
 
 
 def test_model_with_wrong_task_type_is_rejected(app_ctx):

@@ -390,6 +390,16 @@ MODEL_ALIAS_TO_ID[_model_alias_key("GLM5.1")] = "glm-5.1"
 
 class ModelService:
     @staticmethod
+    def effective_params(model, params: dict | None = None) -> dict:
+        """Use catalog defaults consistently for quoting and provider payloads."""
+        effective = dict(model.default_params or {})
+        minimum = ((model.capabilities or {}).get("duration") or {}).get("min")
+        if minimum is not None:
+            effective.setdefault("duration", minimum)
+        effective.update(params or {})
+        return effective
+
+    @staticmethod
     def canonical_model_id(value: str | None) -> str | None:
         if value is None:
             return None
