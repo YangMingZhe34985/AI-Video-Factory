@@ -17,6 +17,7 @@ class ModelRegistry(db.Model, SerializerMixin):
     parameter_schema = db.Column(db.JSON, nullable=False, default=dict)
     output_schema = db.Column(db.JSON, nullable=False, default=dict)
     default_params = db.Column(db.JSON, nullable=False, default=dict)
+    capabilities = db.Column(db.JSON, nullable=False, default=dict, server_default=db.text("('{}')"))
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utc_now)
     updated_at = db.Column(
         db.DateTime(timezone=True), nullable=False, default=utc_now, onupdate=utc_now
