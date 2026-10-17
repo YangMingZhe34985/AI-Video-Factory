@@ -11,6 +11,7 @@ from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.types import Command
 
 from app.agent.graph import build_graph
+from app.api import AppError
 from app.extensions import db
 from app.models import AgentRun
 from app.skills.budget import BudgetGuard
@@ -41,13 +42,14 @@ def worker_lock():
 class AgentWorker:
     """Call only while holding worker_lock (tests use the same lock)."""
 
-    def __init__(self, graph):
+    def __init__(self, graph, graph_v2=None):
         self.graph = graph
+        self.graph_v2 = graph_v2
 
     def tick(self):
         db.session.expire_all()
         ids = [row.run_id for row in AgentRun.query.filter(
-            (AgentRun.status.in_(["queued", "analyzing", "planning", "producing", "delivering"])) | AgentRun.command.is_not(None)
+            (AgentRun.status.in_(["queued", "understanding", "analyzing", "planning", "producing", "delivering"])) | AgentRun.command.is_not(None)
         ).order_by(AgentRun.id).all()]
         for run_id in ids:
             self.advance(run_id)
@@ -56,16 +58,24 @@ class AgentWorker:
         row = AgentRun.query.filter_by(run_id=run_id).one()
         config = {"configurable": {"thread_id": run_id}, "recursion_limit": 100}
         command = row.command
+        version = row.request.get("schema_version", 1)
+        graph = {1: self.graph, 2: self.graph_v2}.get(version)
         try:
-            snapshot = self.graph.get_state(config)
+            if graph is None:
+                raise AppError("AGENT_GRAPH_UNAVAILABLE", f"No execution graph for schema version {version}", 500)
+            snapshot = graph.get_state(config)
             if not snapshot.values:
                 request = row.request
-                row.status = "planning"
+                row.status = "understanding" if version == 2 else "planning"
                 db.session.commit()
-                value = {"run_id": run_id, "goal": request["goal"], "shot_count": request["shot_count"],
-                         "budget_limit": request["budget_limit"], "status": "planning", "shots": {}, "packages": [],
-                         "mode": request.get("mode", "from_scratch"),
+                value = {"run_id": run_id, "budget_limit": request["budget_limit"], "status": row.status,
+                         "shots": {}, "packages": [],
                          "mock": current_app.config.get("MODEL_ADAPTER_MODE") == "mock"}
+                if version == 2:
+                    value["results"] = []
+                else:
+                    value.update(goal=request["goal"], shot_count=request["shot_count"],
+                                 mode=request.get("mode", "from_scratch"))
             elif snapshot.interrupts:
                 kind = snapshot.interrupts[0].value["kind"]
                 if command and command.get("command_id") and command["command_id"] == snapshot.values.get("last_command_id"):
@@ -87,15 +97,15 @@ class AgentWorker:
                 value = None
             # Clear inbox only AFTER graph/checkpoint succeeds. If killed here,
             # the persisted checkpoint determines whether to consume it again.
-            self.graph.invoke(value, config)
-            result = self.graph.get_state(config)
+            graph.invoke(value, config)
+            result = graph.get_state(config)
             self._save(row, result.values, None)
         except Exception as error:
             db.session.rollback()
             current_app.logger.exception("Agent run failed: %s", run_id)
             row = AgentRun.query.filter_by(run_id=run_id).one()
-            latest = self.graph.get_state(config)
-            row.snapshot = dict(latest.values or row.snapshot or {})
+            latest = graph.get_state(config) if graph is not None else None
+            row.snapshot = dict((latest.values if latest else None) or row.snapshot or {})
             row.status = "needs_attention"
             row.error = {"code": getattr(error, "code", "AGENT_FAILED"), "message": str(error)}
             row.command = None
@@ -117,6 +127,7 @@ class AgentWorker:
 
 
 def run_worker(once=False):
+    from app.agent.graph_v2 import build_graph as build_graph_v2
     if not current_app.config.get("AGENT_MODE_ENABLED"):
         raise click.ClickException("AGENT_MODE_ENABLED must be true")
     # This is a dedicated process. Paid retries must not bypass the Agent's
@@ -124,7 +135,7 @@ def run_worker(once=False):
     current_app.config["FAILURE_AGENT_ENABLED"] = False
     current_app.config["AGENT_WORKER_ACTIVE"] = True
     with worker_lock(), SqliteSaver.from_conn_string(str(checkpoint_path())) as saver:
-        worker = AgentWorker(build_graph(saver))
+        worker = AgentWorker(build_graph(saver), build_graph_v2(saver))
         while True:
             worker.tick()
             db.session.remove()
