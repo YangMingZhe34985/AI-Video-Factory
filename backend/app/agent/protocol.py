@@ -5,28 +5,40 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.agent.clarify import Answer
 from app.agent.plan_spec import PlanSpec, RemixShotSpec
-from app.agent.model_policy import build_policy, select_video_model
+from app.agent.model_policy import select_video_model
 from app.api import AppError
 from app.skills import model_guard
-from app.skills.budget import estimate_nodes_cost, planner_cost
 from app.services.model_service import ModelService
 
 
 class CreateRun(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
-    goal: str = Field(min_length=1, max_length=8000)
-    shot_count: int = Field(default=3, ge=1, le=20, strict=True)
-    budget_limit: float = Field(default=100, gt=0, allow_inf_nan=False)
+    text: str = Field(min_length=2, max_length=8000)
+    attachment_ids: list[str] = Field(default_factory=list)
+    budget_limit: float = Field(default_factory=lambda: current_app.config["AGENT_DEFAULT_BUDGET"],
+                                gt=0, allow_inf_nan=False)
     request_key: str = Field(min_length=1, max_length=128)
-    video_model_preference: str | None = Field(default=None, min_length=1, max_length=120)
-    mode: Literal["from_scratch", "remix"] = "from_scratch"
-    source_artifact_id: str | None = Field(default=None, min_length=1, max_length=80)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _v2_input(cls, data):
+        if isinstance(data, dict):
+            deprecated = sorted(set(data) & {"goal", "mode", "shot_count", "video_model_preference", "source_artifact_id"})
+            if deprecated:
+                raise AppError("DEPRECATED_FIELD", "Use text and attachment_ids for new Agent runs", 422,
+                               payload={"fields": deprecated})
+            text = data.get("text")
+            if not isinstance(text, str) or not 2 <= len(text.strip()) <= 8000:
+                raise AppError("TEXT_REQUIRED", "Provide a text request of 2 to 8000 characters", 422)
+        return data
 
     @model_validator(mode="after")
-    def _source_matches_mode(self):
-        if (self.mode == "remix") != bool(self.source_artifact_id):
-            raise ValueError("Only remix runs require source_artifact_id")
+    def _attachments(self):
+        if (len(self.attachment_ids) > current_app.config["AGENT_MAX_ATTACHMENTS"]
+                or len(set(self.attachment_ids)) != len(self.attachment_ids)
+                or any(not value or len(value) > 80 for value in self.attachment_ids)):
+            raise AppError("INVALID_ATTACHMENT", "Attachment IDs must be unique and within the configured limit", 422)
         return self
 
 
@@ -34,7 +46,7 @@ class RunAction(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     action: Literal["approve", "reject", "deliver", "resume", "revise", "answer"]
-    plan: PlanSpec | None = None
+    plan: dict | None = None
     shot: RemixShotSpec | None = None
     request_key: str | None = Field(default=None, min_length=1, max_length=128)
     card_id: str | None = Field(default=None, min_length=1, max_length=80)
@@ -112,13 +124,6 @@ def validate_shot(shot, video_model_policy=None, *, source_duration=None):
 def validate_request(data: CreateRun) -> None:
     if data.budget_limit > current_app.config.get("AGENT_MAX_BUDGET", 500):
         raise AppError("INVALID_INPUT", "Budget exceeds the server limit", 422)
-    minimum = 2 * planner_cost()
-    if data.mode == "remix":
-        minimum += estimate_nodes_cost(["reverse_prompts"])
-    else:
-        policy = build_policy(data.goal, data.video_model_preference)
-        video = select_video_model(policy, "i2v")
-        minimum += data.shot_count * estimate_nodes_cost(
-            ["submit_first_frame_image", "submit_i2v"], node_models={"submit_i2v": video.model_id})
+    minimum = current_app.config["AGENT_MIN_RUN_CREDITS"]
     if minimum > data.budget_limit:
         raise AppError("BUDGET_EXCEEDED", f"This request needs at least {minimum} estimated credits", 402)

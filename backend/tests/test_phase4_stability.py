@@ -45,7 +45,7 @@ def test_provider_accepts_then_response_is_lost_no_resubmission(app_ctx, client,
 def test_canary_admission_and_metrics_ownership(app_ctx, client):
     pilot = {"Authorization": "Bearer " + create_access_token(identity="pilot")}
     other = {"Authorization": "Bearer " + create_access_token(identity="other")}
-    body = {"goal": "cat", "shot_count": 1, "budget_limit": 14, "request_key": "pilot"}
+    body = {"text": "生成一张猫的图片", "budget_limit": 14, "request_key": "pilot"}
     assert client.post("/api/agent/runs", json=body, headers=other).status_code == 403
     assert client.post("/api/agent/sources", headers=other).status_code == 403
     assert client.post("/api/skills/produce_shot/invoke", json={}, headers=other).status_code == 403
@@ -57,9 +57,13 @@ def test_canary_admission_and_metrics_ownership(app_ctx, client):
     app_ctx.config["AGENT_ALLOWED_USERS"] = "other"
     # Existing admitted work and creation replay are not stranded by cohort changes.
     assert client.post("/api/agent/runs", json=body, headers=pilot).json["data"]["run_id"] == run_id
-    tick()
+    from app.agent.graph_v2 import build_graph as build_graph_v2
+    from langgraph.checkpoint.sqlite import SqliteSaver
+    with worker_lock(), SqliteSaver.from_conn_string(str(checkpoint_path())) as saver:
+        AgentWorker(None, build_graph_v2(saver)).tick()
     assert client.post(f"/api/agent/runs/{run_id}/actions", json={"action": "reject"}, headers=pilot).status_code == 202
-    tick()
+    with worker_lock(), SqliteSaver.from_conn_string(str(checkpoint_path())) as saver:
+        AgentWorker(None, build_graph_v2(saver)).tick()
 
 
 def test_drain_finish_disable_reenable_preserves_history_and_classic(app_ctx, client, h, source_video):
@@ -67,7 +71,7 @@ def test_drain_finish_disable_reenable_preserves_history_and_classic(app_ctx, cl
     tick()
     app_ctx.config["AGENT_ACCEPT_NEW_RUNS"] = False
     assert create(client, shot_count=1) == run_id
-    assert client.post("/api/agent/runs", json={"goal": "cat", "request_key": "new"}).status_code == 503
+    assert client.post("/api/agent/runs", json={"text": "cat", "request_key": "new"}).status_code == 503
     assert client.post("/api/agent/sources").status_code == 503
     action(client, run_id, "approve")
     assert finish(client, run_id)["status"] == "awaiting_delivery"

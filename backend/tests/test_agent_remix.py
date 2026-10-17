@@ -262,12 +262,12 @@ def test_source_dimensions_ignore_codec_hex_tag_and_accept_small_video(app_ctx, 
 
 
 @pytest.mark.config(AGENT_MODE_ENABLED=True, API_AUTH_REQUIRED=True, JWT_SECRET_KEY="test-remix-auth-secret-more-than-32-bytes")
-def test_source_ownership_and_required_mode(app_ctx, client, video_file):
+def test_source_ownership_and_deprecated_mode_fields(app_ctx, client, video_file):
     from flask_jwt_extended import create_access_token
     first = {"Authorization": f"Bearer {create_access_token(identity='first')}"}
     second = {"Authorization": f"Bearer {create_access_token(identity='second')}"}
     source = upload(client, video_file, headers=first)
-    request = {"mode": "remix", "goal": "change motion", "request_key": "source-test", "source_artifact_id": source["artifact_id"]}
+    request = {"text": "change motion", "request_key": "source-test", "attachment_ids": [source["artifact_id"]]}
     assert client.post("/api/agent/runs", headers=second, json=request).status_code == 404
     response = client.post("/api/agent/runs", headers=first, json=request)
     assert response.status_code == 202

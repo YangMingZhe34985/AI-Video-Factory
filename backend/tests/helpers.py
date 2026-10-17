@@ -15,6 +15,26 @@ from app.services.workflow_service import WorkflowService
 TERMINAL_STATUSES = {"success", "failed", "partial_success", "cancelled"}
 
 
+def legacy_agent_run(owner="local", **overrides):
+    """Persist an existing v1 run; the public creation API now accepts v2 only."""
+    from app.agent.model_policy import build_policy
+    from app.agent.sources import describe_source, source_for_owner
+    from app.models import AgentRun
+    payload = {"goal": "一只橘猫走进雨后的书店，三个连贯镜头", "shot_count": 3, "budget_limit": 50, **overrides}
+    key = payload.pop("request_key", "demo")
+    row = AgentRun.query.filter_by(owner_id=owner, request_key=key).first()
+    if row:
+        assert {name: value for name, value in row.request.items() if name not in {"video_model_policy", "source"}} == payload
+        return row
+    policy = build_policy(payload["goal"], payload.get("video_model_preference"))
+    source = ({"source": describe_source(source_for_owner(payload["source_artifact_id"], owner))}
+              if payload.get("mode") == "remix" else {})
+    row = AgentRun(owner_id=owner, request_key=key, request={**payload, "video_model_policy": policy, **source})
+    db.session.add(row)
+    db.session.commit()
+    return row
+
+
 # Mirrors WORKFLOW_PATHS in frontend-vue/src/stores/workflow.js so tests submit
 # the same node selections as the job wizard.
 NODE_PATHS = {

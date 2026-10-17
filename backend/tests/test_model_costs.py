@@ -113,10 +113,8 @@ def test_family_policy_uses_final_model_for_plan_admission_and_tool_budget(app_c
     assert error.value.code == "BUDGET_EXCEEDED"
     valid = validate_plan(raw, 1, 39, policy)
     assert valid["shots"][0]["video_model_id"] == video.model_id
-    with pytest.raises(AppError) as error:
-        validate_request(CreateRun(goal="使用 wan2.6 系列生成猫跳舞视频", shot_count=1,
-                                   budget_limit=38, request_key="family"))
-    assert error.value.code == "BUDGET_EXCEEDED"
+    # v2 admission reserves only understanding; generation is checked at approval.
+    validate_request(CreateRun(text="使用 wan2.6 系列生成猫跳舞视频", budget_limit=38, request_key="family"))
     run = AgentRun(owner_id="test", request_key="family", request={"video_model_policy": policy})
     db.session.add(run)
     db.session.commit()

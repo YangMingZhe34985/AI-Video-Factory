@@ -16,6 +16,7 @@ from app.services.job_run_service import JobRunService
 from app.services.node_runner import NodeRunner
 from app.services.workflow_service import WorkflowService
 from app.services.storage_service import StorageService
+from tests.helpers import legacy_agent_run
 
 pytestmark = pytest.mark.config(AGENT_MODE_ENABLED=True)
 
@@ -28,12 +29,7 @@ def tick():
 
 
 def create(client, **overrides):
-    response = client.post("/api/agent/runs", json={
-        "goal": "一只橘猫走进雨后的书店，三个连贯镜头", "shot_count": 3,
-        "budget_limit": 50, "request_key": "demo", **overrides,
-    })
-    assert response.status_code == 202, response.json
-    return response.json["data"]["run_id"]
+    return legacy_agent_run(**overrides).run_id
 
 
 def detail(client, run_id):
@@ -117,13 +113,15 @@ def test_duplicate_create_reject_and_request_validation(app_ctx, client):
     run_id = create(client)
     assert create(client) == run_id
     assert AgentRun.query.count() == 1
-    assert client.post("/api/agent/runs", json={"goal": "different", "request_key": "demo"}).status_code == 409
+    deprecated = client.post("/api/agent/runs", json={"goal": "different", "request_key": "demo"})
+    assert deprecated.status_code == 422
+    assert deprecated.json["error"]["code"] == "DEPRECATED_FIELD"
     for body, expected in [
         ({"goal": "", "request_key": "a"}, 422),
         ({"goal": "cat", "request_key": "a", "shot_count": 21}, 422),
-        ({"goal": "cat", "request_key": "a", "budget_limit": 3}, 402),
-        ({"goal": "cat", "request_key": "a", "approved": True}, 422),
-        ({"goal": "cat", "request_key": "a", "budget_limit": float("inf")}, 422),
+        ({"text": "cat", "request_key": "a", "budget_limit": 2}, 402),
+        ({"text": "cat", "request_key": "a", "approved": True}, 422),
+        ({"text": "cat", "request_key": "a", "budget_limit": float("inf")}, 422),
     ]:
         assert client.post("/api/agent/runs", json=body).status_code == expected
     tick()
@@ -343,7 +341,7 @@ def test_agent_auth_and_session_ownership(app_ctx, client):
     assert client.get("/api/agent/runs").status_code == 401
     first = {"Authorization": f"Bearer {create_access_token(identity='first')}"}
     second = {"Authorization": f"Bearer {create_access_token(identity='second')}"}
-    response = client.post("/api/agent/runs", headers=first, json={"goal": "cat", "request_key": "same"})
+    response = client.post("/api/agent/runs", headers=first, json={"text": "cat", "request_key": "same"})
     run_id = response.json["data"]["run_id"]
     assert client.get(f"/api/agent/runs/{run_id}", headers=second).status_code == 404
     assert client.post(f"/api/agent/runs/{run_id}/actions", headers=second, json={"action": "approve"}).status_code == 404

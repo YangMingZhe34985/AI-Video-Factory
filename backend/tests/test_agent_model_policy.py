@@ -58,17 +58,18 @@ def test_a_model_name_in_the_story_is_not_a_model_instruction(app_ctx):
     "使用wan2.7-pro生成猫跳舞", "Please use unknownModel video model for a dancing cat",
 ])
 def test_unknown_or_conflicting_requirements_do_not_fall_back(app_ctx, client, goal):
-    response = client.post("/api/agent/runs", json={"goal": goal, "request_key": "invalid"})
-    assert response.status_code == 422, response.json
-    assert response.json["error"]["code"] == "MODEL_PREFERENCE_UNAVAILABLE"
+    with pytest.raises(AppError) as error:
+        build_policy(goal)
+    assert error.value.code == "MODEL_PREFERENCE_UNAVAILABLE"
     assert AgentRun.query.count() == Job.query.count() == ToolInvocation.query.count() == 0
 
 
 def test_disabled_matching_model_is_not_replaced(app_ctx, client):
     ModelRegistry.query.filter_by(model_id="happyhorse-1.0-i2v").update({"enabled": False})
     db.session.commit()
-    response = client.post("/api/agent/runs", json={"goal": "猫跳舞，使用happyhorse模型", "request_key": "disabled"})
-    assert response.status_code == 422
+    with pytest.raises(AppError) as error:
+        select_video_model(build_policy("猫跳舞，使用happyhorse模型"), "i2v")
+    assert error.value.status_code == 422
     assert Job.query.count() == 0
 
 
