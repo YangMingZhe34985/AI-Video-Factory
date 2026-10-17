@@ -27,7 +27,7 @@ const props = defineProps({
 const { t } = useI18n({ useScope: 'local', messages })
 
 const STATUS_STAGE = {
-  queued: 'understand', understanding: 'understand', analyzing: 'understand',
+  queued: 'understand', understanding: 'understand', analyzing: 'understand', researching: 'understand',
   awaiting_input: 'clarify', planning: 'plan', awaiting_approval: 'review',
   producing: 'produce', awaiting_delivery: 'deliver', delivering: 'deliver',
 }

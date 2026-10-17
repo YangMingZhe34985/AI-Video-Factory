@@ -47,3 +47,9 @@
 - 决定：未回答的非阻塞题直接取默认值，`use_defaults` 只是“一次性接受默认值”的显式写法；超过轮数自动取值时，无默认也无推荐的问题取第一个选项（`source=fallback`）；答案记录格式与 `ClarifyState` 状态键写入 A.7；新增错误码 `INVALID_CLARIFICATION`。
 - 原因：原契约对“未回答的非阻塞题”与“无推荐的阻塞题被自动取值”未作规定。
 - 影响：A6（v2 图需继承 `ClarifyState`）、A7（前端按 `Resolution` 格式展示答案与假设）。
+
+## D-011 · 2026-10-18 · 联网检索的边界（B0）
+- 决定：B 章新增权限级别 `external` 与 Run 状态 `researching`；`fetch_page` / `download_reference` 只接受本 Run 检索结果或用户原文中出现过的网址，并对每次请求和重定向做 SSRF 检查；Research 按“结构化计划 → 图调用 Skill → 结构化汇总”完成，LLM 只能按 `result_id` 选择结果，不能输出网址。
+- 原因：网页内容不可信，若允许 LLM 自由提供网址，提示注入可以让 Agent 访问内网或任意地址。
+- 影响：B1–B4；A.10 状态集合；A7 前端已加入 `researching` 状态。
+- 分工：资料卡片前端（B.11）由 Claude 负责，记为任务 B5。

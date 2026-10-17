@@ -65,7 +65,7 @@ export default {
     results: '生成结果', download: '下载', mockVideo: 'Mock 视频占位文件，可以下载检查交付流程。',
     deliver: '打包可用素材', resume: '恢复执行', packages: '素材包', packageHint: '每个任务一个 ZIP，包含视频、图片、提示词与清单。',
     // statuses
-    queued: '已排队', understanding: '理解中', analyzing: '分析中', awaiting_input: '等待你确认', planning: '规划中', awaiting_approval: '等待审核',
+    queued: '已排队', understanding: '理解中', researching: '检索资料中', analyzing: '分析中', awaiting_input: '等待你确认', planning: '规划中', awaiting_approval: '等待审核',
     producing: '生成中', awaiting_delivery: '可预览与交付', delivering: '交付中', success: '已完成', partial_success: '部分完成',
     failed: '失败', cancelled: '已取消', needs_attention: '需要处理', pending: '待执行', running: '执行中', skipped: '已跳过', path_failed: '上游失败',
     waiting: '等待模型结果', submit_unknown: '提交结果待核实',
@@ -127,7 +127,7 @@ export default {
     sourceVideo: 'Source video', sourceAnalysis: 'Source analysis',
     results: 'Results', download: 'Download', mockVideo: 'Mock video placeholder. Download it to check the delivery flow.',
     deliver: 'Package assets', resume: 'Resume', packages: 'Packages', packageHint: 'One ZIP per job with videos, images, prompts and manifest.',
-    queued: 'Queued', understanding: 'Understanding', analyzing: 'Analyzing', awaiting_input: 'Waiting for you', planning: 'Planning', awaiting_approval: 'Awaiting review',
+    queued: 'Queued', understanding: 'Understanding', researching: 'Researching', analyzing: 'Analyzing', awaiting_input: 'Waiting for you', planning: 'Planning', awaiting_approval: 'Awaiting review',
     producing: 'Generating', awaiting_delivery: 'Ready to deliver', delivering: 'Delivering', success: 'Done', partial_success: 'Partly done',
     failed: 'Failed', cancelled: 'Cancelled', needs_attention: 'Needs attention', pending: 'Pending', running: 'Running', skipped: 'Skipped', path_failed: 'Upstream failed',
     waiting: 'Waiting for model', submit_unknown: 'Submission needs checking',
