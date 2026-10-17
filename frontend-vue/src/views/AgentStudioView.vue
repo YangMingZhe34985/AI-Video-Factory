@@ -76,10 +76,10 @@
                 <p class="text-xs text-slate-400">{{ t('yourRequest') }}</p>
                 <p class="mt-1 whitespace-pre-wrap text-[15px] leading-relaxed text-slate-800 dark:text-slate-100">{{ requestText }}</p>
                 <div v-if="attachments.length" class="mt-3 flex flex-wrap gap-2">
-                  <a v-for="item in attachments" :key="item.attachment_id" :href="item.preview_url" target="_blank" rel="noopener" class="block h-16 w-16 overflow-hidden rounded-lg ring-1 ring-slate-200 dark:ring-slate-700">
-                    <img v-if="item.kind === 'image'" :src="item.preview_url" :alt="item.file_name" class="h-full w-full object-cover" />
+                  <span v-for="item in attachments" :key="item.attachment_id" class="block h-16 w-16 overflow-hidden rounded-lg ring-1 ring-slate-200 dark:ring-slate-700" :title="item.file_name">
+                    <AuthedImage v-if="item.kind === 'image'" :src="item.preview_url" :alt="item.file_name" class="h-full w-full object-cover" />
                     <span v-else class="flex h-full w-full items-center justify-center bg-slate-800 text-white"><PhFilmStrip :size="20" /></span>
-                  </a>
+                  </span>
                 </div>
               </div>
             </section>
@@ -135,7 +135,7 @@
                 <figure v-for="item in results" :key="item.artifact_id" class="overflow-hidden rounded-xl border border-slate-200 dark:border-slate-700">
                   <div v-if="selected.snapshot?.mock && item.kind === 'video'" class="bg-slate-100 p-8 text-center text-xs text-slate-500 dark:bg-slate-800">{{ t('mockVideo') }}</div>
                   <video v-else-if="item.kind === 'video'" controls preload="metadata" :src="item.preview_url" class="max-h-80 w-full bg-black" />
-                  <img v-else :src="item.preview_url" alt="" class="max-h-80 w-full bg-slate-100 object-contain dark:bg-slate-800" />
+                  <AuthedImage v-else :src="item.preview_url" class="max-h-80 w-full bg-slate-100 object-contain dark:bg-slate-800" />
                   <figcaption class="flex justify-end px-3 py-2"><a :href="item.download_url" class="text-xs text-blue-600 hover:underline" download>{{ t('download') }}</a></figcaption>
                 </figure>
               </div>
@@ -166,6 +166,7 @@ import UnderstandingCard from '@/components/agent/UnderstandingCard.vue'
 import ClarificationCard from '@/components/agent/ClarificationCard.vue'
 import SimplePlanEditor from '@/components/agent/SimplePlanEditor.vue'
 import ShotPlanEditor from '@/components/agent/ShotPlanEditor.vue'
+import AuthedImage from '@/components/agent/AuthedImage.vue'
 import messages from '@/components/agent/messages'
 import { actOnAgentRun, answerAgentCard, createAgentRun, getAgentRun, listAgentRuns, listModels, reviseAgentShot } from '@/api/agent'
 

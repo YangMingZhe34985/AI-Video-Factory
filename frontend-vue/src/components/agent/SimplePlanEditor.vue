@@ -35,7 +35,7 @@
             <div v-if="plan.image.reference_attachment_ids?.length">
               <span class="field-label">{{ t('references') }}</span>
               <div class="mt-1 flex flex-wrap gap-1.5">
-                <img v-for="id in plan.image.reference_attachment_ids" :key="id" :src="previewOf(id)" alt="" class="h-12 w-12 rounded-lg object-cover ring-1 ring-slate-200 dark:ring-slate-700" />
+                <AuthedImage v-for="id in plan.image.reference_attachment_ids" :key="id" :src="previewOf(id)" class="h-12 w-12 rounded-lg object-cover ring-1 ring-slate-200 dark:ring-slate-700" />
               </div>
             </div>
           </div>
@@ -52,7 +52,7 @@
         <div class="grid gap-4 md:grid-cols-[minmax(0,1fr)_14rem]">
           <div class="space-y-3">
             <div class="flex items-center gap-3 rounded-xl bg-slate-50 p-2 dark:bg-slate-800/60">
-              <img v-if="plan.video.first_frame === 'user_attachment'" :src="previewOf(plan.video.first_frame_attachment_id)" alt="" class="h-12 w-12 rounded-lg object-cover" />
+              <AuthedImage v-if="plan.video.first_frame === 'user_attachment'" :src="previewOf(plan.video.first_frame_attachment_id)" class="h-12 w-12 flex-none rounded-lg object-cover" />
               <span v-else class="flex h-12 w-12 items-center justify-center rounded-lg bg-slate-200 text-xs text-slate-500 dark:bg-slate-700">1 →</span>
               <span class="text-xs text-slate-600 dark:text-slate-300">{{ t('firstFrame') }} · {{ t(plan.video.first_frame === 'user_attachment' ? 'firstFrameUser' : 'firstFrameGenerated') }}</span>
             </div>
@@ -90,6 +90,7 @@
 <script setup>
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
+import AuthedImage from './AuthedImage.vue'
 import messages from './messages'
 
 const props = defineProps({
