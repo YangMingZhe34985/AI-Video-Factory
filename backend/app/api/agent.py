@@ -2,8 +2,10 @@ from flask import Blueprint, current_app, request
 from flask_jwt_extended import get_jwt_identity
 from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError
+from werkzeug.exceptions import RequestEntityTooLarge
 
 from app.agent.clarify import resolve_answers
+from app.agent.attachments import invalid_attachment, upload_attachment
 from app.agent.protocol import CreateRun, RunAction, validate_plan, validate_request, validate_shot
 from app.agent.plan_spec import shot_cost
 from app.agent.release import ensure_admission
@@ -42,6 +44,18 @@ def get_run(run_id):
 def create_source():
     ensure_admission()
     return api_success(upload_source(request.files.get("file"), owner()), 201)
+
+
+@bp.post("/attachments")
+def create_attachment():
+    ensure_admission()
+    try:
+        files = list(request.files.items(multi=True))
+    except RequestEntityTooLarge as error:
+        raise invalid_attachment("Attachment exceeds the configured size limit") from error
+    if len(files) != 1 or files[0][0] != "file":
+        raise invalid_attachment("Upload exactly one file using the file field")
+    return api_success(upload_attachment(files[0][1], owner()), 201)
 
 
 def serialize(row):
