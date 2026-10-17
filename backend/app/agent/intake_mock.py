@@ -82,7 +82,7 @@ def mock_request_spec(data):
     count = int(count_text) if count_text.isdigit() else {"一": 1, "二": 2, "两": 2, "三": 3, "四": 4}[count_text]
     preferences, exclusions = _model_mentions(text)
     research = [{"query": text[:200], "reason": "需要查证用户提到的最新概念或拟人形象。"}] if any(
-        word in text for word in ("拟人", "最新", "流行", "热门")
+        word in text for word in ("拟人", "漫化", "二次元娘", "最新", "流行", "热门")
     ) else []
     aspect = next((value for value in ("16:9", "9:16", "1:1", "4:3", "3:4") if value in text), None)
     compress = bool(re.search(r"(?:需要|请|要求|进行|输出时)压缩", text)) and not re.search(r"(?:不|无需|禁止)[^，。！？]{0,8}压缩", text)

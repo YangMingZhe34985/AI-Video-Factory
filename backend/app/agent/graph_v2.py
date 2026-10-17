@@ -13,14 +13,14 @@ from app.agent.model_selection import video_policy_for_request
 from app.agent.planning import SPECS
 from app.agent.recipes import complete_transition_draft, prepare_transition, validate_transition_plan
 from app.agent.simple_plan import approval_request_spec, validate_simple_plan
-from app.agent import simple_execution
+from app.agent import research, simple_execution
 from app.api import AppError
 from app.extensions import db
 from app.models import AgentRun
 from app.skills import build_default_registry
 
 
-class AgentStateV2(AgentState, IntakeState, ClarifyState, total=False):
+class AgentStateV2(AgentState, IntakeState, ClarifyState, research.ResearchState, total=False):
     results: list[dict]
 
 
@@ -51,7 +51,7 @@ def _plan_issue(error):
 
 def build_graph(checkpointer, registry=None):
     registry = registry or build_default_registry()
-    for spec in SPECS:
+    for spec in [*SPECS, *research.SPECS]:
         if spec.name not in registry.names():
             registry.register(spec)
     legacy = pipeline_nodes(registry)
@@ -156,6 +156,14 @@ def build_graph(checkpointer, registry=None):
         "wait_analysis": wait_analysis,
         "intake": understand,
         "intake_clarify": clarify_gate,
+        "research_plan": lambda state: research.plan(state, registry),
+        "research_search": lambda state: research.search(state, registry),
+        "research_select": lambda state: research.select(state, registry),
+        "research_fetch_download": lambda state: research.fetch_download(state, registry),
+        "research_analyze": lambda state: research.analyze(state, registry),
+        "research_synthesize": lambda state: research.synthesize(state, registry),
+        "research_resolve": research.resolve,
+        "research_clarify": clarify_gate,
         "simple_director": direct,
         "director_clarify": clarify_gate,
         "simple_validate": simple_validate,
@@ -184,7 +192,14 @@ def build_graph(checkpointer, registry=None):
     builder.add_conditional_edges("analyze_attachments", lambda s: "intake" if s["attachments_ready"] else "wait_analysis")
     builder.add_edge("wait_analysis", "analyze_attachments")
     builder.add_edge("intake", "intake_clarify")
-    builder.add_conditional_edges("intake_clarify", lambda s: "intake" if s.get("open_questions") else route(s))
+    builder.add_conditional_edges("intake_clarify", lambda s: "intake" if s.get("open_questions") else (
+        "research_plan" if research.needs_research(s) else route(s)))
+    stages = ("research_plan", "research_search", "research_select", "research_fetch_download",
+              "research_analyze", "research_synthesize", "research_resolve", "research_clarify")
+    for source, target in zip(stages, stages[1:]):
+        builder.add_edge(source, target)
+    builder.add_conditional_edges("research_clarify", lambda s: "research_resolve"
+                                  if s["research_dossier"]["open_questions"] else route(s))
     builder.add_edge("simple_director", "director_clarify")
     builder.add_conditional_edges("director_clarify", lambda s: "simple_director" if s.get("open_questions") else "simple_validate")
     builder.add_conditional_edges("simple_validate", lambda s: "simple_production" if s.get("approved") else "simple_approval")
