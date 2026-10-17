@@ -32,7 +32,6 @@ private/
 .playwright-mcp/
 .VSCodeCounter/
 .agents/
-claude.md
 codex.md
 
 # Local planning/reference material that is not required to run the app
@@ -47,7 +46,6 @@ compress.py
 文生图提示词改写.md
 文生视频提示词改写.md
 PACKAGING.md
-AGENTS.md
 
 # Generic deployment guide is safe to publish; keep server-specific notes elsewhere.
 !DEPLOYMENT.md

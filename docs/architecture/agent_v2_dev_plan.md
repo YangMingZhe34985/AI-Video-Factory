@@ -101,7 +101,7 @@ docs/agent_v2/
 | A2 | 按秒计费：`estimate_nodes_cost` / `BudgetGuard` 读取模型单价 × `duration`，图片按张；替换固定 10 credits | Codex | M | `skills/budget.py`、`agent/plan_spec.py` | 5 秒与 15 秒费用不同；重试按时长再计；现有预算测试更新后通过 |
 | A3 | 附件上传：多文件、类型与大小校验、登记为工件、探测时长/分辨率；`ingest_attachment` Skill | Codex | M | `api/agent.py`、新 Skill | 图片/视频/非法类型各有用例 |
 | A4 | Intake Agent：`analyze_image` Skill（多模态模型）+ Intake 节点，输出 `RequestSpec`；空文本拒绝 | Codex（Claude 评审提示词） | L | `agent/intake.py`、`skills/tools/analyze_image.py` | Mock 下 10 个样例需求得到预期的交付物、配方提示和附件用途 |
-| A5 | 澄清协议：图中断类型 `clarify`、API 动作 `answer`、提问上限、合并提问、默认值 | Claude | M | `agent/graph.py`、`agent/protocol.py` | 阻塞问题未答时不前进；超时走默认值；提问次数受限 |
+| A5 | 澄清协议：图中断类型 `clarify`、API 动作 `answer`、提问上限、合并提问、默认值 | Claude | M | `agent/graph.py`、`agent/protocol.py` | 阻塞问题未答时不前进；非阻塞题可“按默认继续”（不设超时，见 D-006）；提问次数受限 |
 | A6 | 简单配方：`image_edit` / `image_create` / `single_clip`；`generate_image` 增加 t2i/i2i 与参考图；`animate_shot`（首帧模式） | Codex | L | `skills/tools/*`、`agent/graph.py` | “西装照 + 人像”全流程无需任何选项完成（Mock） |
 | A7 | 前端：新输入框（文本 + 附件）、需求理解卡片、选择题卡片；删除创作方式/镜头数/模型字段 | Codex | M | `views/AgentStudioView.vue`、新组件 | 构建通过；手工冒烟：空文本按钮不可用、附件可删、选择题可提交 |
 | A8 | 兼容：旧的 `mode` / `shot_count` / `video_model_preference` 字段弃用；remix 由 Intake 自动识别；`model_policy` 的正则改为读取 `RequestSpec.constraints` | Codex | S | `agent/protocol.py`、`agent/model_policy.py` | 旧客户端请求返回明确的弃用错误；remix 回归通过 |
