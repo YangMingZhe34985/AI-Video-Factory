@@ -1,6 +1,5 @@
-from app.agent.plan_spec import ShotSpec
+from app.agent.plan_spec import ShotSpec, shot_cost
 from app.skills import job_backed
-from app.skills.budget import estimate_nodes_cost
 from app.skills.permissions import GENERATE, PRODUCTION, SYSTEM
 from app.skills.spec import ToolContext, ToolSpec
 
@@ -40,5 +39,5 @@ SPEC = ToolSpec(
     allowed_roles=frozenset({PRODUCTION, SYSTEM}),
     requires_approval=True,
     max_wait_sec=1800,
-    cost_fn=lambda _data: estimate_nodes_cost(NODES),
+    cost_fn=shot_cost,
 )

@@ -119,7 +119,6 @@ class ToolRegistry:
         key = ctx.idempotency_key or (
             idempotency_key_for(spec.name, data) if spec.dedupe else f"{spec.name}:{uuid.uuid4().hex}"
         )
-        cost = float(spec.cost_fn(data))
         invocation = ToolInvocation.query.filter_by(idempotency_key=key).first()
 
         if invocation is not None:
@@ -144,6 +143,12 @@ class ToolRegistry:
                 db.session.commit()
                 return self._result(spec, invocation, invocation.output_payload, replayed=True)
             if invocation.status == "failed":
+                if invocation.input_payload != data.model_dump(mode="json"):
+                    raise AppError(
+                        "IDEMPOTENCY_KEY_CONFLICT",
+                        "A failed invocation must be retried with its original input",
+                        409,
+                    )
                 if invocation.attempt >= 1 + spec.max_retries:
                     raise AppError(
                         "RETRY_LIMIT_EXCEEDED",
@@ -152,12 +157,14 @@ class ToolRegistry:
                         409,
                         payload={"invocation_id": invocation.invocation_id},
                     )
+                ctx.previous = invocation
+                cost = float(spec.cost_fn(data, ctx))
                 # Refuse without touching the failed record: its spent cost stays counted.
                 BudgetGuard.check(ctx.budget_scope, ctx.budget_limit, cost)
-                ctx.previous = invocation
                 invocation.attempt += 1
                 invocation.estimated_cost += cost
             else:  # "rejected": nothing ran, evaluate again from scratch
+                cost = float(spec.cost_fn(data, ctx))
                 self._check_budget(invocation, ctx, cost)
                 invocation.estimated_cost = cost
             invocation.status = "pending"
@@ -166,6 +173,7 @@ class ToolRegistry:
             invocation.finished_at = None
             db.session.commit()
         else:
+            cost = float(spec.cost_fn(data, ctx))
             invocation = ToolInvocation(
                 tool_name=spec.name,
                 idempotency_key=key,

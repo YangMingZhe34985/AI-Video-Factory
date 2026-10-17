@@ -99,7 +99,7 @@ class NodeRunner:
         param_node_key: str | None = None,
     ):
         adapter = get_adapter(model.adapter_name, model=model)
-        merged_params = dict(model.default_params or {})
+        merged_params = ModelService.effective_params(model)
         node_key = node.node_key if node else None
         node_config = self._node_config(job, node) if node else {}
         if node_config:
@@ -160,7 +160,7 @@ class NodeRunner:
             adapter = get_adapter(model.adapter_name, model=model)
             effective_adapter_name = model.adapter_name
 
-        merged_params = dict(model.default_params or {})
+        merged_params = ModelService.effective_params(model)
         node_key = node.node_key if node else None
         node_config = self._node_config(job, node) if node else {}
         if node_config:
