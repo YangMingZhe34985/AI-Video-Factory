@@ -52,6 +52,15 @@ def invoke_once(registry, name, data, ctx):
     """Replay completed side effects, never use Registry's paid failure retry implicitly."""
     previous = ToolInvocation.query.filter_by(idempotency_key=ctx.idempotency_key).first()
     if previous:
+        spec = registry.get(name)
+        if spec.permission == "external" or name == "analyze_image":
+            from app.agent.search.scope import require_run
+            parsed = registry._validate_input(spec, data)
+            registry._authorize(spec, ctx)
+            require_run(ctx, getattr(parsed, "run_id", None))
+            registry._check_scoped_replay(spec, previous, parsed, ctx)
+            if previous.status not in {"failed", "rejected"}:
+                return registry.invoke(name, data, ctx)
         if name == "package_project" and not previous.output_payload:
             # Packaging is free and refreshes an existing archive. An explicit,
             # bounded recovery can safely repeat an interrupted packaging call.
