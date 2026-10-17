@@ -22,19 +22,19 @@
 | A4 | `analyze_image` Skill + Intake 节点 + RequestSpec 校验 | Codex（Claude 评审提示词） | A3 | A.6、A.12、A.13 | Mock 下 10 个样例得到预期配方与附件用途；校验失败重试一次 | 完成（9e7edff；提示词待阶段评审） |
 | A5 | 澄清协议：`clarify` 中断、`answer` 动作、轮数上限、按默认继续 | Claude | P0-3 | A.7、A.9 | 阻塞题未答不前进；超过轮数取默认并记入假设；非法答案被拒 | 完成（4bf4fc6） |
 | A6 | Simple 配方：Director-lite、`generate_image` i2i 扩展、`animate_shot`、v2 图路由（含 remix 与 story_video 过渡） | Codex | A1 A2 A4 A5 | A.8、A.11、A.12 | “西装照 + 人像”无需任何选项完成（Mock）；remix 与旧 from_scratch 回归通过 | 完成（4a12de5；全量 444 passed） |
-| A7 | 前端：新输入框、附件、理解卡片、选择题卡片、Simple 计划审批；移除旧字段及界面美化 | Claude（用户指定） | A3 A5（接口）；A6/A8 联调 | A.2、A.7、A.8、A.10 | `npm run build` 通过；空文本不可提交；选择题可提交 | 完成，待 A6/A8 联调（3a3cd7f、412c2d9） |
+| A7 | 前端：新输入框、附件、理解卡片、选择题卡片、Simple 计划审批；移除旧字段及界面美化 | Claude（用户指定） | A3 A5（接口）；A6/A8 联调 | A.2、A.7、A.8、A.10 | `npm run build` 通过；空文本不可提交；选择题可提交 | 完成，已与 A6/A8 联调（3a3cd7f、412c2d9、69b13e4） |
 | A8 | 兼容：`DEPRECATED_FIELD`、`schema_version` 分图、`serialize` 去除 `shot_count` 依赖、`model_policy` 改读 RequestSpec | Codex | A6 | A.1 | v1 Run 可恢复；v1 字段请求被明确拒绝 | 完成（0578e93；集成全量 473 passed） |
-| A-Gate | 阶段评审 | Claude | A1–A8 | — | 见开发计划第 5 节清单 | 待开始 |
+| A-Gate | 阶段评审 | Claude | A1–A8 | — | 见开发计划第 5 节清单 | 完成（69b13e4，合并 7ddd4cb） |
 
 ## Phase B 联网与看图
 
 | ID | 任务 | 负责 | 依赖 | 状态 |
 |---|---|---|---|---|
 | B0 | B 章契约 | Claude | P0-3 | 完成（2bd4e33） |
-| B1 | 检索适配器接口 + Mock；`fetch_page` 与 SSRF 防护 | Codex | B0 | 待开始 |
-| B2 | `image_search` + `download_reference` | Codex | B0 | 待开始 |
-| B3 | Research Agent 与候选形象选择题 | Codex（Claude 评审） | B1 B2 A5 | 待开始 |
-| B4 | 提示注入测试集 | Codex | B3 | 待开始 |
+| B1 | 检索适配器接口 + Mock；`fetch_page` 与 SSRF 防护 | Codex | B0 | 进行中（agent-v2/B1；隔离工作树） |
+| B2 | `image_search` + `download_reference` | Codex | B0 | 进行中（agent-v2/B2；隔离工作树） |
+| B3 | Research Agent 与候选形象选择题 | Codex（Claude 评审） | B1 B2 A5 | 进行中（agent-v2/B3；后端编排） |
+| B4 | 提示注入测试集 | Codex | B3 | 进行中（agent-v2/B4；先准备测试与复核） |
 | B5 | 前端：资料卡片（主题摘要与来源、实体候选图）（CONTRACTS B.11） | Claude | B3（接口） | 待开始 |
 | B-Gate | 阶段评审 | Claude | B1–B5 | 待开始 |
 

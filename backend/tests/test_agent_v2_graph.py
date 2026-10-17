@@ -86,15 +86,13 @@ def test_portrait_edit_short_recipe_and_direct_delivery(app_ctx):
     plan["image"]["prompt"] = "保留我的面部外观，换成深蓝色西装"
     tick(run_id, {"action": "approve", "plan": plan})
     state = finish(run_id)
-    assert state["status"] == "awaiting_delivery", state
+    assert state["status"] == "success", state  # simple recipes deliver without an extra approval
     assert list(state["shots"]) == ["image"]
     assert len(state["results"]) == 1
     task = ApiTask.query.one()
     assert task.request_payload["model"] == plan["image"]["model_id"]
     assert "保留我的面部" in str(task.request_payload)
     count, spent = ApiTask.query.count(), BudgetGuard.spent(run_id)
-    state = tick(run_id, {"action": "deliver"})
-    assert state["status"] == "success"
     assert not state.get("packages")
     tick(run_id)
     assert ApiTask.query.count() == count
@@ -113,11 +111,10 @@ def test_single_clip_waits_for_first_frame_or_reuses_attachment(app_ctx, use_ima
     assert ApiTask.query.count() == 0
     tick(run_id, {"action": "approve"})
     state = finish(run_id)
-    assert state["status"] == "awaiting_delivery", state
+    assert state["status"] == "success", state
     assert len(state["results"]) == 1 and state["results"][0]["kind"] == "video"
     assert ApiTask.query.count() == (1 if use_image else 2)
     assert all(shot["status"] == "success" for shot in state["shots"].values())
-    assert tick(run_id, {"action": "deliver"})["status"] == "success"
 
 
 def test_multiple_image_outputs_deliver_all_candidates(app_ctx):
@@ -128,11 +125,10 @@ def test_multiple_image_outputs_deliver_all_candidates(app_ctx):
     plan["image"]["params"]["n"] = 3
     tick(run_id, {"action": "approve", "plan": plan})
     state = finish(run_id)
-    assert state["status"] == "awaiting_delivery", state
+    assert state["status"] == "success", state
     assert len(state["results"]) == 3
     assert len({ref["artifact_id"] for ref in state["results"]}) == 3
     assert ApiTask.query.count() == 1
-    assert tick(run_id, {"action": "deliver"})["status"] == "success"
 
 
 def test_simple_auto_approval_and_restart_do_not_duplicate_jobs(app_ctx, monkeypatch):
@@ -146,7 +142,7 @@ def test_simple_auto_approval_and_restart_do_not_duplicate_jobs(app_ctx, monkeyp
     assert Job.query.count() == 1
     monkeypatch.setattr(JobRunService, "start", original)
     state = finish(run_id)
-    assert state["status"] == "awaiting_delivery", state
+    assert state["status"] == "success", state
     assert Job.query.count() == 1
     assert ToolInvocation.query.filter_by(tool_name="generate_image", budget_scope=run_id).count() == 1
 
@@ -223,7 +219,7 @@ def test_invalid_simple_draft_is_editable_without_replanning(app_ctx, monkeypatc
     plan["video"]["params"]["duration"] = 5
     tick(run_id, {"action": "approve", "plan": plan})
     state = finish(run_id)
-    assert state["status"] == "awaiting_delivery", state
+    assert state["status"] == "success", state
     assert state["plan_issues"] == []
     assert ToolInvocation.query.filter_by(tool_name="agent_director_lite", budget_scope=run_id).count() == before == 1
 
@@ -255,7 +251,34 @@ def test_simple_auto_approval_publishes_video_constraints_before_submit(app_ctx)
     current_app.config["AGENT_AUTO_APPROVE_CREDITS"] = 30
     run_id = create("生成5秒猫跳舞视频，使用 wan2.7 系列")
     state = finish(run_id)
-    assert state["status"] == "awaiting_delivery", state
+    assert state["status"] == "success", state
     assert state["video_model_policy"]["requested"] == ["wan2.7"]
     videos = ApiTask.query.filter_by(branch_key="i2v").all()
     assert len(videos) == 1 and videos[0].model_id.startswith("wan2.7-")
+
+
+def test_intake_questions_after_the_round_limit_do_not_stall_the_run(app_ctx, monkeypatch):
+    from flask import current_app
+    import app.agent.intake as intake_module
+    from app.agent.graph_v2 import UNRESOLVED_INTAKE_NOTE
+
+    current_app.config["AGENT_MAX_CLARIFY_ROUNDS"] = 0
+    original = intake_module.mock_request_spec
+
+    def always_ask(data):
+        spec = dict(original(data))
+        spec["open_questions"] = [{
+            "question_id": "style", "text": "偏写实还是插画？", "why": "影响整体画风",
+            "options": [{"option_id": "real", "label": "写实"}, {"option_id": "art", "label": "插画"}],
+            "recommended_option_id": "art", "blocking": True,
+        }]
+        return spec
+
+    monkeypatch.setattr(intake_module, "mock_request_spec", always_ask)
+    run_id = create("生成一张猫咪海报")
+    state = finish(run_id)
+    assert state["status"] == "awaiting_approval", state
+    assert [record["asked"] for record in state["clarifications"]] == [False]
+    assert UNRESOLVED_INTAKE_NOTE in state["assumptions"]
+    assert ApiTask.query.count() == 0
+

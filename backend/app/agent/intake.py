@@ -64,6 +64,11 @@ Record unfamiliar or current concepts in research_needs, without pretending that
 Ask at most three concrete multiple-choice questions only for material ambiguity. Existing clarification
 answers are authoritative; do not ask answered questions again. Include recommendations/defaults where possible.
 If validation_feedback is present, correct those errors while preserving the user's requirements.
+Write summary, descriptions, reasons and questions in the user's language (Chinese for a Chinese request).
+summary is one concrete sentence naming the deliverable, subject, action and style; do not just copy the request.
+A photo of a person whose new image or video should show that same person is an identity_ref.
+Ask only when a wrong guess would waste generation budget or clearly miss the intent; otherwise choose a sensible
+default and keep it visible in the spec. Never ask about models, parameters or other technical settings.
 """
 
 

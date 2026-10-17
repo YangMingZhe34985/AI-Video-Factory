@@ -34,10 +34,18 @@ def _publish_understanding(state):
     return {"video_model_policy": policy}
 
 
+UNRESOLVED_INTAKE_NOTE = "提问次数已用完，需求中仍有不确定之处，已按当前理解继续；请在审核计划时确认。"
+
+
 def _queue(state, result, asked_by, resume_status):
     questions = result.get("open_questions", [])
     if questions and any(record["card"]["asked_by"] == asked_by and record.get("asked") is False
                          for record in state.get("clarifications", [])):
+        if asked_by == "intake":
+            # The round limit is spent and the understanding itself is valid:
+            # continue on it rather than failing the run; plan review follows.
+            assumptions = list(dict.fromkeys([*state.get("assumptions", []), UNRESOLVED_INTAKE_NOTE]))
+            return {**result, "open_questions": [], "assumptions": assumptions}
         raise AppError("INVALID_CLARIFICATION", "The Agent did not resolve its final clarification answers", 422)
     return {**result, **queue_questions({**state, **result}, asked_by, questions, resume_status)}
 
@@ -205,8 +213,11 @@ def build_graph(checkpointer, registry=None):
     builder.add_conditional_edges("simple_validate", lambda s: "simple_production" if s.get("approved") else "simple_approval")
     builder.add_conditional_edges("simple_approval", lambda s: "simple_production" if s["approved"] else END)
     builder.add_edge("simple_production", "simple_collect")
+    # CONTRACTS A.11: simple results are individually downloadable, so delivery
+    # needs no extra approval. simple_delivery_approval stays registered only so
+    # runs checkpointed at that interrupt by earlier builds can still resume.
     builder.add_conditional_edges("simple_collect", simple_execution.after_collect,
-                                  {"end": END, "delivery": "simple_delivery_approval", "wait": "simple_wait",
+                                  {"end": END, "delivery": "simple_deliver", "wait": "simple_wait",
                                    "produce": "simple_production"})
     builder.add_edge("simple_wait", "simple_collect")
     builder.add_edge("simple_delivery_approval", "simple_deliver")

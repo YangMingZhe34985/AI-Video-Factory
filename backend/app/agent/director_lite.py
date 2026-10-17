@@ -150,6 +150,16 @@ requested duration. Reflect aspect ratio using supported parameters. Put image c
 Do not invent attachment IDs. If choosing between several first frames, ask the user. Existing answered
 questions must not be repeated. Explain assumptions and model choices concisely in Chinese. Estimated cost
 will be overwritten by code; do not use it to bypass the budget. Do not pretend research has happened.
+Prompt craft (follow strictly). Write generation prompts in Chinese unless model notes require otherwise, as one
+dense paragraph with no meta commentary and no hedging words such as "可能" or "大概".
+- Image prompts cover subject appearance, pose, scene, lighting, composition, style and image quality. They
+  describe a single still moment, never motion.
+- For i2i with identity references, the first sentence must lock the reference person: keep facial features,
+  hairstyle, face shape and body proportions unchanged. Then describe only what should change, and repeat the
+  key identity traits so the model does not reinvent the person.
+- Video prompts describe motion only: the subject's action, secondary motion (hair, clothing, environment),
+  camera movement and a pace that fits the clip duration. Do not restate static appearance shown in the frame.
+title is a short Chinese title of at most 20 characters.
 """
 
 

@@ -157,3 +157,33 @@
 - 本地联调前重启 API、`agent-worker` 和 `mq-worker` 以加载修改；保持 `MODEL_ADAPTER_MODE=mock`。图片附件需要 `AGENT_VISION_MODEL` 指向具备 `image_understanding` 能力的模型，本轮图/API 测试显式配置 `qwen3.7-plus` 并使用 Mock；配置示例见 `.env.example`，不要把文本模型回退视为具备视觉能力。README 的 Agent 入口表格仍描述旧镜头数/模型表单，可在 A7/A-Gate 文档同步时更新。不要通过真实库或真实模型验证此次联调。
 - A4/Director-lite 提示词质量待 Claude 阶段评审。复杂故事的 Creative/Director v2 属于 Phase C；首尾帧属于 D2；Agent 默认不压缩属于 E1，本轮按 A.12 不改变压缩行为。B0 已完成，本轮未进入 B1/B2。
 验证边界：真实多模态理解/生成质量、真实模型参数与价格、真实 MySQL/Redis 部署及浏览器端完整交互未验证。演示目录与 Mock 输出不能作为真实效果承诺。
+
+## 2026-10-18 · Codex · B1–B4 开始
+状态：进行中
+分支与提交：从 `feat/agent-v2 @ db066a6` 创建 `agent-v2/B1` 至 `agent-v2/B4`，分别复用 Codex 的独立工作树；尚未合并。
+完成内容：已读取最新交接、Phase B 看板和 B 章契约，领取检索/安全抓取、参考图片、Research 编排和注入测试。
+协作边界：A7 联调、A-Gate 由 Claude 负责；B5 资料卡片前端和 B-Gate 保持原分工。Codex 不修改 Claude 工作树或前端；若阶段评审涉及后端共享文件，集成时按最新提交核对。
+测试：本轮仅 Mock、隔离 SQLite/存储与离线网络替身；不进行付费调用、真实库迁移、远程推送或真实服务启动。真实检索服务商仍不确定，本轮不绑定服务商。
+未完成 / 下一步：B1/B2 先确定公共接口并并行开发，B3 接入 v2 图，B4 完成注入及恢复回归；各任务完整回归通过后按顺序合入，最终追加交接。
+
+## 2026-10-18 · Claude · A-Gate（Phase A 阶段评审）
+状态：**通过**，评审中发现的问题已修复并合入
+分支与提交：`agent-v2/A-Gate` @ 69b13e4，合并到 `feat/agent-v2` 为 7ddd4cb。所有 `agent-v2/*` 分支均已合入（未合并提交数为 0）。
+评审范围：A1–A8 的代码、A4 Intake 与 A6 Director-lite 提示词、契约一致性、全量回归，以及 Codex 无法完成的浏览器端联调。
+验证结果：
+- 全量回归：评审前 473 passed，修复后 **474 passed**（新增 1 个 Intake 用例）；`npm run build` 通过。
+- 浏览器端联调（隔离 Mock 后端 + agent-worker，临时 SQLite，开启鉴权）：纯文字需求“画一张赛博朋克风格的城市夜景海报”完成 创建 → 理解（image_create）→ 计划 → 审批 → 生成 → 结果展示；带人像附件的“用这张照片生成西装照”被识别为 image_edit，附件用途为人物参考，模型列表只剩支持 i2i 的模型，受保护缩略图正常加载。旧字段请求返回 DEPRECATED_FIELD。
+评审发现与处理：
+1. **简单配方多了一步交付审批**（与 A.11 不一致）：结果出来后停在“可交付”，还要点“打包”，但该步骤并不打包。已改为收集结果后直接完成；旧的中断节点保留注册，已停在该中断的 Run 仍可恢复。相关测试改为直接断言 success。
+2. **轮数用完后 Intake 仍提问会让 Run 失败**（INVALID_CLARIFICATION → needs_attention）：改为按当前理解继续，并在 assumptions 中提示审核时确认。新增用例。
+3. **提示词**：Intake 补充输出语言、summary 写法、只问与预算相关的问题、不问技术参数；Director-lite 补充项目已验证的写法（图生图首句锁定人物身份、图片提示词只写静态、视频提示词只写动态、中文、不含含糊词）。
+4. **前端**：v2 改造视频任务从附件中找原视频，并可“修改镜头”（原先只认 v1 的 `request.mode`）；原视频受鉴权保护，改为点击后带凭证加载；计划编辑器在窄栏中不再挤压提示词输入框。
+5. README 的 Agent 入口说明已改为一句话入口（Codex 提到的遗留项）。
+遗留（不阻塞，已知）：
+- 多镜头短片的过渡路由（时长分配逻辑较复杂）将在 Phase C 被 Creative/Director v2 替换。
+- 整个应用在手机宽度下布局不可用（共享布局问题，非 Agent 范围）。
+- 用户尚未决定是否删除误建在开发库中的测试用户 `a7_tester`（见上一条 Claude 交接）。
+给 Codex（Phase B 进行中）：
+- **B 分支基于 db066a6，A-Gate 修改了 `graph_v2.py`、`intake.py`、`director_lite.py`**，B3 合入前请先合并最新的 `feat/agent-v2`（7ddd4cb 及之后），注意 `_queue` 与 `simple_collect` 路由的改动。
+- worker 的 `tick()` 只轮询 `queued/understanding/analyzing/planning/producing/delivering`，B3 新增 `researching` 状态时需要加入该列表，否则 Research 中的 Run 不会被推进。
+- B3 的选择题请继续通过 `queue_questions` / `clarify_gate`；Research 提问用 `asked_by="research"`，A7 前端已支持图片选项。
