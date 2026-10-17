@@ -1,256 +1,243 @@
 <template>
   <DefaultLayout title="Agent Studio" :subtitle="t('subtitle')">
-    <div class="max-w-7xl mx-auto space-y-5">
-      <p v-if="enabled === false" class="panel">{{ t('disabled') }}</p>
-      <template v-else-if="enabled">
-        <div class="grid lg:grid-cols-[300px_1fr] gap-5">
-          <aside class="space-y-5">
-            <form class="panel space-y-4" @submit.prevent="create">
-              <h2 class="font-semibold">{{ t('newProject') }}</h2>
-              <label class="block text-sm">{{ t('creationMode') }}
-                <select v-model="form.mode" class="field mt-2"><option value="from_scratch">{{ t('fromScratch') }}</option><option value="remix">{{ t('remix') }}</option></select>
-              </label>
-              <div v-if="form.mode === 'remix'" class="space-y-2">
-                <label class="block text-sm">{{ t('uploadSource') }}
-                  <input type="file" accept=".mp4,.mov,.mkv,.webm" class="field mt-2" :disabled="uploading || busy" @change="upload" />
-                </label>
-                <p v-if="uploading" class="text-xs text-gray-500">{{ t('uploading') }}</p>
-                <p v-if="uploadedSource" class="text-xs text-gray-500">{{ uploadedSource.file_name }} · {{ uploadedSource.duration }}s · {{ uploadedSource.width }}×{{ uploadedSource.height }}</p>
-                <p class="text-xs text-gray-500">{{ t('remixHint') }}</p>
+    <div class="mx-auto max-w-7xl">
+      <p v-if="enabled === false" class="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">{{ t('disabled') }}</p>
+
+      <div v-else-if="enabled" class="grid gap-6 lg:grid-cols-[16rem_minmax(0,1fr)]">
+        <!-- history rail -->
+        <aside class="space-y-3 lg:sticky lg:top-0 lg:self-start">
+          <button type="button" class="new-btn" @click="startNew"><PhPlus :size="16" weight="bold" />{{ t('newRun') }}</button>
+          <nav :aria-label="t('history')" class="rounded-2xl border border-slate-200 bg-white p-2 dark:border-slate-700 dark:bg-slate-900">
+            <p class="px-2 pb-1 pt-1.5 text-xs font-medium uppercase tracking-wide text-slate-400">{{ t('history') }}</p>
+            <button
+              v-for="item in runs" :key="item.run_id" type="button" class="history-item"
+              :aria-current="selected?.run_id === item.run_id ? 'true' : undefined" @click="select(item.run_id)"
+            >
+              <span class="block truncate text-sm text-slate-800 dark:text-slate-100">{{ titleOf(item) }}</span>
+              <span class="mt-0.5 flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400">
+                <span class="h-1.5 w-1.5 rounded-full" :class="dotClass(item.status)" />{{ statusLabel(item.status) }}
+                <span class="ml-auto tabular-nums">{{ shortTime(item.created_at) }}</span>
+              </span>
+            </button>
+            <p v-if="!runs.length" class="px-2 py-3 text-sm text-slate-400">{{ t('noHistory') }}</p>
+          </nav>
+        </aside>
+
+        <main class="min-w-0">
+          <!-- new project -->
+          <section v-if="!selected" class="mx-auto max-w-3xl pt-4 lg:pt-10">
+            <h2 class="text-3xl font-semibold tracking-tight text-slate-900 dark:text-white">{{ t('composerTitle') }}</h2>
+            <p class="mt-2 max-w-2xl text-[15px] leading-relaxed text-slate-500 dark:text-slate-400">{{ t('composerLead') }}</p>
+            <AgentComposer ref="composer" class="mt-6" :busy="busy" @submit="create" />
+            <p v-if="error" role="alert" class="mt-3 text-sm text-red-600">{{ error }}</p>
+            <div class="mt-6">
+              <p class="text-xs font-medium uppercase tracking-wide text-slate-400">{{ t('examples') }}</p>
+              <div class="mt-2 flex flex-wrap gap-2">
+                <button v-for="key in ['example1', 'example2', 'example3']" :key="key" type="button" class="example" @click="composer?.fill(t(key))">{{ t(key) }}</button>
               </div>
-              <label class="block text-sm">{{ t('goal') }}
-                <textarea v-model="form.goal" required maxlength="8000" rows="5" class="field mt-2" :placeholder="t('placeholder')" />
-              </label>
-              <label class="block text-sm">{{ t('modelPreference') }}
-                <input v-model="form.video_model_preference" maxlength="120" class="field mt-2" :placeholder="t('modelPlaceholder')" />
-              </label>
-              <div class="grid grid-cols-2 gap-3">
-                <label class="text-sm">{{ t('shots') }}<input v-model.number="form.shot_count" class="field mt-2" type="number" min="1" max="20" required /></label>
-                <label class="text-sm">{{ t('budget') }}<input v-model.number="form.budget_limit" class="field mt-2" type="number" :min="form.mode === 'remix' ? 3 : estimate" max="500" required /></label>
+            </div>
+            <p v-if="mode !== 'real'" class="mt-8 text-xs text-amber-700 dark:text-amber-400">{{ mode === 'mock' ? t('mock') : t('auto') }}</p>
+          </section>
+
+          <!-- run detail -->
+          <div v-else class="space-y-5">
+            <section class="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900">
+              <div class="flex flex-wrap items-start justify-between gap-3">
+                <div class="min-w-0">
+                  <h2 class="text-xl font-semibold leading-snug text-slate-900 dark:text-white">{{ titleOf(selected) }}</h2>
+                  <p v-if="!isV2" class="mt-1 text-xs text-slate-400">{{ t('legacyRun') }}</p>
+                </div>
+                <span class="status-pill" :class="pillClass(selected.status)">{{ statusLabel(selected.status) }}</span>
               </div>
-              <p class="text-xs text-gray-500">{{ t(form.mode === 'remix' ? 'remixEstimate' : 'estimate', { count: estimate }) }}</p>
-              <button class="primary w-full" :disabled="busy || uploading || !form.goal.trim() || (form.mode === 'remix' && !uploadedSource)">{{ t('plan') }}</button>
-            </form>
-            <section class="panel space-y-3">
-              <h2 class="font-semibold">{{ t('history') }}</h2>
-              <button v-for="item in runs" :key="item.run_id" class="block w-full text-left rounded-lg p-3 border dark:border-gray-600" :class="selected?.run_id === item.run_id ? 'border-blue-500 bg-blue-50 dark:bg-gray-700' : ''" @click="select(item.run_id)">
-                <span class="block text-sm truncate">{{ item.snapshot?.plan?.title || item.request.goal }}</span>
-                <span class="text-xs text-gray-500">{{ statusLabel(item.status) }}</span>
-              </button>
-              <p v-if="!runs.length" class="text-sm text-gray-500">{{ t('noHistory') }}</p>
+              <RunStepper class="mt-4" :status="selected.status" :asked="clarifications.length > 0" :has-plan="Boolean(plan)" :has-results="results.length > 0" />
+              <div v-if="budgetLimit" class="mt-4">
+                <div class="flex justify-between text-xs text-slate-500 dark:text-slate-400">
+                  <span>{{ t('spent', { spent: round(selected.estimated_spent), budget: budgetLimit }) }}</span>
+                </div>
+                <div class="mt-1 h-1.5 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+                  <div class="h-full rounded-full bg-blue-500 transition-all" :style="{ width: `${Math.min(100, (selected.estimated_spent / budgetLimit) * 100)}%` }" />
+                </div>
+              </div>
+              <p v-if="mode !== 'real'" class="mt-3 text-xs text-amber-700 dark:text-amber-400">{{ mode === 'mock' ? t('mock') : t('auto') }}</p>
+              <p v-if="selected.status === 'queued'" class="mt-2 text-xs text-slate-500">{{ t('queueHint') }}</p>
+              <p v-if="selected.error" role="alert" class="mt-3 break-words rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300">{{ selected.error.code }}: {{ selected.error.message }}</p>
+              <p v-if="error" role="alert" class="mt-3 text-sm text-red-600">{{ error }}</p>
+              <div v-if="showRunActions" class="mt-4 flex flex-wrap items-center gap-3">
+                <button v-if="selected.status === 'awaiting_delivery'" type="button" class="primary-btn" :disabled="actionDisabled" @click="act('deliver')">{{ t('deliver') }}</button>
+                <button v-if="selected.status === 'needs_attention' && selected.resume_count < 2" type="button" class="secondary-btn" :disabled="actionDisabled" @click="act('resume')">{{ t('resume') }}</button>
+                <span v-if="selected.command" class="text-xs text-slate-500">{{ t('pendingAction') }}</span>
+              </div>
             </section>
-          </aside>
-          <main class="min-w-0 space-y-5">
-            <div v-if="!selected" class="panel py-16 text-center text-gray-500">{{ t('welcome') }}</div>
-            <template v-else>
-              <section class="panel space-y-4">
-                <div class="flex flex-wrap items-center justify-between gap-3">
-                  <h2 class="text-xl font-semibold">{{ selected.snapshot?.plan?.title || selected.request.goal }}</h2>
-                  <span class="px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-sm">{{ statusLabel(selected.status) }}</span>
+
+            <!-- the request -->
+            <section class="flex gap-3">
+              <span class="mt-0.5 flex h-8 w-8 flex-none items-center justify-center rounded-full bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-200"><PhUser :size="16" /></span>
+              <div class="min-w-0 rounded-2xl rounded-tl-sm bg-slate-100 px-4 py-3 dark:bg-slate-800">
+                <p class="text-xs text-slate-400">{{ t('yourRequest') }}</p>
+                <p class="mt-1 whitespace-pre-wrap text-[15px] leading-relaxed text-slate-800 dark:text-slate-100">{{ requestText }}</p>
+                <div v-if="attachments.length" class="mt-3 flex flex-wrap gap-2">
+                  <a v-for="item in attachments" :key="item.attachment_id" :href="item.preview_url" target="_blank" rel="noopener" class="block h-16 w-16 overflow-hidden rounded-lg ring-1 ring-slate-200 dark:ring-slate-700">
+                    <img v-if="item.kind === 'image'" :src="item.preview_url" :alt="item.file_name" class="h-full w-full object-cover" />
+                    <span v-else class="flex h-full w-full items-center justify-center bg-slate-800 text-white"><PhFilmStrip :size="20" /></span>
+                  </a>
                 </div>
-                <p class="text-sm text-gray-500">{{ t('progress', selected.summary) }} · {{ t('spent', { spent: selected.estimated_spent, budget: selected.request.budget_limit }) }}</p>
-                <div v-if="modelPolicy" class="rounded-lg bg-blue-50 dark:bg-gray-900 p-3 text-sm space-y-1">
-                  <p class="font-medium">{{ t('videoModelRule') }} · {{ modelPolicy.source === 'user' ? t('userModelRule') : t('defaultModelRule') }}</p>
-                  <p v-if="modelPolicy.requested.length">{{ modelPolicy.requested.join(' + ') }}</p>
-                  <p v-if="modelPolicy.excluded?.length">{{ t('excludedModels') }}: {{ modelPolicy.excluded.join(', ') }}</p>
-                  <p class="text-xs text-gray-500">{{ t('modelRuleHint') }}</p>
-                </div>
-                <p v-if="mode !== 'real'" class="text-sm text-amber-700">{{ mode === 'mock' ? t('mock') : t('auto') }}</p>
-                <p v-if="selected.status === 'queued'" class="text-sm text-gray-500">{{ t('queueHint') }}</p>
-                <p v-if="selected.error" role="alert" class="text-sm text-red-600 break-words">{{ selected.error.code }}: {{ selected.error.message }}</p>
-                <p v-if="error" role="alert" class="text-sm text-red-600">{{ error }}</p>
-                <div class="flex flex-wrap gap-3">
-                  <button v-if="selected.status === 'awaiting_approval'" class="primary" :disabled="actionDisabled" @click="act('approve')">{{ t('approve') }}</button>
-                  <button v-if="selected.status === 'awaiting_approval'" class="secondary" :disabled="actionDisabled" @click="act('reject')">{{ t('reject') }}</button>
-                  <button v-if="selected.status === 'awaiting_delivery'" class="primary" :disabled="actionDisabled" @click="act('deliver')">{{ t('deliver') }}</button>
-                  <button v-if="selected.status === 'needs_attention' && selected.resume_count < 2" class="secondary" :disabled="actionDisabled" @click="act('resume')">{{ t('resume') }}</button>
-                  <span v-if="selected.command" class="text-sm text-gray-500 self-center">{{ t('pendingAction') }}</span>
-                </div>
-              </section>
-              <section v-if="selected.request.source" class="panel space-y-3">
-                <h3 class="font-semibold">{{ t('sourceVideo') }} · {{ selected.request.source.file_name }}</h3>
-                <video controls preload="metadata" :src="selected.request.source.preview_url" class="w-full max-h-64 bg-black rounded-lg" />
-                <details v-if="selected.snapshot?.analysis"><summary class="cursor-pointer text-sm">{{ t('sourceAnalysis') }}</summary>
-                  <p class="text-sm whitespace-pre-wrap mt-2">{{ selected.snapshot.analysis.content }}</p>
-                  <p class="text-xs text-gray-500 mt-2">{{ t('analysisVersion') }}: {{ selected.snapshot.analysis.prompt_id }}</p>
-                </details>
-                <router-link v-if="selected.snapshot?.analysis_job_id" :to="`/jobs/${selected.snapshot.analysis_job_id}`" class="text-sm text-blue-600">{{ t('analysisJob') }} ↗</router-link>
-              </section>
-              <section v-if="draft" class="space-y-4">
-                <div class="panel space-y-2">
-                  <h3 class="font-semibold">{{ t('storyboard') }}</h3>
-                  <p class="text-sm text-gray-500 whitespace-pre-wrap">{{ draft.style_notes }}</p>
-                  <p class="text-xs text-gray-500">{{ t('editHint') }}</p>
-                  <p v-if="draft.mode === 'remix'" class="text-xs text-gray-500">{{ t('rangeHint') }}</p>
-                  <div v-for="(issue, index) in selected.snapshot?.plan_issues || []" :key="index" role="alert" class="text-sm text-red-600">
-                    {{ t('invalidDraft') }} {{ issue.shot_id }}: {{ issue.message }}
-                    <p v-for="detail in issue.errors || []" :key="detail">{{ detail }}</p>
-                  </div>
-                </div>
-                <article v-for="shot in draft.shots" :key="shot.shot_id" class="panel space-y-4">
-                  <div class="flex justify-between gap-3">
-                    <h3 class="font-semibold">{{ shot.shot_id }}</h3>
-                    <router-link v-if="shotState(shot).job_id" :to="`/jobs/${shotState(shot).job_id}`" class="text-sm text-blue-600">{{ t('job') }} ↗</router-link>
-                  </div>
-                  <div v-if="draft.mode === 'remix'" class="space-y-3">
-                    <div class="grid md:grid-cols-3 gap-3">
-                      <label class="text-sm">{{ t('editAction') }}<select v-model="shot.action" :disabled="!editable" class="field mt-2"><option value="keep">{{ t('keep') }}</option><option value="regenerate">{{ t('regenerate') }}</option></select></label>
-                      <label class="text-sm">{{ t('sourceStart') }}<input v-model.number="shot.source_start" :readonly="!editable" class="field mt-2" type="number" min="0" :max="selected.request.source.duration" step="0.01" /></label>
-                      <label class="text-sm">{{ t('sourceEnd') }}<input v-model.number="shot.source_end" :readonly="!editable" class="field mt-2" type="number" min="0" :max="selected.request.source.duration" step="0.01" /></label>
-                    </div>
-                    <label v-if="shot.action === 'regenerate'" class="block text-sm">{{ t('frameStrategy') }}<select v-model="shot.first_frame_mode" :disabled="!editable" class="field mt-2"><option value="source">{{ t('sourceFrame') }}</option><option value="generate">{{ t('newFrame') }}</option></select></label>
-                    <label class="block text-sm">{{ t('editReason') }}<textarea v-model="shot.edit_reason" :readonly="!editable" class="field mt-2" rows="2" maxlength="2000" /></label>
-                  </div>
-                  <div v-if="shot.action !== 'keep'" class="grid md:grid-cols-2 gap-4">
-                    <label class="text-sm">{{ t('generatedDuration') }}
-                      <input v-model.number="shot.video_params.duration" :readonly="!editable" class="field mt-2" type="number" min="0" step="any" />
-                    </label>
-                    <label v-if="!shot.first_frame_mode || shot.first_frame_mode === 'generate'" class="text-sm">{{ t('frame') }} · {{ stage(shot, 'poll_first_frame_image') }}
-                      <textarea v-model="shot.first_frame_prompt" :readonly="!editable" class="field mt-2" rows="4" maxlength="8000" />
-                    </label>
-                    <label class="text-sm">{{ t('video') }} · {{ stage(shot, 'poll_i2v') }}
-                      <textarea v-model="shot.i2v_prompt" :readonly="!editable" class="field mt-2" rows="4" maxlength="8000" />
-                    </label>
-                  </div>
-                  <p v-if="shot.action !== 'keep'" class="text-xs text-gray-500">{{ shot.first_frame_mode === 'source' ? t('sourceFrame') : shot.image_model_id }} → {{ shot.video_model_id || t('defaultModelRule') }}</p>
-                  <details v-if="shot.action !== 'keep'" class="text-sm">
-                    <summary>{{ t('generationSettings') }}</summary>
-                    <div v-for="kind in (shot.first_frame_mode === 'source' ? ['video'] : ['image', 'video'])" :key="kind" class="space-y-2 mt-2">
-                      <label class="block">{{ kind }} model<input v-model="shot[`${kind}_model_id`]" :readonly="!editable" class="field" /></label>
-                      <label class="block">{{ kind }} parameters (JSON)<textarea :value="JSON.stringify(shot[`${kind}_params`], null, 2)" :readonly="!editable" class="field" rows="4" @input="editParams(shot, kind, $event.target.value)" /></label>
-                      <p v-if="parameterErrors[`${shot.shot_id}:${kind}`]" role="alert" class="text-red-600">{{ t('invalidParams') }}</p>
-                    </div>
-                  </details>
-                  <button v-if="canRevise" class="secondary" :disabled="actionDisabled" @click="revise(shot)">{{ t('reviseShot', { cost: shotCost(shot) }) }}</button>
-                  <details v-if="selected.snapshot?.shot_history?.[shot.shot_id]?.length" class="text-sm">
-                    <summary class="cursor-pointer">{{ t('shotHistory') }}</summary>
-                    <div v-for="(previous, index) in selected.snapshot.shot_history[shot.shot_id]" :key="index" class="mt-2 space-y-1">
-                      <p>{{ index + 1 }} · {{ previous.plan.edit_reason }} · {{ statusLabel(previous.result.status) }}</p>
-                      <router-link v-if="previous.result.job_id" :to="`/jobs/${previous.result.job_id}`" class="text-blue-600">{{ t('job') }} ↗</router-link>
-                      <a v-for="asset in previous.result.artifacts || []" :key="asset.artifact_id" :href="asset.download_url" class="block text-blue-600" download>{{ t('download') }} · {{ asset.artifact_type }}</a>
-                    </div>
-                  </details>
-                  <p v-if="shotState(shot).error" class="text-sm text-red-600">{{ shotState(shot).error.summary }}</p>
-                  <p v-for="message in shotState(shot).validation?.errors || []" :key="message" class="text-sm text-red-600">{{ message }}</p>
-                  <div class="grid md:grid-cols-2 gap-4">
-                    <div v-for="artifact in media(shot)" :key="artifact.artifact_id" class="rounded-lg overflow-hidden border dark:border-gray-600">
-                      <div v-if="selected.snapshot.mock && artifact.mime_type?.startsWith('video/') && artifact.artifact_type !== 'retained_video'" class="p-8 bg-gray-100 dark:bg-gray-900 text-sm text-gray-500">{{ t('mockVideo') }}</div>
-                      <video v-else-if="artifact.mime_type?.startsWith('video/')" controls preload="metadata" :src="artifact.preview_url" class="w-full max-h-64 bg-black" />
-                      <img v-else :src="artifact.preview_url" :alt="shot.shot_id" class="w-full max-h-64 object-contain bg-gray-100" />
-                      <a :href="artifact.download_url" class="block p-2 text-sm text-blue-600" download>{{ t('download') }} · {{ artifact.artifact_type }}</a>
-                    </div>
-                  </div>
-                </article>
-              </section>
-              <section v-if="selected.snapshot?.packages?.length" class="panel space-y-3">
-                <h3 class="font-semibold">{{ t('packages') }}</h3>
-                <p class="text-sm text-gray-500">{{ t('packageHint') }}</p>
-                <a v-for="pack in selected.snapshot.packages" :key="pack.artifact_id" :href="pack.download_url" class="block text-blue-600 text-sm" download>{{ t('download') }} ZIP · {{ pack.job_id }}</a>
-                <p v-for="issue in selected.snapshot.package_errors || []" :key="issue.job_id" class="text-red-600 text-sm">{{ issue.job_id }}: {{ issue.message }}</p>
-              </section>
+              </div>
+            </section>
+
+            <UnderstandingCard v-if="requestSpec" :spec="requestSpec" :attachments="attachments" :assumptions="assumptions" />
+
+            <ClarificationCard v-if="pendingCard && selected.status === 'awaiting_input'" :card="pendingCard" :disabled="actionDisabled" @submit="answer" />
+
+            <details v-if="answeredCards.length" class="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm dark:border-slate-700 dark:bg-slate-900">
+              <summary class="cursor-pointer text-slate-600 dark:text-slate-300">{{ t('answered') }} · {{ answeredCards.length }}</summary>
+              <ul class="mt-3 space-y-2">
+                <li v-for="item in answeredCards" :key="item.key" class="flex flex-wrap gap-x-2 text-slate-700 dark:text-slate-300">
+                  <span class="text-slate-500">{{ item.question }}</span>
+                  <span class="font-medium">{{ item.choice }}</span>
+                  <span class="text-xs text-slate-400">· {{ t(`source_${item.source}`) }}</span>
+                </li>
+              </ul>
+            </details>
+
+            <section v-if="legacySource" class="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900">
+              <h3 class="text-sm font-semibold text-slate-900 dark:text-slate-100">{{ t('sourceVideo') }} · {{ legacySource.file_name }}</h3>
+              <video controls preload="metadata" :src="legacySource.preview_url" class="mt-3 max-h-64 w-full rounded-xl bg-black" />
+              <details v-if="selected.snapshot?.analysis" class="mt-3 text-sm">
+                <summary class="cursor-pointer text-slate-500">{{ t('sourceAnalysis') }}</summary>
+                <p class="mt-2 whitespace-pre-wrap text-slate-600 dark:text-slate-300">{{ selected.snapshot.analysis.content }}</p>
+              </details>
+            </section>
+
+            <SimplePlanEditor
+              v-if="draft && !draft.shots"
+              :key="`simple-${selected.run_id}-${selected.status}`"
+              :plan="draft" :models="models" :attachments="attachments"
+              :editable="selected.status === 'awaiting_approval' && !selected.command" :disabled="actionDisabled"
+              @approve="act('approve', $event)" @reject="act('reject')"
+            />
+
+            <template v-if="draft?.shots">
+              <ShotPlanEditor
+                :plan="draft" :shots="selected.snapshot?.shots" :history="selected.snapshot?.shot_history" :issues="selected.snapshot?.plan_issues || []"
+                :source-duration="legacySource?.duration ?? null" :mock="Boolean(selected.snapshot?.mock)"
+                :editable="shotEditable" :can-revise="canRevise" :disabled="actionDisabled"
+                @revise="revise" @invalid="paramsInvalid = $event"
+              />
+              <div v-if="selected.status === 'awaiting_approval'" class="flex flex-wrap gap-3">
+                <button type="button" class="primary-btn" :disabled="actionDisabled" @click="act('approve', draft)">{{ t('approve') }}</button>
+                <button type="button" class="secondary-btn" :disabled="actionDisabled" @click="act('reject')">{{ t('reject') }}</button>
+              </div>
             </template>
-          </main>
-        </div>
-      </template>
-      <p v-if="error && !selected" role="alert" class="text-red-600">{{ error }}</p>
+
+            <section v-if="results.length" class="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900">
+              <h3 class="text-sm font-semibold text-slate-900 dark:text-slate-100">{{ t('results') }}</h3>
+              <div class="mt-3 grid gap-3 sm:grid-cols-2">
+                <figure v-for="item in results" :key="item.artifact_id" class="overflow-hidden rounded-xl border border-slate-200 dark:border-slate-700">
+                  <div v-if="selected.snapshot?.mock && item.kind === 'video'" class="bg-slate-100 p-8 text-center text-xs text-slate-500 dark:bg-slate-800">{{ t('mockVideo') }}</div>
+                  <video v-else-if="item.kind === 'video'" controls preload="metadata" :src="item.preview_url" class="max-h-80 w-full bg-black" />
+                  <img v-else :src="item.preview_url" alt="" class="max-h-80 w-full bg-slate-100 object-contain dark:bg-slate-800" />
+                  <figcaption class="flex justify-end px-3 py-2"><a :href="item.download_url" class="text-xs text-blue-600 hover:underline" download>{{ t('download') }}</a></figcaption>
+                </figure>
+              </div>
+            </section>
+
+            <section v-if="selected.snapshot?.packages?.length" class="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900">
+              <h3 class="text-sm font-semibold text-slate-900 dark:text-slate-100">{{ t('packages') }}</h3>
+              <p class="mt-1 text-xs text-slate-500">{{ t('packageHint') }}</p>
+              <a v-for="pack in selected.snapshot.packages" :key="pack.artifact_id" :href="pack.download_url" class="mt-2 block text-sm text-blue-600 hover:underline" download>{{ t('download') }} ZIP · {{ pack.job_id }}</a>
+              <p v-for="issue in selected.snapshot.package_errors || []" :key="issue.job_id" class="mt-1 text-sm text-red-600">{{ issue.job_id }}: {{ issue.message }}</p>
+            </section>
+          </div>
+        </main>
+      </div>
     </div>
   </DefaultLayout>
 </template>
 
 <script setup>
-import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
+import { PhFilmStrip, PhPlus, PhUser } from '@phosphor-icons/vue'
 import DefaultLayout from '@/layouts/DefaultLayout.vue'
-import { listAgentRuns, getAgentRun, createAgentRun, actOnAgentRun, uploadAgentSource, reviseAgentShot } from '@/api/agent'
+import AgentComposer from '@/components/agent/AgentComposer.vue'
+import RunStepper from '@/components/agent/RunStepper.vue'
+import UnderstandingCard from '@/components/agent/UnderstandingCard.vue'
+import ClarificationCard from '@/components/agent/ClarificationCard.vue'
+import SimplePlanEditor from '@/components/agent/SimplePlanEditor.vue'
+import ShotPlanEditor from '@/components/agent/ShotPlanEditor.vue'
+import messages from '@/components/agent/messages'
+import { actOnAgentRun, answerAgentCard, createAgentRun, getAgentRun, listAgentRuns, listModels, reviseAgentShot } from '@/api/agent'
 
-const { t } = useI18n({ useScope: 'local', messages: {
-  zh: {
-    creationMode: '创作方式', fromScratch: '从零创作', remix: '原视频二次创作', uploadSource: '上传原视频', uploading: '正在上传并检查视频…',
-    remixHint: '支持 MP4 / MOV / MKV / WebM。以原片为参考，保留片段或重新生成镜头。',
-    remixEstimate: '分析与规划 3 credits；每个保留镜头 0，复用首帧重生成 10，新首帧重生成 12。全部生成上限约 {count} credits；非实际账单。',
-    sourceVideo: '原视频', sourceAnalysis: '原片分析', analysisVersion: '分析 Prompt', analysisJob: '分析任务与日志', analyzing: '分析原视频中',
-    rangeHint: '原片开始/结束表示保留或替换的原片范围；原片首帧取该范围起点。生成时长是新片段的独立长度，不必等于原片范围长度。请结合预览确认范围。',
-    generatedDuration: '生成片段时长（秒，须符合模型要求）', invalidDraft: '请修改草稿后重新确认：', generationSettings: '模型与生成参数', invalidParams: '参数必须为有效的 JSON 对象。',
-    editAction: '处理方式', keep: '保留原片段', regenerate: '重新生成', sourceStart: '原片开始（秒）', sourceEnd: '原片结束（秒）',
-    frameStrategy: '首帧来源', sourceFrame: '复用原片首帧', newFrame: '生成新首帧', editReason: '保留或修改说明',
-    reviseShot: '确认修改此镜头（预计 {cost} credits）', shotHistory: '历史版本与素材',
-    subtitle: '从一个想法开始，规划分镜、生成素材并打包交付', disabled: 'Agent 模式尚未启用。',
-    newProject: '开始创作', goal: '描述你的视频', placeholder: '一只橘猫走进雨后的书店，暖色电影感，三个连贯镜头…', shots: '镜头数', budget: '预算上限',
-    modelPreference: '视频模型或系列（可选）', modelPlaceholder: '例如 wan2.7；留空则从描述识别',
-    videoModelRule: '视频模型约束', userModelRule: '遵循用户指定', defaultModelRule: '沿用服务器默认', excludedModels: '排除',
-    modelRuleHint: '约束适用于全部镜头的视频生成；不符合要求时会停止，不切换到其他系列。首帧图像模型不受此约束。',
-    estimate: '预计 {count} credits，含规划 2 credits。仅为资源估算，非实际账单。', plan: '生成分镜计划', history: '创作记录', noHistory: '还没有创作记录',
-    welcome: '描述一个想法，Director 与 Creative 将为你准备分镜计划。', progress: '共 {total} 个镜头 · 成功 {success} · 失败 {failed} · 待完成 {pending}', spent: '已用 {spent} / {budget} credits',
-    mock: '当前为 Mock 演示模式，结果为测试素材。', mockVideo: 'Mock 视频占位文件，可下载检查交付流程，不提供播放。', auto: '当前为自动模式；缺少模型凭据时会使用 Mock 素材。', queueHint: '等待后台创作服务处理。',
-    approve: '确认分镜并开始生成', reject: '放弃此计划', deliver: '一键打包可用素材', resume: '恢复执行', pendingAction: '操作已保存，等待处理…',
-    storyboard: '分镜计划', editHint: '确认前可修改各镜头的首帧与动作提示词。确认后将按此计划消耗生成预算。', job: '任务详情与日志', frame: '首帧', video: '视频动作', download: '下载',
-    packages: '交付素材', packageHint: '每个镜头一个 ZIP，包含视频、图片、提示词与清单。当前不自动拼接成片。',
-    waiting: '等待模型结果', submit_unknown: '提交结果待核实',
-    queued: '已排队', planning: '规划中', awaiting_approval: '等待确认', producing: '生成中', awaiting_delivery: '可预览与打包', delivering: '打包中', success: '成功', partial_success: '部分成功', failed: '失败', cancelled: '已取消', needs_attention: '需要处理', pending: '待执行', running: '执行中', skipped: '已跳过', path_failed: '上游失败',
-  },
-  en: {
-    creationMode: 'Creation mode', fromScratch: 'From scratch', remix: 'Remix a source video', uploadSource: 'Upload source video', uploading: 'Uploading and checking video…',
-    remixHint: 'MP4 / MOV / MKV / WebM. Keep source segments or regenerate selected shots.',
-    remixEstimate: 'Analysis and planning: 3 credits. Keep: 0; source-frame regeneration: 10; new-frame regeneration: 12. Up to {count} credits for all new frames; not a provider bill.',
-    sourceVideo: 'Source video', sourceAnalysis: 'Source analysis', analysisVersion: 'Analysis prompt', analysisJob: 'Analysis job and logs', analyzing: 'Analyzing source video',
-    rangeHint: 'Source start/end identify the original segment to keep or replace. The source frame comes from its start. Generated duration is the independent length of the new clip. Review ranges against the source.',
-    generatedDuration: 'Generated clip duration (seconds; model limits apply)', invalidDraft: 'Correct this draft before approval:', generationSettings: 'Model and generation parameters', invalidParams: 'Parameters must be a valid JSON object.',
-    editAction: 'Edit action', keep: 'Keep source segment', regenerate: 'Regenerate', sourceStart: 'Source start (s)', sourceEnd: 'Source end (s)',
-    frameStrategy: 'First frame', sourceFrame: 'Use source frame', newFrame: 'Generate a new frame', editReason: 'Edit rationale',
-    reviseShot: 'Confirm this shot edit (~{cost} credits)', shotHistory: 'Previous versions and assets',
-    subtitle: 'Turn an idea into a storyboard, video assets and downloadable packages', disabled: 'Agent mode is not enabled.', newProject: 'Start creating', goal: 'Describe your video', placeholder: 'An orange cat enters a bookstore after the rain, warm cinematic light, three connected shots…', shots: 'Shots', budget: 'Budget limit',
-    modelPreference: 'Video model or family (optional)', modelPlaceholder: 'e.g. wan2.7; leave blank to detect from goal',
-    videoModelRule: 'Video model constraint', userModelRule: 'User requirement', defaultModelRule: 'Server default', excludedModels: 'Excluded',
-    waiting: 'Waiting for model result', submit_unknown: 'Submission needs reconciliation',
-    modelRuleHint: 'Applies to video generation in every shot. Incompatible models stop execution rather than switching families. First-frame image models are independent.',
-    estimate: 'Estimated {count} credits, including 2 for planning. Resource estimate, not a provider bill.', plan: 'Create storyboard', history: 'Projects', noHistory: 'No projects yet', welcome: 'Describe an idea. Director and Creative will prepare a storyboard.',
-    progress: '{total} shots · {success} succeeded · {failed} failed · {pending} pending', spent: '{spent} / {budget} credits used', mock: 'Mock demo mode: results are test assets.', mockVideo: 'Mock video placeholder. Download to inspect delivery; playback is unavailable.', auto: 'Auto mode: models without credentials use mock assets.', queueHint: 'Waiting for the background creation service.',
-    approve: 'Approve and generate', reject: 'Reject plan', deliver: 'Package available assets', resume: 'Resume', pendingAction: 'Action saved, awaiting processing…', storyboard: 'Storyboard', editHint: 'Edit frame and motion prompts before approval. Generation consumes the approved budget.', job: 'Job details and logs', frame: 'First frame', video: 'Video motion', download: 'Download', packages: 'Delivery', packageHint: 'One ZIP per shot with video, images, prompts and manifest. Automatic video stitching is not included.',
-    queued: 'Queued', planning: 'Planning', awaiting_approval: 'Awaiting approval', producing: 'Producing', awaiting_delivery: 'Ready to preview and package', delivering: 'Packaging', success: 'Success', partial_success: 'Partial success', failed: 'Failed', cancelled: 'Cancelled', needs_attention: 'Needs attention', pending: 'Pending', running: 'Running', skipped: 'Skipped', path_failed: 'Upstream failed',
-  },
-} })
+const { t, locale } = useI18n({ useScope: 'local', messages })
 const route = useRoute()
 const router = useRouter()
-const enabled = ref(null), mode = ref('auto'), runs = ref([]), selected = ref(null), draft = ref(null), busy = ref(false), error = ref('')
-const form = reactive({ goal: '', shot_count: 3, budget_limit: 100, video_model_preference: '', mode: 'from_scratch' })
-const uploadedSource = ref(null), uploading = ref(false)
-const parameterErrors = ref({})
-const modelPolicy = computed(() => selected.value?.request?.video_model_policy || selected.value?.snapshot?.video_model_policy)
-const estimate = computed(() => (form.mode === 'remix' ? 3 : 2) + 12 * form.shot_count)
-const actionDisabled = computed(() => busy.value || Boolean(selected.value?.command) || Object.keys(parameterErrors.value).length > 0)
-const canRevise = computed(() => selected.value?.request.mode === 'remix' && selected.value?.status === 'awaiting_delivery')
-const editable = computed(() => (selected.value?.status === 'awaiting_approval' || canRevise.value) && !busy.value && !selected.value?.command)
-const shotCost = (shot) => shot.action === 'keep' ? 0 : shot.first_frame_mode === 'source' ? 10 : 12
-let timer, disposed = false, selectionVersion = 0, requestKey = null, requestPayload = null
-let revisionKey = null, revisionPayload = null
-const newRequestKey = () => globalThis.crypto?.randomUUID?.() || `agent-${Date.now()}-${Math.random().toString(36).slice(2)}`
+
+const enabled = ref(null), mode = ref('auto'), runs = ref([]), selected = ref(null), draft = ref(null)
+const busy = ref(false), error = ref(''), models = ref([]), paramsInvalid = ref(false), composer = ref(null)
+let timer, disposed = false, selectionVersion = 0
+let requestKey = null, requestPayload = null, revisionKey = null, revisionPayload = null
+
+// v2 fields (CONTRACTS A.10) with fallbacks to the run snapshot / v1 request.
+const pick = (run, key) => run?.[key] ?? run?.snapshot?.[key] ?? null
+const isV2 = computed(() => (selected.value?.schema_version ?? selected.value?.request?.schema_version) === 2)
+const requestSpec = computed(() => pick(selected.value, 'request_spec'))
+const pendingCard = computed(() => pick(selected.value, 'pending_card'))
+const attachments = computed(() => pick(selected.value, 'attachments') || [])
+const results = computed(() => pick(selected.value, 'results') || [])
+const clarifications = computed(() => selected.value?.snapshot?.clarifications || [])
+const assumptions = computed(() => selected.value?.snapshot?.assumptions || [])
+const plan = computed(() => pick(selected.value, 'plan'))
+const legacySource = computed(() => selected.value?.request?.source || null)
+const requestText = computed(() => selected.value?.text || selected.value?.request?.text || selected.value?.request?.goal || '')
+const budgetLimit = computed(() => selected.value?.request?.budget_limit ?? selected.value?.budget_limit ?? null)
+const answeredCards = computed(() => clarifications.value.flatMap((record) =>
+  Object.values(record.answers || {}).map((item) => ({
+    key: `${record.card.card_id}:${item.question_id}`, question: item.question, choice: item.label || item.text, source: item.source,
+  }))))
+
+const actionDisabled = computed(() => busy.value || Boolean(selected.value?.command) || paramsInvalid.value)
+const canRevise = computed(() => selected.value?.request?.mode === 'remix' && selected.value?.status === 'awaiting_delivery')
+const shotEditable = computed(() => (selected.value?.status === 'awaiting_approval' || canRevise.value) && !busy.value && !selected.value?.command)
+const showRunActions = computed(() => ['awaiting_delivery', 'needs_attention'].includes(selected.value?.status) || selected.value?.command)
+
+const titleOf = (run) => run?.snapshot?.plan?.title || run?.plan?.title || run?.request_spec?.summary || run?.snapshot?.request_spec?.summary
+  || run?.text || run?.request?.text || run?.request?.goal || '—'
 const statusLabel = (status) => t(status || 'pending')
-const shotState = (shot) => selected.value?.snapshot?.shots?.[shot.shot_id] || {}
-const stage = (shot, key) => statusLabel(shotState(shot).nodes?.find(node => node.node_key === key)?.status || (shotState(shot).status === 'failed' ? 'failed' : 'pending'))
-const media = (shot) => (shotState(shot).artifacts || []).filter(item => /^(image|video)\//.test(item.mime_type || ''))
+const round = (value) => Math.round((value || 0) * 10) / 10
+const shortTime = (value) => (value ? new Date(value).toLocaleDateString(locale.value === 'zh' ? 'zh-CN' : 'en-US', { month: 'numeric', day: 'numeric' }) : '')
+const TONE = {
+  success: 'good', partial_success: 'warn', failed: 'bad', cancelled: 'muted', needs_attention: 'bad',
+  awaiting_input: 'ask', awaiting_approval: 'ask', awaiting_delivery: 'ask',
+}
+const dotClass = (status) => ({ good: 'bg-emerald-500', warn: 'bg-amber-500', bad: 'bg-red-500', muted: 'bg-slate-400', ask: 'bg-blue-500' }[TONE[status]] || 'bg-blue-300 animate-pulse')
+const pillClass = (status) => `tone-${TONE[status] || 'busy'}`
+const newKey = () => globalThis.crypto?.randomUUID?.() || `agent-${Date.now()}-${Math.random().toString(36).slice(2)}`
 const message = (err) => {
   const failure = err.response?.data?.error
-  return failure ? [failure.details?.shot_id, failure.message, ...(failure.details?.errors || []).map(item => typeof item === 'string' ? item : item.msg)].filter(Boolean).join(' · ') : err.message
+  return failure
+    ? [failure.details?.shot_id, failure.message, ...(failure.details?.errors || []).map((item) => (typeof item === 'string' ? item : item.msg))].filter(Boolean).join(' · ')
+    : err.message
 }
+
 function applyRun(value) {
   if (selected.value?.run_id !== value.run_id || selected.value?.status !== value.status || !draft.value) {
-    draft.value = value.snapshot?.plan ? structuredClone(value.snapshot.plan) : null
-    parameterErrors.value = {}
+    const source = value.plan ?? value.snapshot?.plan
+    draft.value = source ? structuredClone(source) : null
+    paramsInvalid.value = false
   }
   selected.value = value
 }
-function editParams(shot, kind, text) {
-  const key = `${shot.shot_id}:${kind}`
-  try {
-    const value = JSON.parse(text)
-    if (!value || Array.isArray(value) || typeof value !== 'object') throw new Error('object required')
-    shot[`${kind}_params`] = value
-    delete parameterErrors.value[key]
-  } catch { parameterErrors.value[key] = true }
+function startNew() {
+  selectionVersion++
+  selected.value = null
+  draft.value = null
+  error.value = ''
+  router.replace({ query: {} })
 }
 async function select(id) {
   const version = ++selectionVersion
+  error.value = ''
   try {
     const value = await getAgentRun(id)
     if (!disposed && version === selectionVersion) {
@@ -264,47 +251,46 @@ async function refresh() {
     const data = await listAgentRuns()
     if (disposed) return
     runs.value = data.items
-    const current = data.items.find(item => item.run_id === selected.value?.run_id)
+    const current = data.items.find((item) => item.run_id === selected.value?.run_id)
     if (current) applyRun(current)
-    if (!selected.value && data.items.length) await select(route.query.run || data.items[0].run_id)
   } catch (err) { error.value = message(err) }
 }
-async function create() {
-  busy.value = true; error.value = ''
-  const input = { ...form, source_artifact_id: form.mode === 'remix' ? uploadedSource.value?.artifact_id : undefined,
-    video_model_preference: form.video_model_preference.trim() || undefined }
-  const payload = JSON.stringify(input)
-  if (payload !== requestPayload) {
-    requestPayload = payload
-    requestKey = newRequestKey()
-  }
+async function create(payload) {
+  busy.value = true
+  error.value = ''
+  const serialized = JSON.stringify(payload)
+  if (serialized !== requestPayload) { requestPayload = serialized; requestKey = newKey() }
   try {
-    const value = await createAgentRun({ ...input, request_key: requestKey })
-    applyRun(value); await router.replace({ query: { run: value.run_id } }); await refresh()
+    const value = await createAgentRun({ ...payload, request_key: requestKey })
     requestKey = null; requestPayload = null
+    composer.value?.reset()
+    applyRun(value)
+    await router.replace({ query: { run: value.run_id } })
+    await refresh()
   } catch (err) { error.value = message(err) } finally { busy.value = false }
 }
-async function upload(event) {
-  const file = event.target.files?.[0]
-  if (!file) return
-  uploading.value = true; uploadedSource.value = null; error.value = ''
-  try { uploadedSource.value = await uploadAgentSource(file) }
-  catch (err) { error.value = message(err) } finally { uploading.value = false }
+async function act(action, planValue) {
+  busy.value = true
+  error.value = ''
+  try { applyRun(await actOnAgentRun(selected.value.run_id, action, action === 'approve' ? planValue : undefined)); await refresh() }
+  catch (err) { error.value = message(err) } finally { busy.value = false }
+}
+async function answer({ answers, useDefaults }) {
+  busy.value = true
+  error.value = ''
+  try { applyRun(await answerAgentCard(selected.value.run_id, pendingCard.value.card_id, answers, useDefaults)); await refresh() }
+  catch (err) { error.value = message(err) } finally { busy.value = false }
 }
 async function revise(shot) {
-  busy.value = true; error.value = ''
-  const payload = JSON.stringify({ run: selected.value.run_id, shot })
-  if (payload !== revisionPayload) { revisionPayload = payload; revisionKey = newRequestKey() }
+  busy.value = true
+  error.value = ''
+  const serialized = JSON.stringify({ run: selected.value.run_id, shot })
+  if (serialized !== revisionPayload) { revisionPayload = serialized; revisionKey = newKey() }
   try {
-    applyRun(await reviseAgentShot(selected.value.run_id, shot, revisionKey)); await refresh()
+    applyRun(await reviseAgentShot(selected.value.run_id, shot, revisionKey))
     revisionKey = null; revisionPayload = null
-  }
-  catch (err) { error.value = message(err) } finally { busy.value = false }
-}
-async function act(action) {
-  busy.value = true; error.value = ''
-  try { applyRun(await actOnAgentRun(selected.value.run_id, action, action === 'approve' ? draft.value : undefined)); await refresh() }
-  catch (err) { error.value = message(err) } finally { busy.value = false }
+    await refresh()
+  } catch (err) { error.value = message(err) } finally { busy.value = false }
 }
 async function poll() {
   await refresh()
@@ -315,8 +301,10 @@ onMounted(async () => {
     const response = await fetch('/api/health')
     if (!response.ok) throw new Error(`Health check failed (${response.status})`)
     const data = (await response.json()).data
-    enabled.value = Boolean(data.agent_mode); mode.value = data.mode
+    enabled.value = Boolean(data.agent_mode)
+    mode.value = data.mode
     if (enabled.value && !disposed) {
+      listModels().then((value) => { models.value = value.models || [] }).catch(() => {})
       if (route.query.run) await select(route.query.run)
       await poll()
     }
@@ -326,8 +314,17 @@ onUnmounted(() => { disposed = true; clearTimeout(timer); selectionVersion++ })
 </script>
 
 <style scoped>
-.panel { @apply bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-5 text-gray-900 dark:text-gray-100; }
-.field { @apply w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500; }
-.primary { @apply rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed; }
-.secondary { @apply rounded-lg border border-gray-300 dark:border-gray-600 px-4 py-2.5 text-sm disabled:opacity-50; }
+.new-btn { @apply flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-600 dark:bg-blue-600 dark:hover:bg-blue-500; }
+.history-item { @apply block w-full rounded-xl px-2.5 py-2 text-left hover:bg-slate-50 dark:hover:bg-slate-800; }
+.history-item[aria-current='true'] { @apply bg-blue-50 dark:bg-blue-950/50; }
+.example { @apply rounded-full border border-slate-200 bg-white px-3.5 py-1.5 text-left text-sm text-slate-600 transition hover:border-blue-300 hover:text-blue-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-blue-700 dark:hover:text-blue-300; }
+.status-pill { @apply flex-none rounded-full px-3 py-1 text-xs font-semibold; }
+.tone-good { @apply bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300; }
+.tone-warn { @apply bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300; }
+.tone-bad { @apply bg-red-50 text-red-700 dark:bg-red-950/50 dark:text-red-300; }
+.tone-muted { @apply bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400; }
+.tone-ask { @apply bg-blue-600 text-white; }
+.tone-busy { @apply bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300; }
+.primary-btn { @apply rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50; }
+.secondary-btn { @apply rounded-xl border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800; }
 </style>
