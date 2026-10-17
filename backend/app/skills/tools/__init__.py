@@ -2,9 +2,13 @@ from app.skills.tools import (
     analyze_image,
     analyze_video,
     animate_shot,
+    download_reference,
+    fetch_page,
+    web_search,
     generate_image,
     generate_video,
     get_task_status,
+    image_search,
     package_project,
     produce_shot,
     remix_shot,
@@ -13,9 +17,13 @@ from app.skills.tools import (
 )
 
 ALL_SPECS = [
+    web_search.SPEC,
+    fetch_page.SPEC,
     analyze_image.SPEC,
     analyze_video.SPEC,
     animate_shot.SPEC,
+    download_reference.SPEC,
+    image_search.SPEC,
     rewrite_prompt.SPEC,
     generate_image.SPEC,
     generate_video.SPEC,

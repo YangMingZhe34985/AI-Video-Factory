@@ -27,12 +27,15 @@ def invalid_attachment(reason: str) -> AppError:
     return AppError("INVALID_ATTACHMENT", "Invalid Agent attachment", 422, payload={"reason": reason})
 
 
-def attachment_for_owner(artifact_id: str, owner_id: str) -> Artifact:
+def attachment_for_owner(artifact_id: str, owner_id: str, *, run_id: str | None = None) -> Artifact:
     artifact = Artifact.query.filter_by(artifact_id=artifact_id).first()
-    if (not artifact or artifact.artifact_type not in {"agent_attachment_image", "source_video"}
+    if (not artifact or artifact.artifact_type not in {"agent_attachment_image", "source_video", "agent_reference_image"}
             or artifact.job.strategy != "agent_upload"):
         raise AppError("ATTACHMENT_NOT_FOUND", "Attachment not found", 404)
     require_upload_job_owner(artifact.job, owner_id)
+    if (artifact.artifact_type == "agent_reference_image"
+            and (not run_id or (artifact.meta or {}).get("reference", {}).get("run_id") != run_id)):
+        raise AppError("ATTACHMENT_NOT_FOUND", "Reference image is not part of this run", 404)
     path = StorageService.resolve(artifact.file_path)
     if not path.resolve().is_relative_to(StorageService.root()) or not path.is_file():
         raise AppError("ATTACHMENT_NOT_FOUND", "Attachment not found", 404)
@@ -50,13 +53,20 @@ def validate_job_attachment_sources(data: dict, owner_id: str) -> None:
     for value in (data.get("initial_artifacts") or {}).values():
         for artifact in JobService._iter_existing_artifacts(value):
             require_upload_job_owner(artifact.job, owner_id)
+            if artifact.artifact_type == "agent_reference_image":
+                raise AppError("ATTACHMENT_NOT_FOUND", "Reference image requires its owning Agent run", 404)
     if data.get("source_video_path"):
         target = StorageService.resolve(data["source_video_path"]).resolve()
+        # Download receipts also contain private bytes before artifact registration.
+        if target.is_relative_to(StorageService.root() / "agent" / "references"):
+            raise AppError("ATTACHMENT_NOT_FOUND", "Reference image requires its owning Agent run", 404)
         candidates = Artifact.query.join(Job).filter(Job.strategy == "agent_upload",
             func.lower(Artifact.file_path).endswith(target.name.lower(), autoescape=True)).all()
         for artifact in candidates:
             if StorageService.resolve(artifact.file_path).resolve() == target:
                 require_upload_job_owner(artifact.job, owner_id)
+                if artifact.artifact_type == "agent_reference_image":
+                    raise AppError("ATTACHMENT_NOT_FOUND", "Reference image requires its owning Agent run", 404)
 
 
 def describe_attachment(artifact: Artifact) -> dict:

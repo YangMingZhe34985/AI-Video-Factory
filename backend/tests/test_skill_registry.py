@@ -29,14 +29,18 @@ def test_registry_exposes_all_tools_with_schemas(app_ctx):
         "analyze_image",
         "analyze_video",
         "animate_shot",
+        "download_reference",
+        "fetch_page",
         "generate_image",
         "generate_video",
         "get_task_status",
+        "image_search",
         "package_project",
         "produce_shot",
         "remix_shot",
         "rerun_node",
         "rewrite_prompt",
+        "web_search",
     ]
     for spec in registry.describe_all():
         assert spec["input_schema"]["type"] == "object"

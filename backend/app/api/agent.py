@@ -80,14 +80,14 @@ def serialize(row):
     snapshot = row.snapshot or {}
     shots = list(snapshot.get("shots", {}).values())
     version = row.request.get("schema_version", 1)
-    result.update(schema_version=version, text=None, attachments=None, request_spec=None,
+    result.update(schema_version=version, text=None, attachments=None, request_spec=None, research_dossier=None,
                   pending_card=None, plan=None, results=None)
     if version == 2:
         plan = snapshot.get("plan") or {}
         total = len(plan["shots"]) if "shots" in plan else sum(plan.get(key) is not None for key in ("image", "video"))
         result.update(text=row.request["text"],
                       attachments=attachment_metadata(row),
-                      request_spec=snapshot.get("request_spec"), plan=snapshot.get("plan"),
+                      request_spec=snapshot.get("request_spec"), research_dossier=snapshot.get("research_dossier"), plan=snapshot.get("plan"),
                       pending_card=snapshot.get("pending_card") if row.status == "awaiting_input" else None,
                       results=snapshot.get("results", []))
         result["summary"] = {"steps_total": total,

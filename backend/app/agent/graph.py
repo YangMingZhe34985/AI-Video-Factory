@@ -90,7 +90,8 @@ def pipeline_nodes(registry):
         if state.get("mode", "from_scratch") == "from_scratch":
             select_video_model(policy, "i2v")
         result = call(state, "agent_director", {"goal": state["goal"], "shot_count": state["shot_count"],
-                                              "source_analysis": state.get("analysis", {}).get("content")}, "director", "director")
+                                              "source_analysis": state.get("analysis", {}).get("content"),
+                                              "untrusted_content": {"research_dossier": state["research_dossier"]} if state.get("research_dossier") else {}}, "director", "director")
         return {"brief": result["output"], "status": "planning", "video_model_policy": policy}
 
     def creative(state):
@@ -99,7 +100,8 @@ def pipeline_nodes(registry):
                                               "mode": state.get("mode", "from_scratch"),
                                               "source_analysis": state.get("analysis", {}).get("content"),
                                               "source_duration": state.get("source", {}).get("duration"),
-                                              "budget_limit": state["budget_limit"]}, "creative", "creative")
+                                              "budget_limit": state["budget_limit"],
+                                              "untrusted_content": {"research_dossier": state["research_dossier"]} if state.get("research_dossier") else {}}, "creative", "creative")
         return {"plan": result["output"]}
 
     def validate(state):

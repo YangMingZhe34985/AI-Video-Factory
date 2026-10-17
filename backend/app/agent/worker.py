@@ -49,7 +49,7 @@ class AgentWorker:
     def tick(self):
         db.session.expire_all()
         ids = [row.run_id for row in AgentRun.query.filter(
-            (AgentRun.status.in_(["queued", "understanding", "analyzing", "planning", "producing", "delivering"])) | AgentRun.command.is_not(None)
+            (AgentRun.status.in_(["queued", "understanding", "analyzing", "researching", "planning", "producing", "delivering"])) | AgentRun.command.is_not(None)
         ).order_by(AgentRun.id).all()]
         for run_id in ids:
             self.advance(run_id)

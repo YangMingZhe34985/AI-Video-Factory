@@ -80,6 +80,9 @@ class ToolRegistry:
         data = self._validate_input(spec, raw_input or {})
         self._authorize(spec, ctx)
         ctx.tool_name = spec.name
+        if spec.permission == "external" or spec.name == "analyze_image":
+            from app.agent.search.scope import require_run
+            require_run(ctx, getattr(data, "run_id", None))
         if not spec.uses_ledger:
             output = self._run_handler(spec, data, ctx)
             return self._result(spec, None, output, replayed=False)
@@ -116,12 +119,17 @@ class ToolRegistry:
             )
 
     def _invoke_with_ledger(self, spec: ToolSpec, data: BaseModel, ctx: ToolContext) -> dict:
+        scoped = spec.permission == "external" or spec.name == "analyze_image"
+        generated_key = idempotency_key_for(spec.name, data)
+        if scoped:
+            generated_key = f"{ctx.budget_scope}:tool:{hashlib.sha256(generated_key.encode()).hexdigest()[:32]}"
         key = ctx.idempotency_key or (
-            idempotency_key_for(spec.name, data) if spec.dedupe else f"{spec.name}:{uuid.uuid4().hex}"
+            generated_key if spec.dedupe else f"{spec.name}:{uuid.uuid4().hex}"
         )
         invocation = ToolInvocation.query.filter_by(idempotency_key=key).first()
 
         if invocation is not None:
+            self._check_scoped_replay(spec, invocation, data, ctx)
             if invocation.tool_name != spec.name:
                 raise AppError(
                     "IDEMPOTENCY_KEY_CONFLICT",
@@ -143,10 +151,17 @@ class ToolRegistry:
             if invocation.job is not None:
                 db.session.refresh(invocation.job)
             sync_invocation_from_job(invocation)
-            if invocation.status in REPLAYABLE_STATUSES:
+            recovering_download = spec.name == "download_reference" and spec.permission == "external" and invocation.status in {"pending", "running"}
+            if invocation.status in REPLAYABLE_STATUSES and not recovering_download:
+                if scoped and invocation.status in {"pending", "running"}:
+                    raise AppError("RECOVERY_REQUIRED", "Research call outcome is unknown; automatic repeat stopped", 409)
                 db.session.commit()
                 return self._result(spec, invocation, invocation.output_payload, replayed=True)
-            if invocation.status == "failed":
+            if recovering_download:
+                # Only this free local tool has a durable byte receipt and atomic
+                # artifact/output commit. Paid external calls never re-enter here.
+                ctx.previous = invocation
+            elif invocation.status == "failed":
                 if invocation.input_payload != data.model_dump(mode="json"):
                     raise AppError(
                         "IDEMPOTENCY_KEY_CONFLICT",
@@ -195,6 +210,9 @@ class ToolRegistry:
                 # A concurrent call claimed the same key first: replay it.
                 db.session.rollback()
                 existing = ToolInvocation.query.filter_by(idempotency_key=key).one()
+                self._check_scoped_replay(spec, existing, data, ctx)
+                if scoped and existing.status not in {"success", "partial_success"}:
+                    raise AppError("RECOVERY_REQUIRED", "Concurrent research call has not completed", 409)
                 return self._result(spec, existing, existing.output_payload, replayed=True)
 
         ctx.invocation_id = invocation.invocation_id
@@ -212,6 +230,7 @@ class ToolRegistry:
                 invocation.job_id is None
                 and isinstance(error, AppError)
                 and 400 <= int(error.status_code) < 500
+                and not error.payload.get("response_validation")
             )
             invocation.status = "rejected" if nothing_ran else "failed"
             invocation.error_code = getattr(error, "code", None) or "TOOL_FAILED"
@@ -244,6 +263,13 @@ class ToolRegistry:
             invocation.finished_at = utc_now()
         db.session.commit()
         return self._result(spec, invocation, output, replayed=False)
+
+    @staticmethod
+    def _check_scoped_replay(spec, invocation, data, ctx):
+        if spec.permission == "external" or spec.name == "analyze_image":
+            if (invocation.tool_name != spec.name or invocation.budget_scope != ctx.budget_scope
+                    or invocation.input_payload != data.model_dump(mode="json")):
+                raise AppError("IDEMPOTENCY_KEY_CONFLICT", "Research key belongs to different input or Run", 409)
 
     @staticmethod
     def _check_budget(
