@@ -106,7 +106,7 @@ def _mock_plan(data):
     spec = data.request_spec
     image_mode, references, first_frames = _image_inputs(spec)
     if len(first_frames) > 1:
-        answer = answer_for({"clarifications": data.clarifications, "untrusted_content": data.untrusted_content}, "first_frame", asked_by="director")
+        answer = answer_for({"clarifications": data.clarifications}, "first_frame", asked_by="director")
         selected = next((item for index, item in enumerate(first_frames[:4])
                          if answer and str(index) == answer.get("option_id")), None)
         if not selected:
