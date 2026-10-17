@@ -24,7 +24,7 @@
           @click="pick(question, option.option_id)"
         >
           <span v-if="option.image_artifact_id" class="relative mb-2 block">
-            <img :src="`/api/artifacts/${option.image_artifact_id}/preview`" alt="" class="aspect-square w-full rounded-lg object-cover" />
+            <AuthedImage :src="`/api/artifacts/${option.image_artifact_id}/preview`" :alt="option.label" class="block aspect-square w-full rounded-lg object-cover" />
             <span v-if="option.option_id === question.recommended_option_id" class="pill-overlay">{{ t('recommended') }}</span>
           </span>
           <span class="flex items-start justify-between gap-2">
@@ -68,6 +68,7 @@
 import { computed, reactive, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { PhChatCircleDots } from '@phosphor-icons/vue'
+import AuthedImage from './AuthedImage.vue'
 import messages from './messages'
 
 const props = defineProps({

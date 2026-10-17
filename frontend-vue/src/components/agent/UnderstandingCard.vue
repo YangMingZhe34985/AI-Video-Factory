@@ -17,7 +17,7 @@
       <ul class="mt-2 grid gap-2 sm:grid-cols-2">
         <li v-for="use in spec.attachments" :key="use.attachment_id" class="flex gap-3 rounded-xl bg-slate-50 p-2 dark:bg-slate-800/60">
           <span class="thumb">
-            <img v-if="thumb(use.attachment_id)?.kind === 'image'" :src="thumb(use.attachment_id).preview_url" alt="" />
+            <AuthedImage v-if="thumb(use.attachment_id)?.kind === 'image'" :src="thumb(use.attachment_id).preview_url" class="h-full w-full object-cover" />
             <span v-else class="flex h-full w-full items-center justify-center bg-slate-800 text-white"><PhFilmStrip :size="18" /></span>
           </span>
           <span class="min-w-0">
@@ -58,6 +58,7 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { PhFilmStrip, PhLightbulb, PhMagnifyingGlass, PhSparkle } from '@phosphor-icons/vue'
+import AuthedImage from './AuthedImage.vue'
 import messages from './messages'
 
 const props = defineProps({
