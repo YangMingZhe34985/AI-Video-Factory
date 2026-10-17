@@ -5,7 +5,10 @@ from dotenv import load_dotenv
 
 
 BASE_DIR = Path(__file__).resolve().parents[1]
-load_dotenv(BASE_DIR / ".env")
+PROJECT_ROOT = BASE_DIR.parent
+# One local configuration for API, Agent and MQ, independent of the launch cwd.
+# Explicit process/container environment variables retain precedence.
+load_dotenv(PROJECT_ROOT / ".env")
 
 
 def _bool_env(name: str, default: bool = False) -> bool:

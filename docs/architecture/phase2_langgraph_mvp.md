@@ -13,13 +13,13 @@ flask --app run.py db upgrade
 flask --app run.py seed-defaults
 ```
 
-在 `backend/.env` 配置 `AGENT_MODE_ENABLED=true`。API 服务沿用原启动方式；另一个终端在相同环境和目录运行：
+在项目根目录 `.env` 配置 `AGENT_MODE_ENABLED=true`。API 服务沿用原启动方式；另一个终端在相同环境和目录运行：
 
 ```bash
 flask --app run.py agent-worker
 ```
 
-Worker 必须持续运行；`--once` 只用于单次诊断，不能替代长期 worker（Job 的线程/队列仍是进程内的）。默认使用现有的 `DEFAULT_PROMPT_REWRITE_MODEL` 作为规划模型，也可设置 `AGENT_PLANNER_MODEL`，要求启用的 `prompt_rewrite`/`text_to_text` 模型使用 `qwen_chat` 适配器。真实模式需配置相应供应商凭据；规划通过现有 Chat 适配器的 JSON object 模式返回结构化数据，由 Pydantic 强校验。不会隐式补发格式修复请求。
+Worker 必须持续运行；`--once` 只用于单次诊断，不能替代长期 worker。启用 MQ 后，还需运行共用 MQ worker；最新本地启动步骤见[主 README](../../README_zh.md)。默认使用现有的 `DEFAULT_PROMPT_REWRITE_MODEL` 作为规划模型，也可设置 `AGENT_PLANNER_MODEL`，要求启用的 `prompt_rewrite`/`text_to_text` 模型使用 `qwen_chat` 适配器。真实模式需配置相应供应商凭据；规划通过现有 Chat 适配器的 JSON object 模式返回结构化数据，由 Pydantic 强校验。不会隐式补发格式修复请求。
 
 Docker：在 `.env.production` 开启 Agent 模式，然后执行 `docker compose --profile agent up -d --build`。新增 worker 服务与 backend 共用 MySQL 和 `backend_storage`。worker 不运行 HTTP 服务，禁用继承的 HTTP 健康检查。
 

@@ -1,352 +1,183 @@
 # CineCrew
 
-[中文文档](README_zh.md) | **English**
+[中文](README_zh.md) | **English**
 
-> Formerly **AI Video Factory**. The project is being upgraded with a multi-agent creation mode (Director / Creative / Production agents) built on top of the existing workflow engine — see [docs/architecture](docs/architecture/) for the upgrade plan and progress.
+CineCrew (formerly AI Video Factory) is an AI video creation platform. Use Agent Studio to turn a brief or source video into an approved shot plan, or control individual generation nodes through the classic workflow. Both modes share model registration, Jobs, artifacts, packaging and the execution queue.
 
-A full-stack AI video generation workflow platform featuring a DAG-based pipeline orchestrator, prompt versioning, model registry, and artifact management.
+## Choose a mode
 
-CineCrew turns a source video into production-ready AI-generated videos through an automated, configurable multi-step workflow — from video understanding and prompt engineering to image generation, video synthesis, and quality testing.
+| Mode | Best for | Your controls |
+| --- | --- | --- |
+| Agent Studio | Creation from a written idea or remixing an existing video | Goal, shots, model preference, budget, plan approval and shot edits |
+| Classic workflow | Node debugging, source-video pipelines and batch tests | DAG branches, prompt versions, models, parameters and partial reruns |
 
----
+### Agent Studio
 
-## ✨ Features
+Director structures the brief, Creative writes the shot plan, and Production executes approved generation tools.
 
-### Workflow Engine
-- **DAG-based parallel scheduling** — nodes execute concurrently when dependencies are satisfied
-- **Multiple run modes** — run the full pipeline, run from a specific node, or run a single node
-- **Job lifecycle control** — pause, cancel, restart, and force re-run capabilities
-- **Fault-tolerant execution** — individual node failures don't cascade; partial results are preserved
-- **I2I test batch system** — batch identity-preserving image/video generation with per-sample fault isolation
+**From scratch:** brief → shot plan → edit and approve → generate first frames and videos → review → package. Example: “Create a video of a dancing cat using the wan2.7 video model family.” The current route is first-frame generation followed by I2V; automatic T2V/I2V/R2V route selection is not implemented.
 
-### Prompt Management
-- **Versioned prompts** — every edit, rollback, or LLM generation creates a new version; nothing is ever overwritten
-- **Multi-source prompts** — factory defaults, LLM-generated, manual edits, and rollbacks all coexist
-- **Job-level snapshots** — each job captures the exact prompt versions used, ensuring reproducibility
-- **Template-first / Job-first resolution** — configurable strategy for prompt inheritance
+**Source-video remix:** upload → describe edits → analyze → approve which segments to keep/regenerate → review and revise individual shots → package. Kept segments are cut locally with FFmpeg. Regenerated segments can use a source frame or a newly generated frame.
 
-### Model Registry
-- **Adapter-based abstraction** — unified interface across DashScope, Qwen, DeepSeek, and mock providers
-- **Per-job model overrides** — assign different models to specific nodes without changing global defaults
-- **Supported task types** — text-to-video, image generation, image-to-video, reference-to-video, chat/understanding
+A source time range identifies material in the original video; generated duration is a separate model parameter. Invalid draft plans can be edited before approval. Remix shot revisions preserve other shots. Successful results remain available after partial failure. Delivery consists of shot assets and prompts in ZIP packages; automatic final-film assembly is not included.
 
-### Artifact & Packaging
-- **Full artifact tracking** — every generated video, image, and prompt is recorded with metadata and lineage
-- **Artifact browser** — search, filter, preview (image/video/markdown/JSON), and download any artifact
-- **One-click packaging** — export job results or template-level production packages as downloadable ZIP files
+Without a model preference, the server's default video models apply. An explicit family or model restricts generation to registered, enabled models with the required capability. Unsupported combinations are rejected. Review concrete models and parameters in the plan before approval.
 
-### Real-time Monitoring
-- **SSE live event stream** — watch job progress in real time via Server-Sent Events
-- **Structured event logging** — every state change, API call, and error is recorded with context
-- **Node-level progress** — see which workflow nodes are running, succeeded, or failed at a glance
+Budgets are estimated credits, not provider invoices. Analysis and planning happen before media-generation approval and may already incur costs in real mode. Start with Mock.
 
-### Additional
-- **LLM-based failure agent** — automatic error diagnosis with actionable recovery decisions
-- **Automatic video compression** — configurable ffmpeg-based compression with size-aware fallback
-- **JWT authentication** — secure API access with token refresh
-- **Internationalization** — English and Chinese UI via vue-i18n
-- **Docker deployment** — production-ready Docker Compose with MySQL, Gunicorn, and Nginx
+### Classic workflow
 
----
+Create a Job from a template, upload a source video and run the pipeline or individual nodes: video understanding → prompt rewrite → first frame → I2V. Optional branches include T2V, R2V and I2I Test. The DAG supports parallel execution, pause/cancel, partial reruns, prompt history and packaging of usable results.
 
-## 🏗 Architecture
+## Local setup: Windows PowerShell
 
-```
-┌─────────────────────────────────────────────────────────┐
-│                     Frontend (Vue 3)                     │
-│   Vite · Pinia · Vue Router · Tailwind CSS · vue-i18n   │
-└──────────────────────┬──────────────────────────────────┘
-                       │ REST API / SSE
-┌──────────────────────▼──────────────────────────────────┐
-│                    Backend (Flask)                        │
-│  ┌──────────┐  ┌──────────────┐  ┌───────────────────┐  │
-│  │ Workflow  │  │   Prompt     │  │  Model Registry   │  │
-│  │ Scheduler │  │   Versioning │  │  & Adapters       │  │
-│  └──────────┘  └──────────────┘  └───────────────────┘  │
-│  ┌──────────┐  ┌──────────────┐  ┌───────────────────┐  │
-│  │ Artifact  │  │  Job Queue   │  │  Failure Agent    │  │
-│  │ Service   │  │  & Events    │  │  (LLM Diagnosis)  │  │
-│  └──────────┘  └──────────────┘  └───────────────────┘  │
-└──────────────────────┬──────────────────────────────────┘
-                       │
-        ┌──────────────▼──────────────┐
-        │   DashScope / Qwen / Mock   │
-        │   (Model Provider APIs)      │
-        └─────────────────────────────┘
+Use **host MySQL + Docker Redis + host Python/Node.js**. Prerequisites: Python 3.10+, Node.js 18+, a running MySQL 8.0+ database, Docker Desktop with Linux containers, and FFmpeg.
+
+### 1. Activate your existing Conda environment
+
+Start in the **repository root** and reuse your normal Conda environment. Replace the example name `video-factory` with your actual environment name:
+
+```powershell
+conda env list
+conda activate video-factory
+python -m pip install -r backend/requirements.txt
 ```
 
-### Layers
+If needed, first create an environment with `conda create -n video-factory python=3.12`. The environment name does not need to change when the project is renamed.
 
-| Layer | Status | Code |
-|---|---|---|
-| Classic workflow (19-node DAG, async task system) | ✅ Production | `backend/app/services/` |
-| Skill layer — validated, permissioned, budgeted, idempotent tools over the workflow | ✅ Phase 1, behind `AGENT_MODE_ENABLED` | `backend/app/skills/`, `/api/skills` |
-| Multi-agent studio (LangGraph Director / Creative / Production) | 📋 Phase 2 (plan protocol only) | `backend/app/agent/` |
+After activation, `python` resolves to that environment's interpreter. Check with `python -c "import sys; print(sys.executable)"`. Activate the same environment in **each new terminal**. Use an initialized Anaconda PowerShell Prompt if Conda activation is unavailable in your normal shell.
 
-Both modes share the same business services; generation tools create ordinary workflow jobs, so tracking, retries and packaging are reused rather than reimplemented. See [docs/architecture/tool_registry.md](docs/architecture/tool_registry.md).
+<details>
+<summary>Optional: Python venv instead of Conda</summary>
 
-### Workflow Pipeline
+From the root, run `python -m venv .venv`, then `.\.venv\Scripts\Activate.ps1` (Linux/macOS: `source .venv/bin/activate`). Subsequent `python -m ...` commands are the same. Conda users do not need this additional environment; the directory name `.venv` alone does not identify the environment manager.
 
-```
-Source Video
-    │
-    ▼
-reverse_prompts ──► Video Understanding LLM ──► T2V Prompt
-    │
-    ▼
-rewrite_prompts ──► first_frame_image prompt + i2v prompt
-    │
-    ├──► submit_first_frame_image ──► poll_first_frame_image ──► First Frame
-    │                                                               │
-    │                                                               ▼
-    │                                            submit_i2v ──► poll_i2v ──► Final Video
-    │
-    ├──► [T2V]        submit_t2v ──► poll_t2v ──► T2V Video
-    │
-    ├──► [R2V Flash]  reverse_prompts4r2v ──► submit_r2v_flash ──► poll_r2v_flash
-    │
-    ├──► [I2I Test]   rewrite_t2i_to_i2i ──► prepare_batch ──► submit/poll (batch)
-    │
-    └──► [Failure Agent] ──► LLM-based error diagnosis
-    │
-    ▼
-export_manifest ──► Job manifest JSON
+</details>
+
+### 2. Configure one .env
+
+The **root `.env`** is the single local configuration for the API, Agent and MQ workers. Use the root [`.env.example`](.env.example); `backend/.env` is no longer used. Existing process environment variables take precedence. Restart processes after configuration changes.
+
+When upgrading an older checkout, migrate the active backend values into the root `.env`, keeping backend values on conflicts. Back up and remove `backend/.env` so Flask CLI cannot discover the stale file.
+
+```powershell
+# Preserve an existing file and its credentials.
+if (!(Test-Path .env)) { Copy-Item .env.example .env }
 ```
 
----
+Confirm these values in `.env`:
 
-## 🛠 Tech Stack
+```dotenv
+DATABASE_URL=mysql+pymysql://root:password@127.0.0.1:3306/video_factory?charset=utf8mb4
+REDIS_URL=redis://127.0.0.1:6379/0
+MQ_ENABLED=true
+AGENT_MODE_ENABLED=true
+MODEL_ADAPTER_MODE=mock
+```
 
-| Layer | Technologies |
-|---|---|
-| **Frontend** | Vue 3.4, Vite 5, Pinia, Vue Router, Tailwind CSS 3, Phosphor Icons, vue-i18n |
-| **Backend** | Python 3.12, Flask 3, Flask-SQLAlchemy, Flask-Migrate, Pydantic 2, Flask-JWT-Extended |
-| **Database** | MySQL 8.0 (production) / SQLite (development) |
-| **Deployment** | Docker, Docker Compose, Nginx, Gunicorn |
-| **Model Providers** | Aliyun DashScope (Wan series), Qwen, DeepSeek |
-| **Tools** | ffmpeg (video compression), Alembic (migrations) |
+Replace MySQL credentials/database; the database must already exist. Percent-encode password special characters. Set your own `SECRET_KEY` and `JWT_SECRET_KEY`. Set `FFMPEG_BINARY` if FFmpeg is not on PATH. `auto` model mode may use real APIs when keys are present; `mock` keeps local testing on test assets.
 
----
+Relative storage/upload paths remain relative to **backend/**, as does `FACTORY_PROMPTS_DIR=../factory_prompts`. Moving `.env` does not move existing media. Preserve Agent checkpoints under `backend/storage/agent/`.
 
-## 🚀 Quick Start
+### 3. Start Docker Redis
 
-### Prerequisites
+From the repository root, with Docker Desktop running:
 
-- Python 3.10+
-- Node.js 18+
-- MySQL 8.0 (optional, SQLite works for development)
+```powershell
+docker compose -f docker-compose.local.yml up -d --wait
+docker compose -f docker-compose.local.yml exec redis redis-cli ping
+```
 
-### Backend
+Expected: `PONG`. This starts only Redis, bound to `127.0.0.1:6379`, with AOF and a named volume. It reuses your host MySQL. If the port is occupied, change the Compose host port and `REDIS_URL` together. Workers create streams/groups automatically.
 
-```bash
+### 4. Migrate MySQL
+
+Drain and stop previous backend/workers first. Back up an existing database. In your activated environment:
+
+```powershell
 cd backend
-
-# Create virtual environment
-python -m venv .venv
-source .venv/bin/activate        # Linux/macOS
-# .venv\Scripts\activate         # Windows
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Configure environment
-cp .env.example .env
-# Edit .env — set DATABASE_URL, DASHSCOPE_API_KEY, etc.
-
-# Initialize database
-flask --app run.py db upgrade
-flask --app run.py init-db
-
-# Start development server
-flask --app run.py run --host 0.0.0.0 --port 5000
+python -m flask --app run.py db upgrade
+python -m flask --app run.py db current
 ```
 
-### Frontend
+Expected revision: `20261017_001 (head)`. For a new database, run `python -m flask --app run.py init-db` to seed defaults. It can also seed missing defaults in an existing database; it does not replace migration. Do not skip migrations with `db stamp`.
 
-```bash
+### 5. Run API and workers
+
+Open three terminals, each starting in the repository root:
+
+```powershell
+conda activate video-factory
+cd backend
+```
+
+Keep one command running in each terminal:
+
+| Terminal | Command | Purpose |
+| --- | --- | --- |
+| 1 | `python -m flask --app run.py run --host 127.0.0.1 --port 5000` | REST API |
+| 2 | `python -m flask --app run.py mq-worker --role all` | Shared dispatch, submit, poll and download |
+| 3 | `python -m flask --app run.py agent-worker` | Agent planning and approved execution |
+
+Classic-only testing can omit the Agent worker. With MQ enabled, the MQ worker is required for both modes. Run only one Agent worker per host/checkpoint. For real provider testing, run separate `scheduler`, `submit`, `poll`, `download` MQ roles so synchronous submission does not block polling.
+
+### 6. Run the frontend
+
+Another terminal, starting at the repository root:
+
+```powershell
 cd frontend-vue
-
 npm install
 npm run dev
 ```
 
-The frontend runs at `http://localhost:5173` and proxies API requests to `http://127.0.0.1:5000`.
+Visit `http://localhost:5173`, register/log in, and start with a one-shot Mock Agent session: edit plan → approve → inspect results → package. Mock video assets may be placeholders and do not demonstrate video quality or playback compatibility.
 
-### Docker Deployment (Production)
+API health: `http://127.0.0.1:5000/api/health`. Inspect queue state from an activated `backend/` terminal:
 
-```bash
-# Copy and edit production environment
-cp deploy/.env.production.example .env.production
-
-# Build and start all services
-docker compose up -d --build
+```powershell
+python -m flask --app run.py mq-status
 ```
 
-This starts three containers:
-- **MySQL 8.0** — database with persistent volume
-- **Backend** — Flask + Gunicorn on port 5000 (internal)
-- **Frontend** — Nginx serving the SPA on port 80, reverse-proxying `/api/` to the backend
+## Real models
 
-See [DEPLOYMENT.md](DEPLOYMENT.md) for the full production deployment guide.
+Set the required `DASHSCOPE_API_KEY` / `DEEPSEEK_API_KEY` and `MODEL_ADAPTER_MODE=real` in the root `.env`, then restart the API and all workers. Ensure models are enabled in the registry, create a new session, and review the plan and costs before approval.
 
----
+`DEFAULT_*_MODEL` provides environment defaults; existing node configuration and Job overrides may take precedence. Model IDs belong in their dedicated fields, not inside `image_params` / `video_params`.
 
-## 📂 Project Structure
+## Troubleshooting and shutdown
 
-```
-.
-├── backend/                    # Flask REST API & workflow engine
-│   ├── app/
-│   │   ├── adapters/           # Model provider adapters (DashScope, Qwen, Mock)
-│   │   ├── api/                # Route handlers (blueprints)
-│   │   ├── models/             # SQLAlchemy ORM models
-│   │   ├── schemas/            # Pydantic request/response schemas
-│   │   ├── services/           # Business logic layer (classic workflow engine)
-│   │   ├── skills/             # Tool registry + agent-callable tools (Phase 1)
-│   │   ├── agent/              # Agent layer skeleton: feature flag, PlanSpec
-│   │   └── utils/              # Shared utilities
-│   ├── migrations/             # Alembic database migrations
-│   ├── tests/                  # pytest regression suite (mock mode, no network)
-│   ├── storage/                # Runtime data (git-ignored)
-│   ├── .env.example
-│   ├── requirements.txt
-│   ├── requirements-dev.txt
-│   └── run.py                  # WSGI entry point
-│
-├── frontend-vue/               # Vue 3 + Vite SPA
-│   ├── src/
-│   │   ├── api/                # Axios API client modules
-│   │   ├── components/         # Reusable UI components
-│   │   ├── composables/        # Vue composables (SSE, auth, etc.)
-│   │   ├── i18n/               # English & Chinese locales
-│   │   ├── stores/             # Pinia state stores
-│   │   ├── views/              # Page components
-│   │   └── router/             # Vue Router configuration
-│   ├── vite.config.js
-│   └── package.json
-│
-├── deploy/                     # Docker & Nginx configs
-│   ├── Dockerfile.backend
-│   ├── Dockerfile.frontend
-│   ├── nginx.conf
-│   ├── entrypoint.sh
-│   └── .env.production.example
-│
-├── docs/architecture/          # Upgrade audit and tool registry design
-├── factory_prompts/            # Default prompt templates (.md)
-├── docker-compose.yml
-├── DEPLOYMENT.md               # Production deployment guide
-├── LICENSE                     # MIT License
-└── README.md
+| Symptom | Check |
+| --- | --- |
+| Missing Python packages | Activate the same Conda environment; install using `python -m pip` |
+| Agent navigation missing | Enable `AGENT_MODE_ENABLED`, restart API, refresh frontend |
+| Agent or generation stays queued | Check Agent worker, MQ worker and Redis as appropriate |
+| Missing database tables/columns | Run `db upgrade` against the configured MySQL database |
+| Upload/retained-shot failure | Check FFmpeg, media format and upload limit |
+| `submit_unknown` | Reconcile with the provider before retrying; see queue operations docs |
+
+Stop application terminals with `Ctrl+C`. From the root, `docker compose -f docker-compose.local.yml stop redis` stops Redis; `up -d --wait` resumes it. Preserve the volume, MySQL and storage; avoid `down -v` or `FLUSHDB` on business queues.
+
+## Development and documentation
+
+Vue 3/Vite frontend, Flask/SQLAlchemy backend, LangGraph Agent orchestration. MySQL holds business state and transactional outbox; Redis Streams transports events. Files are stored in storage.
+
+- Root `.env.example`: the local configuration template; `.env` is Git-ignored.
+- `backend/app/agent/`: planning, approval, remix and recovery.
+- `backend/app/queue/`: shared execution queue.
+- `backend/app/services/`: workflow DAG, models, prompts, artifacts and packaging.
+- `frontend-vue/`: Agent Studio and classic workflow UI.
+- `docker-compose.local.yml`: Redis only; `docker-compose.yml`: full production stack.
+
+Offline tests, from the root with the virtual environment activated:
+
+```powershell
+python -m pip install -r backend/requirements-dev.txt
+python -m pytest backend/tests -q
 ```
 
----
+Tests isolate SQLite/storage, force Mock and block provider HTTP. Source-video tests need FFmpeg. Frontend validation: `npm run build` in `frontend-vue/`.
 
-## ⚙️ Configuration
+Further reading: [Agent creation](docs/architecture/phase2_langgraph_mvp.md), [source-video remix](docs/architecture/phase3_video_remix.md), [stability evaluation](docs/architecture/phase4_stability_evaluation.md), [MQ operations and rollback](docs/architecture/mq_implementation.md), [backend API](backend/README.md), [production deployment](DEPLOYMENT.md).
 
-Key environment variables (see `.env.example` for the full list):
-
-| Variable | Description | Default |
-|---|---|---|
-| `DATABASE_URL` | Database connection string | `sqlite:///backend/storage/video_factory.db` |
-| `SECRET_KEY` | Flask secret key | — |
-| `DASHSCOPE_API_KEY` | Aliyun DashScope API key | — |
-| `MODEL_ADAPTER_MODE` | `mock`, `real`, or `auto` | `auto` |
-| `T2V_ENABLED` | Enable text-to-video branch | `false` |
-| `I2V_ENABLED` | Enable image-to-video branch | `true` |
-| `R2V_FLASH_ENABLED` | Enable R2V flash branch | `false` |
-| `I2I_TEST_ENABLED` | Enable I2I test branch | `false` |
-| `WORKFLOW_PARALLEL_ENABLED` | Enable DAG parallel scheduling | `true` |
-| `VIDEO_COMPRESSION_ENABLED` | Enable ffmpeg video compression | `true` |
-| `FAILURE_AGENT_ENABLED` | Enable LLM failure diagnosis | `true` (inherits `FAILURE_AGENT_ON_ERROR`) |
-| `AGENT_MODE_ENABLED` | Expose the skill layer at `/api/skills` | `false` |
-| `SKILL_DEFAULT_BUDGET` | Estimated credit budget per `budget_scope` | `100` |
-
----
-
-## 📡 API Overview
-
-All endpoints are prefixed with `/api/`. Authentication is via JWT tokens.
-
-**Response format:**
-```json
-{ "success": true, "data": { ... } }
-```
-
-**Error format:**
-```json
-{ "success": false, "error": { "code": "JOB_NOT_FOUND", "message": "Job not found" } }
-```
-
-**Core endpoint groups:**
-
-| Group | Prefix | Description |
-|---|---|---|
-| Auth | `/api/auth` | Register, login, token refresh |
-| Dashboard | `/api/dashboard` | Aggregate statistics |
-| Templates | `/api/templates` | Template CRUD & packaging |
-| Jobs | `/api/jobs` | Job CRUD, run control, packaging |
-| Workflow | `/api/workflow` | Node management & validation |
-| Prompts | `/api/prompts` | Prompt versioning & management |
-| Models | `/api/models` | Model registry CRUD |
-| Artifacts | `/api/artifacts` | Artifact search, download, preview |
-
-**Key job endpoints:**
-
-```
-POST   /api/jobs                          # Create job
-POST   /api/jobs/{id}/run-full            # Run full workflow
-POST   /api/jobs/{id}/run-from            # Run from specific node
-POST   /api/jobs/{id}/run-node            # Run single node
-POST   /api/jobs/{id}/pause               # Pause running job
-POST   /api/jobs/{id}/cancel              # Cancel job
-GET    /api/jobs/{id}/stream              # SSE live event stream
-POST   /api/jobs/{id}/package             # Generate result ZIP
-```
-
----
-
-## 🧪 Testing
-
-```bash
-cd backend
-pip install -r requirements-dev.txt
-python -m pytest -q
-```
-
-The suite runs every classic workflow path, failure/partial-success semantics, prompt versioning, packaging, the REST API and the skill layer end to end. Each test uses an isolated SQLite file and storage directory, all model adapters are forced into mock mode, and outbound HTTP is blocked, so no paid API is ever called. The frontend baseline is `npm run build` in `frontend-vue/`.
-
----
-
-## 🤝 Contributing
-
-Contributions are welcome! Here's how to get started:
-
-1. **Fork** the repository
-2. **Create a feature branch** — `git checkout -b feature/my-feature`
-3. **Make your changes** — follow the existing code style and patterns
-4. **Test** — ensure the backend and frontend both run correctly
-5. **Submit a pull request** — describe what you changed and why
-
-### Development Notes
-
-- Backend uses Flask blueprints for API routes; add new endpoints in `backend/app/api/`
-- ORM models live in `backend/app/models/`; run `flask db migrate` after changes
-- Frontend state is managed via Pinia stores in `frontend-vue/src/stores/`
-- The workflow engine is in `backend/app/services/workflow_scheduler.py` and `node_runner.py`
-- Model adapters follow the adapter pattern; see `backend/app/adapters/base.py` for the interface
-
----
-
-## 📄 License
-
-This project is released under the [MIT License](LICENSE).
-
----
-
-## 🙏 Acknowledgments
-
-- [Aliyun DashScope](https://dashscope.aliyun.com/) — Model provider for Wan series video/image generation models
-- [Flask](https://flask.palletsprojects.com/) — Python web framework
-- [Vue.js](https://vuejs.org/) — Progressive JavaScript framework
-- [Tailwind CSS](https://tailwindcss.com/) — Utility-first CSS framework
+Production uses its own `.env.production` injected into containers; keep it separate from local `.env`. Licensed under [MIT](LICENSE).

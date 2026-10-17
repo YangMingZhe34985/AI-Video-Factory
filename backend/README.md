@@ -1,119 +1,27 @@
 # CineCrew Backend
 
-Phase 4 的离线回归、故障注入、成本监控和灰度回滚见
-[稳定性与系统评估](../docs/architecture/phase4_stability_evaluation.md)，
-消息队列部分见 [只读审计](../docs/architecture/phase4_mq_audit.md)。
+本文件保留后端 API 与业务细节。项目介绍、Agent 使用和完整本地启动步骤统一见[主 README](../README_zh.md)，避免多套配置教程。
 
-> 原名 AI Video Factory Backend。
+## 配置与运行约定
 
-Phase 2 Agent Studio 的启动、API、状态图、恢复策略与隔离 Mock 演示见
-[Phase 2 实施与验收说明](../docs/architecture/phase2_langgraph_mvp.md)。
+- 本地仅使用**项目根目录 `.env`**，模板为[根目录 `.env.example`](../.env.example)。`backend/.env` 已取消。
+- API、Agent worker 和 MQ worker 读取同一份配置；系统/终端环境变量优先。
+- 相对 storage、upload、factory prompts 路径仍以 backend 为基准。
+- 每个终端先在根目录 `conda activate 你的环境名`，再 `cd backend`；激活后统一使用 `python`。Conda 用户无需额外激活 Python venv。
+- 本地复用 MySQL，根目录执行 `docker compose -f docker-compose.local.yml up -d --wait` 运行 Redis。
+- 启动前执行 `python -m flask --app run.py db upgrade`；新库再执行 `python -m flask --app run.py init-db`。
 
-Phase 3 原视频上传、保留／重生成、单镜头修改、Prompt 血缘及打包协议见
-[Phase 3 实施说明](../docs/architecture/phase3_video_remix.md)。本地需配置 `FFMPEG_BINARY` 或将 FFmpeg 加入 PATH；Docker 镜像已包含 FFmpeg。
-启用 `AGENT_MODE_ENABLED=true` 后，需额外运行 `flask --app run.py agent-worker`。
+在不同终端分别保持以下进程运行：
 
-这是一个全新的 Flask 后端服务，用于把视频生成流水线从命令行脚本重构为可由前端调用的 REST API。当前 MVP 使用后台线程触发工作流，支持 Mock 模式，也已经接入真实 DashScope/Qwen Adapter 调用路径。
-
-## 技术栈
-
-- Python 3.10+
-- Flask
-- Flask-SQLAlchemy
-- Flask-Migrate
-- PyMySQL
-- Pydantic
-- python-dotenv
-- requests
-- Werkzeug
-
-## 目录结构
-
-```text
-backend/
-├── app/
-│   ├── __init__.py
-│   ├── config.py
-│   ├── extensions.py
-│   ├── models/
-│   ├── api/
-│   ├── services/
-│   ├── adapters/
-│   ├── schemas/
-│   └── utils/
-├── migrations/
-├── storage/
-│   ├── uploads/
-│   ├── jobs/
-│   ├── templates/
-│   └── artifacts/
-├── .env.example
-├── requirements.txt
-├── run.py
-└── README.md
+```powershell
+python -m flask --app run.py run --host 127.0.0.1 --port 5000
+python -m flask --app run.py mq-worker --role all
+python -m flask --app run.py agent-worker
 ```
 
-## 环境变量
+三条命令不能串行放在同一终端；第一条会持续运行。只测经典工作流可不启动 Agent worker。本地示例启用 MQ/Agent，模型为 Mock；API 健康接口为 `/api/health`。
 
-复制 `.env.example` 为 `.env` 后按需修改：
-
-```bash
-cp .env.example .env
-```
-
-核心配置：
-
-- `DATABASE_URL`: 默认建议 MySQL，例如 `mysql+pymysql://root:password@localhost:3306/video_factory`
-- `STORAGE_ROOT`: 文件产物根目录
-- `UPLOAD_FOLDER`: 源视频上传目录
-- `API_AUTH_REQUIRED`: 是否启用业务接口 JWT 校验，默认 `true`
-- `DASHSCOPE_API_KEY`: 真实模型 API 调用使用
-- `DEFAULT_*_MODEL`: 各节点默认模型
-- `T2V_ENABLED`, `FIRST_FRAME_IMAGE_ENABLED`, `I2V_ENABLED`, `R2V_FLASH_ENABLED`: 全局默认分支开关
-
-如果没有设置 `DATABASE_URL`，代码会回退到 `storage/video_factory.db`，方便本地快速验证。
-
-## 安装依赖
-
-```bash
-cd backend
-python -m venv .venv
-.venv\Scripts\activate
-pip install -r requirements.txt
-```
-
-## 初始化数据库
-
-推荐使用 Flask-Migrate / Alembic 管理表结构，再用 `init-db` 写入默认数据：
-
-```bash
-flask --app run.py db upgrade
-flask --app run.py init-db
-```
-
-职责划分：
-
-- `db upgrade`：根据 `backend/migrations/versions` 创建或升级数据库表结构。
-- `init-db`：写入默认 Series、默认 Template、默认 Workflow Nodes、默认 Models，并兼容执行 schema repair。
-
-只有在 SQLAlchemy 模型发生变化并需要生成新迁移时，才运行：
-
-```bash
-flask --app run.py db migrate -m "describe schema change"
-flask --app run.py db upgrade
-```
-
-## 启动项目
-
-```bash
-flask --app run.py run --host 0.0.0.0 --port 5000
-```
-
-健康验证可访问：
-
-```bash
-curl http://127.0.0.1:5000/api/health
-```
+实现与运维：[Agent 创作](../docs/architecture/phase2_langgraph_mvp.md)、[视频二创](../docs/architecture/phase3_video_remix.md)、[稳定性评估](../docs/architecture/phase4_stability_evaluation.md)、[共用队列](../docs/architecture/mq_implementation.md)。
 
 ## API 概览
 
@@ -309,7 +217,7 @@ curl -X POST http://127.0.0.1:5000/api/jobs/{job_id}/run-full ^
 ## 后续开发计划
 
 - 完善真实 DashScope/Qwen API 的错误映射、成本统计和异步队列
-- 引入 Celery + Redis 异步任务
+- 共用 Redis Streams 执行层已实现，后续完善容量评估及运维告警
 - 增加成本统计和预算中断
 - 增加节点参数的 JSON Schema 校验
 - 增加用户角色和权限分级（当前仅有 JWT 基础认证）
@@ -1347,4 +1255,4 @@ The original process-local queue remains available when MQ is disabled. The opti
 
 Agent 的分析/媒体 Job 和经典工作流共用持久化执行层。启用前执行 `flask --app run.py db upgrade`，设置 `MQ_ENABLED=true`，启动 Redis 7 与 `flask --app run.py mq-worker`。生产使用 Compose 的 `mq` profile，分开 scheduler、submit、poll、download 角色。
 
-默认保持关闭；已进入 MQ 的 Job 在关闭入口后仍由 MQ 排空。`flask --app run.py mq-status` 查看积压和提交未知状态。部署、人工对账、测试及回滚步骤见 [共用执行队列说明](../docs/architecture/mq_implementation.md)。
+代码与生产配置默认保持关闭；[根目录 `.env.example`](../.env.example) 面向本地联调，已启用 MQ/Agent 并强制 Mock。已进入 MQ 的 Job 在关闭入口后仍由 MQ 排空。`flask --app run.py mq-status` 查看积压和提交未知状态。部署、人工对账、测试及回滚步骤见 [共用执行队列说明](../docs/architecture/mq_implementation.md)。

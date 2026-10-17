@@ -16,7 +16,7 @@ if str(BACKEND_DIR) not in sys.path:
 
 # app.config reads os.environ at import time and load_dotenv() never overrides
 # variables that already exist, so this pins the test environment regardless
-# of the developer's backend/.env.
+# of the developer's project-root .env.
 os.environ.update(
     {
         "DATABASE_URL": "sqlite:///placeholder.db",
@@ -33,6 +33,12 @@ os.environ.update(
         "I2I_TEST_ENABLED": "false",
         "WORKFLOW_PARALLEL_ENABLED": "true",
         "JOB_QUEUE_ENABLED": "false",
+        # Offline legacy tests execute inline; MQ cases opt in explicitly and
+        # drive their own consumers. Never inherit developer admission flags.
+        "MQ_ENABLED": "false",
+        "AGENT_MODE_ENABLED": "false",
+        "AGENT_ACCEPT_NEW_RUNS": "true",
+        "AGENT_ALLOWED_USERS": "",
         "FAILURE_AGENT_ON_ERROR": "false",
         "FAILURE_AGENT_ENABLED": "false",
         "FAILURE_AGENT_MAX_RETRIES": "1",

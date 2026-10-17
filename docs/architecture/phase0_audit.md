@@ -91,7 +91,7 @@ python -m pytest -q
 
 测试环境约束（`backend/tests/conftest.py`）：
 - 每个用例使用独立的临时 SQLite 文件和存储目录；
-- 在导入 `app.config` 之前固定环境变量，开发者本地 `backend/.env` 不影响结果；
+- 在导入 `app.config` 之前固定环境变量，开发者本地根目录 `.env` 不影响结果；
 - 强制 `MODEL_ADAPTER_MODE=mock`、清空 API Key，并拦截 `requests.Session.send`，任何真实外部请求都会让用例直接失败；
 - personas / R2V 参考图目录指向临时目录中的假图片。
 
