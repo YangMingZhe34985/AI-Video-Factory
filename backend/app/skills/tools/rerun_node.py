@@ -42,13 +42,22 @@ def _nodes_to_run(data: RerunNodeInput) -> tuple[list[str], int]:
             for node in nodes
             if node.sequence >= start and WorkflowService.is_node_enabled(job, node)
         ]
-    sample_count = int(((job.config or {}).get("i2i_test") or {}).get("test_count") or 3)
+    if not set(keys) & {"submit_i2i_test_image", "poll_i2i_test_image", "submit_i2i_test_i2v"}:
+        return keys, 1
+    batch = {} if "prepare_i2i_test_batch" in keys else (job.config or {}).get("i2i_test_batch") or {}
+    sample_count = len(batch.get("items") or []) or batch.get("test_count")
+    if not sample_count:
+        from app.services.i2i_test_batch_service import I2ITestBatchService
+        prepare_key = "prepare_i2i_test_batch" if "prepare_i2i_test_batch" in keys else "submit_i2i_test_image"
+        saved_node = ((job.config or {}).get("workflow_node_configs") or {}).get(prepare_key)
+        node_config = saved_node if isinstance(saved_node, dict) else WorkflowService.get_node(prepare_key).config
+        sample_count = I2ITestBatchService.config_for_job(job, node_config=node_config)["test_count"]
     return keys, sample_count
 
 
-def estimate_cost(data: RerunNodeInput) -> float:
+def estimate_cost(data: RerunNodeInput, ctx=None) -> float:
     keys, sample_count = _nodes_to_run(data)
-    return estimate_nodes_cost(keys, sample_count=sample_count)
+    return estimate_nodes_cost(keys, sample_count=sample_count, job_config=JobService.get_job(data.job_id).config, ctx=ctx)
 
 
 def run(data: RerunNodeInput, ctx: ToolContext):

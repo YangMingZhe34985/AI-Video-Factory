@@ -48,7 +48,8 @@ class ToolSpec:
     max_retries: int = 1
     # False for tools whose repeated calls must re-execute (e.g. packaging).
     dedupe: bool = True
-    cost_fn: Callable[[BaseModel], float] = field(default=lambda _data: 0.0)
+    # Context carries the server-owned model policy used for the actual call.
+    cost_fn: Callable[[BaseModel, ToolContext], float] = field(default=lambda _data, _ctx: 0.0)
 
     def __post_init__(self):
         if not 0 <= self.max_retries <= 2:

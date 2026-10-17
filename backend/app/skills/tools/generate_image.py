@@ -41,5 +41,6 @@ SPEC = ToolSpec(
     allowed_roles=frozenset({PRODUCTION, SYSTEM}),
     requires_approval=True,
     max_wait_sec=1200,
-    cost_fn=lambda _data: estimate_nodes_cost(NODES),
+    cost_fn=lambda data, ctx: estimate_nodes_cost(NODES, node_models={NODES[0]: data.model_id},
+                                              node_params={NODES[0]: data.params}, ctx=ctx),
 )

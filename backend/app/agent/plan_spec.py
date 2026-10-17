@@ -7,7 +7,7 @@ each shot into one produce_shot or remix_shot call.
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
-from app.skills.budget import IMAGE_GENERATION, LLM_CALL, VIDEO_GENERATION
+from app.skills.budget import estimate_nodes_cost, planner_cost
 
 PROMPT_MAX_LENGTH = 8000
 
@@ -88,12 +88,16 @@ class RemixShotSpec(ShotSpec):
         return self
 
 
-def shot_cost(shot: ShotSpec) -> float:
-    if isinstance(shot, RemixShotSpec):
-        if shot.action == "keep":
-            return 0
-        return VIDEO_GENERATION + (IMAGE_GENERATION if shot.first_frame_mode == "generate" else 0)
-    return IMAGE_GENERATION + VIDEO_GENERATION
+def shot_cost(shot: ShotSpec, ctx=None) -> float:
+    if isinstance(shot, RemixShotSpec) and shot.action == "keep":
+        return 0
+    nodes = ["submit_i2v"]
+    if not isinstance(shot, RemixShotSpec) or shot.first_frame_mode == "generate":
+        nodes.append("submit_first_frame_image")
+    return estimate_nodes_cost(
+        nodes, node_models={"submit_i2v": shot.video_model_id, "submit_first_frame_image": shot.image_model_id},
+        node_params={"submit_i2v": shot.video_params, "submit_first_frame_image": shot.image_params}, ctx=ctx,
+    )
 
 
 class PlanSpec(BaseModel):
@@ -116,4 +120,5 @@ class PlanSpec(BaseModel):
 
     @property
     def estimated_cost(self) -> float:
-        return LLM_CALL * (3 if self.mode == "remix" else 2) + sum(shot_cost(shot) for shot in self.shots)
+        analysis = estimate_nodes_cost(["reverse_prompts"]) if self.mode == "remix" else 0
+        return planner_cost() * 2 + analysis + sum(shot_cost(shot) for shot in self.shots)

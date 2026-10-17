@@ -5,9 +5,11 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.agent.clarify import Answer
 from app.agent.plan_spec import PlanSpec, RemixShotSpec
-from app.agent.model_policy import select_video_model
+from app.agent.model_policy import build_policy, select_video_model
 from app.api import AppError
 from app.skills import model_guard
+from app.skills.budget import estimate_nodes_cost, planner_cost
+from app.services.model_service import ModelService
 
 
 class CreateRun(BaseModel):
@@ -59,15 +61,16 @@ def validate_plan(raw: dict, shot_count: int, budget_limit: float, video_model_p
         raise AppError("INVALID_PLAN", "Plan mode must match the original request", 422)
     if len(plan.shots) != shot_count:
         raise AppError("INVALID_PLAN", "Plan shot count must match the requested shot count", 422)
-    estimate = plan.estimated_cost
-    if estimate > budget_limit:
-        raise AppError("BUDGET_EXCEEDED", f"Plan needs {estimate} estimated credits", 402)
     for shot in plan.shots:
         try:
             validate_shot(shot, video_model_policy, source_duration=source_duration)
         except AppError as error:
             raise AppError(error.code, error.message, error.status_code,
                            payload={**error.payload, "shot_id": shot.shot_id}) from error
+    # Quote the validated, pinned models and defaults that production will use.
+    estimate = plan.estimated_cost
+    if estimate > budget_limit:
+        raise AppError("BUDGET_EXCEEDED", f"Plan needs {estimate} estimated credits", 402)
     return plan.model_dump(mode="json")
 
 
@@ -95,7 +98,7 @@ def validate_shot(shot, video_model_policy=None, *, source_duration=None):
         params = model_guard.validate_params(model, getattr(shot, params_field))
         # Freeze exposed defaults; internal adapter options (e.g. interleave) are
         # not legal tool inputs and remain owned by the existing service.
-        defaults = {key: value for key, value in (model.default_params or {}).items()
+        defaults = {key: value for key, value in ModelService.effective_params(model).items()
                     if key in (model.parameter_schema or {})}
         params = {**defaults, **params}
         if capability == "image" and params.get("n", 1) != 1:
@@ -109,6 +112,13 @@ def validate_shot(shot, video_model_policy=None, *, source_duration=None):
 def validate_request(data: CreateRun) -> None:
     if data.budget_limit > current_app.config.get("AGENT_MAX_BUDGET", 500):
         raise AppError("INVALID_INPUT", "Budget exceeds the server limit", 422)
-    minimum = 3 if data.mode == "remix" else 2 + 12 * data.shot_count
+    minimum = 2 * planner_cost()
+    if data.mode == "remix":
+        minimum += estimate_nodes_cost(["reverse_prompts"])
+    else:
+        policy = build_policy(data.goal, data.video_model_preference)
+        video = select_video_model(policy, "i2v")
+        minimum += data.shot_count * estimate_nodes_cost(
+            ["submit_first_frame_image", "submit_i2v"], node_models={"submit_i2v": video.model_id})
     if minimum > data.budget_limit:
         raise AppError("BUDGET_EXCEEDED", f"This request needs at least {minimum} estimated credits", 402)
