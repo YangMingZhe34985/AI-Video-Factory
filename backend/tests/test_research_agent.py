@@ -219,3 +219,22 @@ def test_original_ai_visual_examples_trigger_mock_research(app_ctx, word):
     state = tick(create(f"创作 DeepSeek 与 ChatGPT 的 AI {word}形象故事视频，约2分钟", budget=500))
     assert state["status"] == "awaiting_input"
     assert len(state["research_dossier"]["entities"]) == 2
+
+
+def test_subject_research_trigger_does_not_require_research_needs():
+    assert research.needs_research({"request_spec": {"research_needs": [],
+        "subjects": [{"source": "needs_research"}]}})
+    assert not research.needs_research({"request_spec": {"research_needs": [],
+        "subjects": [{"source": "user_text"}]}})
+
+
+def test_worker_tick_recovers_researching_status(app_ctx, monkeypatch):
+    run_id = create("最新潮流演示")
+    row = AgentRun.query.filter_by(run_id=run_id).one()
+    row.status = "researching"
+    db.session.commit()
+    seen = []
+    worker = AgentWorker(None)
+    monkeypatch.setattr(worker, "advance", seen.append)
+    worker.tick()
+    assert seen == [run_id]

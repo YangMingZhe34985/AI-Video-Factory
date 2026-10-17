@@ -168,7 +168,9 @@ def research_stats(run_id):
     names = {"web_search": "web_searches", "image_search": "image_searches", "fetch_page": "pages_fetched"}
     stats = ResearchStats().model_dump()
     for invocation in ToolInvocation.query.filter_by(budget_scope=run_id):
-        if invocation.tool_name in names and invocation.status != "rejected":
+        if invocation.tool_name == "fetch_page":
+            stats["pages_fetched"] += int(invocation.status == "success")
+        elif invocation.tool_name in names and invocation.status != "rejected":
             stats[names[invocation.tool_name]] += invocation.attempt
     stats["references_downloaded"] = Artifact.query.filter(
         Artifact.artifact_type == "agent_reference_image",
@@ -207,6 +209,7 @@ def validate_dossier(raw, state):
                 raise invalid("Research fact refers to an unknown source")
             facts.append(fact)
         topic["key_facts"] = facts
+    from app.agent.search.references import reference_for_run
     owner = AgentRun.query.filter_by(run_id=state["run_id"]).one()
     observations = {(item["entity"], item["source_id"], item["reference_id"])
                     for item in state.get("research_images", [])}
@@ -223,13 +226,13 @@ def validate_dossier(raw, state):
                 raise invalid("Candidate selection must belong to its entity")
         for candidate in entity["candidates"]:
             ref_id, source_id = candidate["reference_id"], candidate["source_id"]
-            artifact = Artifact.query.filter_by(artifact_id=ref_id).first()
             if (source_id not in sources or sources[source_id]["kind"] != "image"
-                    or (entity["name"], source_id, ref_id) not in observations or ref_id not in analyses
-                    or not artifact or artifact.artifact_type != "agent_reference_image"
-                    or (artifact.meta or {}).get("reference", {}).get("run_id") != owner.run_id
-                    or (artifact.job.config or {}).get("agent_upload_owner") != owner.owner_id):
+                    or (entity["name"], source_id, ref_id) not in observations or ref_id not in analyses):
                 raise invalid("A candidate must be an analyzed reference downloaded for this run and entity")
+            try:
+                reference_for_run(ref_id, owner)
+            except AppError as error:
+                raise invalid("Candidate reference is unavailable or belongs to another run") from error
             candidate["traits"] = analysis_traits(analyses[ref_id])
     for question in dossier["open_questions"]:
         matches = []
