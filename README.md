@@ -8,14 +8,14 @@ CineCrew (formerly AI Video Factory) is an AI video creation platform. Use Agent
 
 | Mode | Best for | Your controls |
 | --- | --- | --- |
-| Agent Studio | Creation from a written idea or remixing an existing video | Goal, shots, model preference, budget, plan approval and shot edits |
+| Agent Studio | Describe an image or video in one sentence, optionally with image/video attachments | Request text, attachments, budget cap, answers to the Agent's questions, plan approval and shot edits |
 | Classic workflow | Node debugging, source-video pipelines and batch tests | DAG branches, prompt versions, models, parameters and partial reruns |
 
 ### Agent Studio
 
-Director structures the brief, Creative writes the shot plan, and Production executes approved generation tools.
+Write what you want (required) and attach reference photos or videos. The Intake Agent reads the text and attachments and decides the task type, asking multiple-choice questions only when an ambiguity would materially change the result. The Director picks models and writes prompts; nothing is generated or billed until you approve the plan.
 
-**From scratch:** brief → shot plan → edit and approve → generate first frames and videos → review → package. Example: “Create a video of a dancing cat using the wan2.7 video model family.” The current route is first-frame generation followed by I2V; automatic T2V/I2V/R2V route selection is not implemented.
+Task types chosen by the Agent: **photo edit** (image-to-image from your photo), **new image** (text-to-image), **single clip** (first frame → image-to-video), **multi-shot short** (split into shots by model duration limits, then storyboard approval; Phase C upgrades this to script and character design) and **video remix** (below). Put model preferences in the request text, e.g. “use the wan2.7 family”; if they cannot be met the Agent asks instead of switching models silently.
 
 **Source-video remix:** upload → describe edits → analyze → approve which segments to keep/regenerate → review and revise individual shots → package. Kept segments are cut locally with FFmpeg. Regenerated segments can use a source frame or a newly generated frame.
 

@@ -66,14 +66,11 @@ def test_upload_portrait_to_i2i_delivery_without_legacy_fields(app_ctx, client):
     assert Job.query.count() == 1  # Upload only; approval has not authorized generation.
     assert action(client, run_id, "approve").status_code == 202
     assert "plan" not in AgentRun.query.filter_by(run_id=run_id).one().command
-    ready = finish_production(client, run_id)
-    assert ready["status"] == "awaiting_delivery", ready
-    assert ready["summary"] == {"steps_total": 1, "steps_success": 1, "steps_failed": 0}
-    assert len(ready["results"]) == 1 and ready["results"][0]["kind"] == "image"
-    assert action(client, run_id, "deliver").status_code == 202
-    tick()
-    delivered = detail(client, run_id)
-    assert delivered["status"] == "success"
+    delivered = finish_production(client, run_id)
+    assert delivered["status"] == "success", delivered  # no separate delivery step for simple recipes
+    assert delivered["summary"] == {"steps_total": 1, "steps_success": 1, "steps_failed": 0}
+    assert len(delivered["results"]) == 1 and delivered["results"][0]["kind"] == "image"
+    assert action(client, run_id, "deliver").status_code == 409
     assert client.get(delivered["results"][0]["download_url"]).status_code == 200
     calls, spent = ApiTask.query.count(), delivered["estimated_spent"]
     tick()
@@ -97,13 +94,10 @@ def test_approval_edit_changes_model_count_and_cost_only_when_consumed(app_ctx, 
     assert row.snapshot["request_spec"] == original
     assert row.command["plan"]["estimated_cost"] > 0
     ready = finish_production(client, run_id)
-    assert ready["status"] == "awaiting_delivery", ready
+    assert ready["status"] == "success", ready
     assert ready["plan"]["image"]["model_id"] == "wan2.7-image"
     assert "wan2.7-image" in ready["request_spec"]["constraints"]["model_preferences"]
     assert len(ready["results"]) == 3
-    assert action(client, run_id, "deliver").status_code == 202
-    tick()
-    assert detail(client, run_id)["status"] == "success"
 
 
 def test_approval_can_change_only_the_image_count(app_ctx, client):
