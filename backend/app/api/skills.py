@@ -24,7 +24,7 @@ def _check_scope(scope, owner_id):
         raise AppError("AGENT_RUN_NOT_FOUND", "Agent run not found", 404)
 
 
-def _check_references(name, data, owner_id):
+def _check_references(name, data, owner_id, budget_scope=None):
     # Inspect declared top-level references, never text or arbitrary model params.
     registry = get_registry()
     if name not in registry.names():
@@ -53,12 +53,18 @@ def _check_references(name, data, owner_id):
             if row is None and str(reference).isdigit():
                 row = db.session.get(model, int(reference))
             if row is not None:
-                require_upload_job_owner(row.job if model is Artifact else row, owner_id)
+                job = row.job if model is Artifact else row
+                require_upload_job_owner(job, owner_id)
+                reference_run = (job.config or {}).get("agent_reference_run")
+                if model is Artifact and row.artifact_type == "agent_reference_image":
+                    reference_run = (row.meta or {}).get("reference", {}).get("run_id")
+                if reference_run and reference_run != budget_scope:
+                    raise AppError("ATTACHMENT_NOT_FOUND", "Reference image is not part of this run", 404)
 
 
 def _check_invocation(invocation, owner_id):
     _check_scope(invocation.budget_scope, owner_id)
-    _check_references(invocation.tool_name, invocation.input_payload or {}, owner_id)
+    _check_references(invocation.tool_name, invocation.input_payload or {}, owner_id, invocation.budget_scope)
     if invocation.job is not None:
         require_upload_job_owner(invocation.job, owner_id)
 
@@ -78,7 +84,7 @@ def invoke_skill(name: str):
     data = registry._validate_input(spec, payload.input)
     owner_id = _owner()
     _check_scope(payload.budget_scope, owner_id)
-    _check_references(name, data.model_dump(mode="json"), owner_id)
+    _check_references(name, data.model_dump(mode="json"), owner_id, payload.budget_scope)
     key = payload.idempotency_key or (idempotency_key_for(name, data) if spec.dedupe else None)
     if spec.uses_ledger and key:
         previous = ToolInvocation.query.filter_by(idempotency_key=key).first()
