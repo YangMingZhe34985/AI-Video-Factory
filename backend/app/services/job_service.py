@@ -149,7 +149,7 @@ class JobService:
         return snapshot
 
     @staticmethod
-    def create_job(data: dict, source_video=None, initial_files: dict | None = None) -> Job:
+    def create_job(data: dict, source_video=None, initial_files: dict | None = None, *, commit: bool = True) -> Job:
         template_id = data.get("template_id") or "default"
         template = Template.query.filter_by(template_id=template_id).first()
         if not template and str(template_id).isdigit():
@@ -279,7 +279,8 @@ class JobService:
             "initial_artifact_refs": artifact_refs,
         }
 
-        db.session.commit()
+        if commit:
+            db.session.commit()
         return job
 
     @staticmethod

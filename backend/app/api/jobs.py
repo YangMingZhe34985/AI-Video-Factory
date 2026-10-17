@@ -3,7 +3,9 @@ import time
 from http import HTTPStatus
 
 from flask import Blueprint, Response, current_app, request
+from flask_jwt_extended import get_jwt_identity, verify_jwt_in_request
 
+from app.agent.attachments import require_upload_job_owner, validate_job_attachment_sources
 from app.api import api_success
 from app.models import JobEvent
 from app.schemas.job_schema import (
@@ -21,6 +23,21 @@ from app.services.job_service import JobService
 
 
 bp = Blueprint("jobs", __name__, url_prefix="/api/jobs")
+
+
+@bp.before_app_request
+def _protect_agent_upload_job():
+    job_id = (request.view_args or {}).get("job_id")
+    if request.method == "OPTIONS" or not job_id or not request.path.startswith("/api/jobs/"):
+        return
+    job = JobService.get_job(job_id)
+    if job.strategy == "agent_upload":
+        if current_app.config.get("API_AUTH_REQUIRED", True):
+            verify_jwt_in_request()
+            owner_id = get_jwt_identity()
+        else:
+            owner_id = "local"
+        require_upload_job_owner(job, owner_id)
 
 
 def _maybe_json(value, fallback):
@@ -49,6 +66,8 @@ def _request_payload() -> dict:
 @bp.post("")
 def create_job():
     payload = CreateJobSchema.model_validate(_request_payload())
+    validate_job_attachment_sources(payload.model_dump(),
+        get_jwt_identity() if current_app.config.get("API_AUTH_REQUIRED", True) else "local")
     source_video = request.files.get("source_video")
     initial_files = {
         "first_frame_image": request.files.get("first_frame_image")
