@@ -156,6 +156,7 @@ class Config:
     AGENT_PLANNER_MODEL = os.getenv("AGENT_PLANNER_MODEL", "")
     AGENT_CHECKPOINT_PATH = os.getenv("AGENT_CHECKPOINT_PATH", "")
     AGENT_POLL_INTERVAL_SEC = float(os.getenv("AGENT_POLL_INTERVAL_SEC", "3"))
+    AGENT_MAX_CLARIFY_ROUNDS = int(os.getenv("AGENT_MAX_CLARIFY_ROUNDS", "2"))
 
     DEFAULT_WORKFLOW_NODES = [
         {

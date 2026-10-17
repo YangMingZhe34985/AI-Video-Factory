@@ -42,3 +42,8 @@
 - 决定：`schema_version` 缺省为 1 的 Run 继续由现有图恢复执行；v1 创建字段对新请求返回 `DEPRECATED_FIELD`。
 - 原因：已有 LangGraph checkpoint 只能由原图恢复。
 - 影响：A8。
+
+## D-010 · 2026-10-17 · 澄清契约补充（A5 实现时确定）
+- 决定：未回答的非阻塞题直接取默认值，`use_defaults` 只是“一次性接受默认值”的显式写法；超过轮数自动取值时，无默认也无推荐的问题取第一个选项（`source=fallback`）；答案记录格式与 `ClarifyState` 状态键写入 A.7；新增错误码 `INVALID_CLARIFICATION`。
+- 原因：原契约对“未回答的非阻塞题”与“无推荐的阻塞题被自动取值”未作规定。
+- 影响：A6（v2 图需继承 `ClarifyState`）、A7（前端按 `Resolution` 格式展示答案与假设）。

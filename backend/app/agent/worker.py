@@ -75,7 +75,8 @@ class AgentWorker:
                     return
                 if kind in {"tasks", "analysis"}:
                     value = Command(resume={"action": "poll"})
-                elif command and command["action"] in {"approval": {"approve", "reject"}, "delivery": {"deliver", "revise"}}.get(kind, set()):
+                elif command and command["action"] in {"approval": {"approve", "reject"}, "delivery": {"deliver", "revise"},
+                                                       "clarify": {"answer"}}.get(kind, set()):
                     value = Command(resume=command)
                 else:
                     self._save(row, snapshot.values, None)
