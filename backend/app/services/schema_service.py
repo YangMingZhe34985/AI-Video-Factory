@@ -34,6 +34,10 @@ class SchemaService:
 
         if inspector.has_table("models"):
             model_columns = {column["name"] for column in inspector.get_columns("models")}
+            if "capabilities" not in model_columns:
+                db.session.execute(text("ALTER TABLE models ADD COLUMN capabilities JSON NOT NULL DEFAULT ('{}')"))
+                db.session.commit()
+                repaired.append("models.capabilities")
             for column_name in ("parameter_schema", "default_params"):
                 if column_name not in model_columns:
                     db.session.execute(text(SchemaService._add_json_column_sql("models", column_name)))
