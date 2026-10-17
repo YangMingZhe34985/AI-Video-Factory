@@ -103,7 +103,7 @@ docs/agent_v2/
 | A4 | Intake Agent：`analyze_image` Skill（多模态模型）+ Intake 节点，输出 `RequestSpec`；空文本拒绝 | Codex（Claude 评审提示词） | L | `agent/intake.py`、`skills/tools/analyze_image.py` | Mock 下 10 个样例需求得到预期的交付物、配方提示和附件用途 |
 | A5 | 澄清协议：图中断类型 `clarify`、API 动作 `answer`、提问上限、合并提问、默认值 | Claude | M | `agent/graph.py`、`agent/protocol.py` | 阻塞问题未答时不前进；非阻塞题可“按默认继续”（不设超时，见 D-006）；提问次数受限 |
 | A6 | 简单配方：`image_edit` / `image_create` / `single_clip`；`generate_image` 增加 t2i/i2i 与参考图；`animate_shot`（首帧模式） | Codex | L | `skills/tools/*`、`agent/graph.py` | “西装照 + 人像”全流程无需任何选项完成（Mock） |
-| A7 | 前端：新输入框（文本 + 附件）、需求理解卡片、选择题卡片；删除创作方式/镜头数/模型字段 | Codex | M | `views/AgentStudioView.vue`、新组件 | 构建通过；手工冒烟：空文本按钮不可用、附件可删、选择题可提交 |
+| A7 | 前端：新输入框（文本 + 附件）、需求理解卡片、选择题卡片；删除创作方式/镜头数/模型字段及界面美化 | Claude（用户指定） | M | `views/AgentStudioView.vue`、新组件 | 构建通过；手工冒烟：空文本按钮不可用、附件可删、选择题可提交 |
 | A8 | 兼容：旧的 `mode` / `shot_count` / `video_model_preference` 字段弃用；remix 由 Intake 自动识别；`model_policy` 的正则改为读取 `RequestSpec.constraints` | Codex | S | `agent/protocol.py`、`agent/model_policy.py` | 旧客户端请求返回明确的弃用错误；remix 回归通过 |
 | A-Gate | 阶段评审：契约一致性、提示词质量、测试覆盖 | Claude | S | 评审意见写入 PROGRESS | 修复后打标签 |
 
@@ -182,7 +182,7 @@ docs/agent_v2/
 周 6       E1 E2 E3 E4 ─► E-Gate ─► F1 F3（F2 待批准）
 ```
 
-额度分配建议：Claude 的投入集中在 P0-3、各章契约（A/B/C/D 共 4 次）、A5、C1、C4、C6、D1，以及 5 次阶段评审，其余交给 Codex。这样 Claude 的工作量大约占 25%，但覆盖了最容易出错、最难返工的部分。
+额度分配建议：Claude 的投入集中在 P0-3、各章契约（A/B/C/D 共 4 次）、A5、A7（含界面美化，用户指定）、C1、C4、C6、D1，以及 5 次阶段评审；其他任务及后续分工调整以 `docs/agent_v2/PLAN.md` 为准。
 
 ---
 
