@@ -69,7 +69,10 @@ class ArtifactService:
         return artifact
 
     @staticmethod
-    def list_for_job(job: Job, include_history: bool = False) -> list[dict]:
+    def list_for_job(job: Job, include_history: bool = False, agent_upload_owner: str | None = None) -> list[dict]:
+        if (agent_upload_owner is not None and job.strategy == "agent_upload"
+                and (job.config or {}).get("agent_upload_owner") != agent_upload_owner):
+            return []
         result = []
         current_run_id = JobRunStateService.current_run_id(job)
         for artifact in job.artifacts:
@@ -116,8 +119,12 @@ class ArtifactService:
         branch_key: str | None = None,
         search: str | None = None,
         series_id: str | None = None,
+        agent_upload_owner: str | None = None,
     ) -> list[dict]:
         query = Artifact.query.join(Job).join(Template)
+        if agent_upload_owner is not None:
+            query = query.filter(or_(Job.strategy != "agent_upload",
+                                     Job.config["agent_upload_owner"].as_string() == agent_upload_owner))
 
         if series_id:
             query = query.filter(Template.series == series_id.strip())

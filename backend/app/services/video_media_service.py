@@ -39,12 +39,14 @@ class VideoMediaService:
         duration = re.search(r"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)", output)
         # Dimensions are a comma-separated stream field, not the codec's 0x... tag.
         dimensions = re.search(r"Video:.*?,\s*(\d+)x(\d+)(?=[\s,])", output)
+        fps = re.search(r"Video:.*?,\s*(\d+(?:\.\d+)?)\s+fps(?:[\s,]|$)", output)
         if not duration or not dimensions:
             raise AppError("INVALID_SOURCE", "A finite video duration and dimensions are required", 422)
         seconds = int(duration[1]) * 3600 + int(duration[2]) * 60 + float(duration[3])
         if not math.isfinite(seconds) or seconds <= 0:
             raise AppError("INVALID_SOURCE", "Source video has no usable duration", 422)
-        return {"duration": seconds, "width": int(dimensions[1]), "height": int(dimensions[2])}
+        return {"duration": seconds, "width": int(dimensions[1]), "height": int(dimensions[2]),
+                "fps": float(fps[1]) if fps else None}
 
     @classmethod
     def extract(cls, path: Path, target: Path, start: float, end: float, *, frame: bool) -> None:
