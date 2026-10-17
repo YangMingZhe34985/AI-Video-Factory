@@ -67,7 +67,7 @@ def mock_request_spec(data):
         uses.append({"attachment_id": item.attachment_id, "kind": item.kind, "role": role,
                      "description": item.description, "reason": "Mock：根据需求和附件类型提出用途，供后续确认。"})
     questions = []
-    explicit_use = any(word in text for word in ("参考", "风格", "保留", "修改", "改成", "动起来", "照片"))
+    explicit_use = any(word in text for word in ("参考", "风格", "保留", "修改", "改成", "动起来", "照片", "首帧"))
     if data.attachments and motion and not explicit_use and not attachment_choice:
         questions.append({
             "question_id": "attachment_use", "text": "附件主要用来保留内容，还是参考风格？",
@@ -77,6 +77,9 @@ def mock_request_spec(data):
             "recommended_option_id": "content", "default_option_id": "content",
             "allow_free_text": True, "blocking": True,
         })
+    count_match = re.search(r"(\d+|[一二两三四])\s*张", text)
+    count_text = count_match.group(1) if count_match else "1"
+    count = int(count_text) if count_text.isdigit() else {"一": 1, "二": 2, "两": 2, "三": 3, "四": 4}[count_text]
     preferences, exclusions = _model_mentions(text)
     research = [{"query": text[:200], "reason": "需要查证用户提到的最新概念或拟人形象。"}] if any(
         word in text for word in ("拟人", "最新", "流行", "热门")
@@ -85,7 +88,7 @@ def mock_request_spec(data):
     compress = bool(re.search(r"(?:需要|请|要求|进行|输出时)压缩", text)) and not re.search(r"(?:不|无需|禁止)[^，。！？]{0,8}压缩", text)
     return {
         "deliverable": "image" if recipe.startswith("image_") else "video", "recipe_hint": recipe,
-        "summary": text[:500], "target_duration_sec": None if recipe.startswith("image_") else duration,
+        "summary": text[:500], "output_count": count if recipe.startswith("image_") else 1, "target_duration_sec": None if recipe.startswith("image_") else duration,
         "aspect_ratio": aspect, "subjects": [{"name": "主要主体", "description": text[:1000],
                                               "source": "user_text", "attachment_ids": []}],
         "attachments": uses,

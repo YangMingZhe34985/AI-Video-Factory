@@ -1,6 +1,7 @@
 from app.skills.tools import (
     analyze_image,
     analyze_video,
+    animate_shot,
     generate_image,
     generate_video,
     get_task_status,
@@ -14,6 +15,7 @@ from app.skills.tools import (
 ALL_SPECS = [
     analyze_image.SPEC,
     analyze_video.SPEC,
+    animate_shot.SPEC,
     rewrite_prompt.SPEC,
     generate_image.SPEC,
     generate_video.SPEC,

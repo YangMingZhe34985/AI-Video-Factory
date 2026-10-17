@@ -45,12 +45,8 @@ class AgentState(TypedDict, total=False):
     plan_issues: list[dict]
 
 
-def build_graph(checkpointer):
-    app = current_app._get_current_object()
-    registry = build_default_registry()
-    for spec in SPECS:
-        registry.register(spec)
-
+def pipeline_nodes(registry):
+    """Shared storyboard nodes; the v1 graph retains its checkpoint topology."""
     def call(state, name, data, role, suffix):
         return invoke_once(registry, name, data, ToolContext(
             role=role, approved=state.get("approved", False),
@@ -88,7 +84,7 @@ def build_graph(checkpointer):
 
     def director(state):
         row = AgentRun.query.filter_by(run_id=state["run_id"]).one()
-        policy = request_policy(row.request)
+        policy = state.get("video_model_policy") or request_policy(row.request)
         # The MVP produces first-frame -> I2V. Check capability before spending
         # on planning, rather than substituting a different model family.
         if state.get("mode", "from_scratch") == "from_scratch":
@@ -227,22 +223,32 @@ def build_graph(checkpointer):
         return {"packages": result["packages"], "package_errors": result["errors"],
                 "status": "success" if all_good and not result["errors"] else "partial_success"}
 
-    def in_context(fn):
-        # LangGraph may execute nodes in its executor; Flask contexts are thread-local.
-        def wrapped(state):
-            with app.app_context():
-                try:
-                    return fn(state)
-                finally:
-                    db.session.remove()
-        return wrapped
+    return {"analyze": analyze, "collect_analysis": collect_analysis, "wait_analysis": wait_analysis,
+            "director": director, "creative": creative, "validate": validate,
+            "approval": approval, "production": production, "collect": collect,
+            "wait_tasks": wait_tasks, "delivery_approval": delivery_approval, "deliver": deliver}
 
+
+def in_app_context(fn):
+    app = current_app._get_current_object()
+
+    def wrapped(state):
+        # LangGraph executes nodes on threads with independent Flask sessions.
+        with app.app_context():
+            try:
+                return fn(state)
+            finally:
+                db.session.remove()
+    return wrapped
+
+
+def build_graph(checkpointer):
+    registry = build_default_registry()
+    for spec in SPECS:
+        registry.register(spec)
     builder = StateGraph(AgentState)
-    for name, fn in {"analyze": analyze, "collect_analysis": collect_analysis, "wait_analysis": wait_analysis,
-                     "director": director, "creative": creative, "validate": validate,
-                     "approval": approval, "production": production, "collect": collect,
-                     "wait_tasks": wait_tasks, "delivery_approval": delivery_approval, "deliver": deliver}.items():
-        builder.add_node(name, in_context(fn))
+    for name, fn in pipeline_nodes(registry).items():
+        builder.add_node(name, in_app_context(fn))
     builder.add_conditional_edges(START, lambda s: "analyze" if s.get("mode") == "remix" else "director")
     builder.add_edge("analyze", "collect_analysis")
     builder.add_conditional_edges("collect_analysis", lambda s: "wait_analysis" if s["status"] == "analyzing" else "director")

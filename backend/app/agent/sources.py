@@ -23,6 +23,13 @@ def source_for_owner(artifact_id: str, owner_id: str) -> Artifact:
 
 
 def source_for_run(run: AgentRun) -> Artifact:
+    if run.request.get("schema_version", 1) == 2:
+        spec = (run.snapshot or {}).get("request_spec") or {}
+        sources = [item["attachment_id"] for item in spec.get("attachments", [])
+                   if item.get("role") == "remix_source" and item.get("kind") == "video"]
+        if spec.get("recipe_hint") != "remix" or len(sources) != 1:
+            raise AppError("INVALID_SOURCE", "This run has no unique remix source", 422)
+        return source_for_owner(sources[0], run.owner_id)
     if run.request.get("mode") != "remix":
         raise AppError("INVALID_SOURCE", "This run is not a remix", 422)
     return source_for_owner(run.request["source_artifact_id"], run.owner_id)

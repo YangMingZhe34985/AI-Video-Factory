@@ -2,7 +2,7 @@
 
 from pydantic import Field
 
-from app.agent.model_policy import request_policy
+from app.agent.model_policy import scope_policy
 from app.agent.plan_spec import RemixShotSpec, shot_cost
 from app.agent.protocol import validate_shot
 from app.agent.sources import source_for_run
@@ -46,7 +46,7 @@ def _references(data, ctx):
             (parent.config or {}).get("shot", {}).get("shot_id") != data.shot_id
         ):
             raise AppError("TOOL_FORBIDDEN", "Previous shot does not belong to this run and shot", 403)
-    validate_shot(data, request_policy(run.request), source_duration=source.meta["video"]["duration"])
+    validate_shot(data, scope_policy(run.run_id), source_duration=source.meta["video"]["duration"])
     return run, source, analysis, parent
 
 
@@ -69,8 +69,9 @@ def _source_asset(data, ctx, source):
 
 
 def _prompts(data, run, analysis, parent):
+    text = run.request["text" if run.request.get("schema_version", 1) == 2 else "goal"]
     contents = {"source_analysis": analysis.content,
-                "edit_instruction": f"{run.request['goal']}\n\n{data.edit_reason}"}
+                "edit_instruction": f"{text}\n\n{data.edit_reason}"}
     if data.action == "regenerate":
         contents["i2v"] = data.i2v_prompt
         if data.first_frame_mode == "generate":
