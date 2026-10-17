@@ -149,9 +149,11 @@ def search(state, registry):
 
 
 def select(state, registry):
+    query_count = len(state["research_plan"]["web_queries"]) + len(state["research_plan"]["image_queries"])
+    search_keys = [f"{state['run_id']}:research:search:{index}" for index in range(query_count)]
     succeeded = ToolInvocation.query.filter(
         ToolInvocation.budget_scope == state["run_id"], ToolInvocation.tool_name.in_(["web_search", "image_search"]),
-        ToolInvocation.status == "success",
+        ToolInvocation.idempotency_key.in_(search_keys), ToolInvocation.status == "success",
     ).count()
     if not succeeded:
         raise AppError("SEARCH_PROVIDER_UNAVAILABLE", "All research searches failed; inspect the research warnings", 503)

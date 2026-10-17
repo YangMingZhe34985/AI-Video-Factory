@@ -238,3 +238,15 @@ def test_worker_tick_recovers_researching_status(app_ctx, monkeypatch):
     monkeypatch.setattr(worker, "advance", seen.append)
     worker.tick()
     assert seen == [run_id]
+
+
+def test_previous_manual_search_does_not_mask_all_planned_search_failures(app_ctx):
+    from app.skills.spec import ToolContext
+    run_id = create(TEXT, budget=500)
+    registry = build_default_registry()
+    registry.invoke("web_search", {"query": "previous manual search"}, ToolContext(role="research", budget_scope=run_id))
+    with_failure(registry, ["web_search", "image_search"], "SEARCH_PROVIDER_UNAVAILABLE")
+    row = advance(run_id, registry)
+    assert row.status == "needs_attention"
+    assert row.error["code"] == "SEARCH_PROVIDER_UNAVAILABLE"
+    assert ToolInvocation.query.filter_by(tool_name="agent_research_select").count() == 0
