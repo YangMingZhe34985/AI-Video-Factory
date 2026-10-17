@@ -3,6 +3,7 @@ from flask_jwt_extended import get_jwt_identity
 from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError
 
+from app.agent.clarify import resolve_answers
 from app.agent.protocol import CreateRun, RunAction, validate_plan, validate_request, validate_shot
 from app.agent.plan_spec import shot_cost
 from app.agent.release import ensure_admission
@@ -113,7 +114,7 @@ def action(run_id):
                     raise AppError("IDEMPOTENCY_KEY_CONFLICT", "Revision key belongs to a different edit", 409)
                 return api_success(serialize(row), 202)
     expected = {"approve": "awaiting_approval", "reject": "awaiting_approval", "deliver": "awaiting_delivery",
-                "revise": "awaiting_delivery", "resume": "needs_attention"}[data.action]
+                "revise": "awaiting_delivery", "resume": "needs_attention", "answer": "awaiting_input"}[data.action]
     if row.command is not None or row.status != expected:
         raise AppError("INVALID_AGENT_STATE", f"Action requires {expected} with no pending action", 409)
     command = {"action": data.action, "command_id": command_id}
@@ -137,6 +138,14 @@ def action(run_id):
         shot = validate_shot(data.shot, request_policy(row.request), source_duration=source.meta["video"]["duration"])
         BudgetGuard.check(row.run_id, row.request["budget_limit"], shot_cost(shot))
         command["shot"] = shot.model_dump(mode="json")
+    if data.action == "answer":
+        card = (row.snapshot or {}).get("pending_card")
+        if not card:
+            raise AppError("INVALID_AGENT_STATE", "This run has no pending question", 409)
+        submission = {"card_id": data.card_id, "answers": [item.model_dump(exclude_none=True) for item in data.answers],
+                      "use_defaults": data.use_defaults}
+        resolve_answers(card, submission)  # reject before queueing; the graph re-validates on resume
+        command.update(submission)
     if data.action == "resume" and row.resume_count >= 2:
         raise AppError("RETRY_LIMIT_EXCEEDED", "At most two recovery requests are allowed", 409)
     values = {"command": command}

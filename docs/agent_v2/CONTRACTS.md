@@ -194,7 +194,16 @@ Option
 - 图在节点产出 `open_questions` 后统一触发中断 `{"kind": "clarify", "card": ...}`，Run 状态变为 `awaiting_input`。Agent 节点不得自行中断。
 - 每个 Run 最多 `AGENT_MAX_CLARIFY_ROUNDS`（默认 2）张卡片；超过后剩余问题一律取默认或推荐选项，并在审核页“Agent 的假设”中列出。
 - 不设自动超时（见 D-006）。非阻塞题可以由用户点“按默认继续”一次性跳过。
-- 回答通过 A.9 的 `answer` 动作提交；全部阻塞题都有答案才继续。答案写入 `snapshot.clarifications[]`（含卡片与答案），后续节点读取。
+- 回答通过 A.9 的 `answer` 动作提交；全部阻塞题都有答案才继续。**未回答的非阻塞题取默认选项**；`use_defaults=true` 表示用户一次性接受所有非阻塞题的默认值，此时 `answers` 可以为空。
+- 答案写入 `snapshot.clarifications[]`，每条记录为 `{card, answers: {question_id: Resolution}, asked: bool}`；`asked=false` 表示超出轮数后自动取值、并未询问用户。
+- `Resolution = {question_id, question, option_id, label, text, source}`，`source ∈ user | default | recommended | fallback`（fallback：既无默认也无推荐时取第一个选项）。
+
+**实现（A5 已完成，`backend/app/agent/clarify.py`），A6 的 v2 图按以下方式使用：**
+- 图的状态类型继承 `ClarifyState`（键：`status`、`pending_card`、`clarify_resume_status`、`clarifications`、`assumptions`、`clarify_rounds`、`last_command_id`），否则 LangGraph 会丢弃这些更新。
+- 需要提问的节点返回 `queue_questions(state, asked_by, questions, resume_status)` 的结果（可与节点自身的更新合并）；`resume_status` 是回答后恢复的 Run 状态，如 `understanding`、`planning`。
+- 该节点之后接 `clarify_gate` 节点：有待答卡片时中断，恢复后校验答案、记录结果并把状态恢复为 `resume_status`；没有待答卡片时直接通过。
+- 后续节点用 `answer_for(state, question_id, asked_by=None)` 读取答案；`state["assumptions"]` 展示在审核页“Agent 的假设”中。
+- Agent 产出的卡片不合法时 `build_card` 抛 `422 INVALID_CLARIFICATION`，Run 进入 `needs_attention`。
 
 ## A.8 Simple 配方计划（Director-lite 输出，审核对象）
 
@@ -327,6 +336,7 @@ START → analyze_attachments → intake → (clarify)* → route(recipe_hint)
 | 422 | `INVALID_REQUEST_SPEC` | Intake 输出两次校验都不通过（记录在 Run.error） |
 | 422 | `MODEL_CAPABILITY_MISMATCH` | 计划中的模型不具备所需 mode、时长或参考图数量 |
 | 409 | `CLARIFICATION_INCOMPLETE` | `answer` 缺少阻塞题的答案 |
+| 422 | `INVALID_CLARIFICATION` | Agent 产出的提问卡片不合法（选项不足、默认/推荐选项不存在、非阻塞题无默认值等） |
 | 422 | `INVALID_ANSWER` | 选项不存在，或不允许自由文本却提交了文本 |
 
 ---

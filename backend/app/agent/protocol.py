@@ -3,6 +3,7 @@ from typing import Literal
 from flask import current_app
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from app.agent.clarify import Answer
 from app.agent.plan_spec import PlanSpec, RemixShotSpec
 from app.agent.model_policy import select_video_model
 from app.api import AppError
@@ -30,13 +31,20 @@ class CreateRun(BaseModel):
 class RunAction(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    action: Literal["approve", "reject", "deliver", "resume", "revise"]
+    action: Literal["approve", "reject", "deliver", "resume", "revise", "answer"]
     plan: PlanSpec | None = None
     shot: RemixShotSpec | None = None
     request_key: str | None = Field(default=None, min_length=1, max_length=128)
+    card_id: str | None = Field(default=None, min_length=1, max_length=80)
+    answers: list[Answer] = Field(default_factory=list, max_length=3)
+    use_defaults: bool = False
 
     @model_validator(mode="after")
     def _revision_input(self):
+        if (self.action == "answer") != (self.card_id is not None):
+            raise ValueError("Only answer requires a card_id")
+        if self.action != "answer" and (self.answers or self.use_defaults):
+            raise ValueError("answers and use_defaults are only valid for answer")
         if (self.action == "revise") != (self.shot is not None):
             raise ValueError("Only revise requires a shot")
         if (self.action == "revise") != bool(self.request_key):
