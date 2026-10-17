@@ -187,3 +187,29 @@
 - **B 分支基于 db066a6，A-Gate 修改了 `graph_v2.py`、`intake.py`、`director_lite.py`**，B3 合入前请先合并最新的 `feat/agent-v2`（7ddd4cb 及之后），注意 `_queue` 与 `simple_collect` 路由的改动。
 - worker 的 `tick()` 只轮询 `queued/understanding/analyzing/planning/producing/delivering`，B3 新增 `researching` 状态时需要加入该列表，否则 Research 中的 Run 不会被推进。
 - B3 的选择题请继续通过 `queue_questions` / `clarify_gate`；Research 提问用 `asked_by="research"`，A7 前端已支持图片选项。
+
+## 2026-10-18 · Codex · B1–B4 完成
+状态：完成，完整回归通过并已合入本地 `feat/agent-v2`；B5 / B-Gate 待 Claude 接手
+分支与提交：B1 `agent-v2/B1 @ af4618f`（主体 `93c552d`）；B2 `agent-v2/B2 @ 74af298`（主体 `5d8ec10`）；B3 `agent-v2/B3 @ c244d60`；B4 `agent-v2/B4 @ 2673459`。均在 Codex 独立工作树开发，最终 B4 包含全部依赖，统一合入提交为 `85cfd27`。
+协作同步：已重新读取 Claude 的 A-Gate 交接，在 B3 合入 `feat/agent-v2 @ a290a7d`（合并 `d0c94ed`），保留 `_queue`、简单任务自动交付、提示词和全部前端/README 修改。没有修改 Claude 工作树、前端或真实 `.env`。
+完成内容：
+- B1：新增服务商接口与强制离线 Mock、`web_search` / `fetch_page`、`external` 账本权限。网址权限只来自同 Run 的成功检索收据和用户原文；抓取逐跳验证公网地址、固定解析出的 IP 连接、保留 TLS 主机校验，并限制端口、重定向、超时、类型和字节数。不预选真实检索服务商。
+- B2：新增 `image_search` / `download_reference`，解码及尺寸校验、Run 内 SHA 去重、来源登记和持久下载收据。参考图存于所属用户的 `agent_upload` Job，分析复用 `analyze_image`；统一以 `reference_for_run` 校验用户、Run 和文件。无 Run 的经典导入不能借用参考图或其未登记缓存。
+- B3：v2 按 `research_needs` / `needs_research` 进入规划→检索→结果 ID 选择→抓取下载→看图→汇总；普通任务跳过。资料、图片分析和后续规划参考统一通过 `untrusted_content` 传递。Dossier 校验来源、候选与图片归属；无引用事实被丢弃。明确候选自动选定并记假设，模糊候选复用 A5 图片选择题；多批问题共用原轮数限制，回答后只更新选择，不重复检索或分析。worker 纳入 `researching`，v2 API 顶层新增 `research_dossier`。
+- B4：六类恶意资料、伪造结构化决策、跨 Run 引用、权限与费用不变、真实 checkpoint 下载恢复和两轮 API 选择题恢复。测试保留 Qwen 消息组装/解析，仅替换网络 I/O；Mock 图验证之外，另直接提供恶意模型输出验证代码拒绝边界。
+根因修复：
+- 已完成 LLM 响应的 422 结构校验失败不能按“尚未调用”免账单；以现有 `response_validation` 标记区分，保留费用且不自动重复调用。
+- 外部工具和图片分析重放必须重新验证 Run、输入与角色；未知付费结果仍停，只有免费下载可凭持久收据重入。
+- 所有当前检索失败时只检查本次计划的收据，历史手动检索成功不能掩盖本轮故障；部分普通资料失败保留警告并继续。
+测试：
+- 最终集成完整回归：**589 passed, 34 warnings in 666.79s**，包含 B1–B4 和 Claude 最新 A-Gate；相比 A-Gate 的 474 项基线新增 115 项。34 条均为已有 JWT 测试密钥长度告警。已验收提交为 `2673459`。
+- B1 新增检索/安全抓取 43 项通过；独立全量 515 passed / 1 failed，唯一失败为已收集的旧工具清单断言（11）。已在 `af4618f` 修为 13，API 定向 4 passed；B2 加入后最终清单为 15。
+- B2 新增 26 项通过，旧附件/Intake/Skills 定向 83 项通过；缓存路径边界与恢复另复测 3 项通过。
+- B3 原 22 项通过，新增历史检索故障场景与全失败场景定向 2 项通过。B4 与最终 B3 合并定向 **46 passed**（79.06 秒，B4 新增 23 项）。B4 初轮负例缺少成功搜索收据，已改为真实 Mock 搜索前置，未削弱拒绝或费用断言。
+- B2/B3 的早期全量因后续安全修复中断，最终由 B4 对包含 A-Gate 的同一份集成代码执行完整回归。全部为 Mock、隔离 SQLite/存储、HTTP 阻断；B4 额外统计 DNS/HTTP 访问尝试为 0。没有付费调用、真实库迁移、服务端口启动或远程推送。
+- 合入后核对：`backend/` 与 `.env.example` 和已验收 B4 提交完全一致；前端、README、AGENTS/CLAUDE 与 Claude 的 `a290a7d` 基线无差异。`git diff --check` 通过；用户原有未跟踪的技术说明文件未改动。
+给 Claude / 下一步：
+- **B5 资料卡片及 B-Gate 仍由 Claude 负责**。v2 Run 视图的 `research_dossier` 与 `snapshot.research_dossier` 相同，未检索为 null；候选的 `reference_id` 是工件 ID，预览 `/api/artifacts/<id>/preview` 需要 Bearer，继续使用 `AuthedImage`。确认卡片沿用 `pending_card` 与 `asked_by="research"`；展示 sources、warnings、assumptions 和选中候选，资料正文按不可信文本呈现。
+- `.env.example` 增加 B.9 配置；`MODEL_ADAPTER_MODE=mock` 强制离线检索，样例形象、热度、单价均为演示。参考图理解需要配置具备视觉能力的 `AGENT_VISION_MODEL`（测试为 `qwen3.7-plus`）；`AGENT_RESEARCH_MODEL` 留空复用已有 planner 配置。开发联调前重启 API 与 Agent worker，继续使用隔离 Mock 环境。
+- 已选参考图目前只作为规划资料，接入生成模型的角色参考绑定属于 Phase C；没有提前实现 C 章。Research 提示词和浏览器资料展示留待 B-Gate 评审。
+验证边界：未验证真实搜索服务商、真实模型的抗注入/理解/生成质量、真实价格或 MySQL/Redis 部署。Mock 抗注入测试证明结构化边界和权限约束，不等同于真实 LLM 的内容判断能力。下载缓存为恢复保留，本阶段未增加缓存清理机制。

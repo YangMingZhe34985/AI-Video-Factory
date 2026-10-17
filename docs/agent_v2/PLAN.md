@@ -31,10 +31,10 @@
 | ID | 任务 | 负责 | 依赖 | 状态 |
 |---|---|---|---|---|
 | B0 | B 章契约 | Claude | P0-3 | 完成（2bd4e33） |
-| B1 | 检索适配器接口 + Mock；`fetch_page` 与 SSRF 防护 | Codex | B0 | 进行中（agent-v2/B1；隔离工作树） |
-| B2 | `image_search` + `download_reference` | Codex | B0 | 进行中（agent-v2/B2；隔离工作树） |
-| B3 | Research Agent 与候选形象选择题 | Codex（Claude 评审） | B1 B2 A5 | 进行中（agent-v2/B3；后端编排） |
-| B4 | 提示注入测试集 | Codex | B3 | 进行中（agent-v2/B4；先准备测试与复核） |
+| B1 | 检索适配器接口 + Mock；`fetch_page` 与 SSRF 防护 | Codex | B0 | 完成（93c552d、af4618f；集成全量 589 passed） |
+| B2 | `image_search` + `download_reference` | Codex | B0 | 完成（5d8ec10、74af298；集成全量 589 passed） |
+| B3 | Research Agent 与候选形象选择题 | Codex（Claude 评审） | B1 B2 A5 | 完成（c244d60；提示词待 B-Gate 评审） |
+| B4 | 提示注入测试集 | Codex | B3 | 完成（2673459；新增 23 项，集成全量 589 passed） |
 | B5 | 前端：资料卡片（主题摘要与来源、实体候选图）（CONTRACTS B.11） | Claude | B3（接口） | 待开始 |
 | B-Gate | 阶段评审 | Claude | B1–B5 | 待开始 |
 
