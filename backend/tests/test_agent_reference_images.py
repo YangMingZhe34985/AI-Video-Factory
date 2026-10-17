@@ -286,8 +286,10 @@ def test_classic_import_cannot_republish_run_reference(app_ctx, client):
     registry, run = build_default_registry(), make_run()
     search(registry, run)
     artifact = reference_for_run(download(registry, run)["output"]["reference_id"], run)
+    cached = next(StorageService.resolve(artifact.file_path).parent.glob("*.bin"))
     for source in ({"initial_artifacts": {"reference_images": {"artifact_ids": [artifact.artifact_id]}}},
-                   {"source_video_path": artifact.file_path}):
+                   {"source_video_path": artifact.file_path}, {"source_video_path": str(cached)},
+                   {"source_video_path": StorageService.relative_path(str(cached))}):
         response = client.post("/api/jobs", json={"template_id": "agent_workspace", **node_selection([]), **source})
         assert response.status_code == 404, response.json
         assert response.json["error"]["code"] == "ATTACHMENT_NOT_FOUND"
