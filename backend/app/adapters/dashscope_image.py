@@ -14,8 +14,10 @@ class DashScopeImageAdapter(DashScopeGenerationAdapter):
     def build_payload(self, inputs: dict, params: dict) -> dict:
         self.validate_inputs(inputs, params)
         content = []
-        if inputs.get("source_image"):
-            image_value = inputs["source_image"]
+        images = inputs.get("source_images") or []
+        if not images or not all(isinstance(image, str) for image in images):
+            images = [inputs["source_image"]] if inputs.get("source_image") else []
+        for image_value in images:
             image_url = (
                 image_value
                 if self.use_mock or self.is_remote_resource(str(image_value))

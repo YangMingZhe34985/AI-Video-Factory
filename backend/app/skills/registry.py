@@ -128,7 +128,11 @@ class ToolRegistry:
                     f"Idempotency key already used by tool {invocation.tool_name}",
                     409,
                 )
-            if spec.name in {"produce_shot", "remix_shot", "generate_video", "rerun_node"}:
+            if spec.name in {"generate_image", "animate_shot"} and invocation.budget_scope != ctx.budget_scope:
+                from app.models import AgentRun
+                if AgentRun.query.filter(AgentRun.run_id.in_([ctx.budget_scope, invocation.budget_scope])).first():
+                    raise AppError("IDEMPOTENCY_KEY_CONFLICT", "Agent tool key belongs to a different session", 409)
+            if spec.name in {"produce_shot", "remix_shot", "generate_video", "animate_shot", "rerun_node"}:
                 from app.agent.model_policy import scope_policy, validate_job_policy
                 policy = scope_policy(ctx.budget_scope)
                 if policy:

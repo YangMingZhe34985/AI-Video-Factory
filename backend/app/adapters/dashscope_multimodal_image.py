@@ -30,8 +30,11 @@ class DashScopeMultimodalSyncAdapter(DashScopeGenerationAdapter):
     def build_payload(self, inputs: dict, params: dict) -> dict:
         self.validate_inputs(inputs, params)
         content = []
-        if inputs.get("source_image"):
-            image_value = inputs["source_image"]
+        images = inputs.get("source_images") or []
+        # Classic I2I Test supplies metadata dictionaries and selects one primary image.
+        if not images or not all(isinstance(image, str) for image in images):
+            images = [inputs["source_image"]] if inputs.get("source_image") else []
+        for image_value in images:
             image_url = (
                 image_value
                 if self.use_mock or self.is_remote_resource(str(image_value))
@@ -70,8 +73,8 @@ class DashScopeMultimodalSyncAdapter(DashScopeGenerationAdapter):
             json=payload,
         )
 
-        image_url = self._extract_image_url(data)
-        if not image_url:
+        image_urls = self._extract_image_urls(data)
+        if not image_urls:
             raise AppError(
                 "API_TASK_FAILED",
                 "Multimodal image generation returned no image URL",
@@ -82,11 +85,12 @@ class DashScopeMultimodalSyncAdapter(DashScopeGenerationAdapter):
         # Encode the result URL as the provider_task_id so poll() can return
         # success immediately without a second network call.
         return {
-            "provider_task_id": f"{_SYNC_PREFIX}{image_url}",
+            "provider_task_id": f"{_SYNC_PREFIX}{image_urls[0]}",
             "status": "success",
             "synchronous": True,
             "output_kind": "image",
-            "result_url": image_url,
+            "result_url": image_urls[0],
+            "result_urls": image_urls,
             "request_id": data.get("request_id"),
             "raw_response": data,
         }

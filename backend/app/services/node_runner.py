@@ -321,6 +321,8 @@ class NodeRunner:
     def _poll_until_complete(self, adapter, task: ApiTask) -> dict:
         if getattr(self, "_mq", False) and task.operation_key:
             return task.response_payload or {}
+        if (task.response_payload or {}).get("synchronous") and task.response_payload.get("status") == "success":
+            return task.response_payload
         max_rounds = int(current_app.config.get("MAX_POLL_ROUNDS", 90))
         interval = int(current_app.config.get("POLL_INTERVAL_SEC", 10))
         rounds = max(max_rounds, 1)
@@ -360,27 +362,40 @@ class NodeRunner:
             task.error_message = response.get("error_message") or f"Task is not complete: {status}"
             raise AppError("API_TASK_FAILED", task.error_message, 502, payload=response)
 
-        expected_path = StorageService.resolve(task.expected_artifact_path)
-        response = dict(response)
-        response["expected_output_path"] = str(expected_path)
-        output_files = adapter.download_outputs(response, str(expected_path.parent))
-        if not output_files:
-            raise AppError(
-                "API_TASK_FAILED",
-                "Model task succeeded but no downloadable output was found",
-                502,
-                payload=response,
-            )
-        downloaded = Path(output_files[0])
-        artifact_metadata = dict(metadata or {})
-        registered_path = downloaded
-        if self._is_video_artifact(artifact_type):
-            registered_path, compression = self._compress_video_artifact(
-                job, node_run, downloaded, artifact_type
-            )
-            artifact_metadata["compression"] = compression
-        return self._register_task_output(job, node_run, task, response, registered_path,
-            artifact_type, prompt_version, artifact_metadata, artifact_branch_key)
+        from app.services.generation_outputs import digest, output_slots, valid_receipt
+        artifacts = []
+        for index, (relative, item) in enumerate(output_slots(task, response, artifact_type, mock=adapter.use_mock)):
+            expected_path = StorageService.resolve(relative)
+            receipt = expected_path.with_suffix(expected_path.suffix + ".receipt.json")
+            artifact_metadata = dict(metadata or {})
+            artifact_metadata["output_index"] = index
+            if not valid_receipt(expected_path, receipt, task.api_task_id):
+                item["expected_output_path"] = str(expected_path)
+                output_files = adapter.download_outputs(item, str(expected_path.parent))
+                if not output_files:
+                    raise AppError("API_TASK_FAILED", "Model task succeeded but no downloadable output was found", 502)
+                downloaded = Path(output_files[0])
+                registered_path = downloaded
+                if self._is_video_artifact(artifact_type):
+                    registered_path, compression = self._compress_video_artifact(job, node_run, downloaded, artifact_type)
+                    artifact_metadata["compression"] = compression
+                # Receipts are for image slots; video compression may change its path.
+                if not self._is_video_artifact(artifact_type):
+                    if downloaded != expected_path:
+                        downloaded.replace(expected_path)
+                    registered_path = expected_path
+                    receipt.write_text(json.dumps({"sha256": digest(expected_path), "api_task_id": task.api_task_id}), encoding="utf-8")
+            else:
+                registered_path = expected_path
+            existing = Artifact.query.filter_by(api_task_id=task.id, artifact_type=artifact_type,
+                                                file_path=StorageService.relative_path(registered_path)).first()
+            artifacts.append(existing or self._register_task_output(job, node_run, task, response, registered_path,
+                artifact_type, prompt_version, artifact_metadata, artifact_branch_key))
+            task.status = "generated"
+            task.completed_at = None
+        task.status = "success"
+        task.completed_at = utc_now()
+        return artifacts[0]
 
     def _register_task_output(self, job, node_run, task, response, registered_path,
                               artifact_type, prompt_version, artifact_metadata, artifact_branch_key):
@@ -878,9 +893,15 @@ class NodeRunner:
     def _run_submit_first_frame_image(self, job: Job, node, node_run: JobNodeRun) -> dict:
         prompt = self._prompt(job, "first_frame_image")
         model = self._model_for(job, node, "image", "DEFAULT_IMAGE_MODEL")
+        inputs = {"prompt": prompt.content, "prompt_version": prompt.version}
+        if (job.config or {}).get("image_generation_mode") == "i2i":
+            references = Artifact.query.filter_by(job_id=job.id, artifact_type="reference_image").order_by(Artifact.id).all()
+            if not references:
+                raise AppError("INVALID_INPUT", "I2I requires reference image artifacts", 422)
+            inputs.update(source_image=references[0].file_path, source_images=[item.file_path for item in references])
         adapter, effective_adapter_name, payload, response = self._i2i_test_image_adapter_payload(
             model,
-            {"prompt": prompt.content, "prompt_version": prompt.version},
+            inputs,
             job=job,
             node=node,
             param_key="image",

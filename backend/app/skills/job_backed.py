@@ -89,6 +89,11 @@ def pin_model(
     """Validate the node's model and params, then pin both into job_config."""
     from app.agent.model_policy import scope_policy, select_video_model
     policy = scope_policy(ctx.budget_scope) if ctx and capability in {"t2v", "i2v", "r2v"} else None
+    if ctx and capability in {"t2v", "i2v", "r2v"} and policy is None:
+        from app.models import AgentRun
+        owner = AgentRun.query.filter_by(run_id=ctx.budget_scope).first()
+        if owner and (owner.request or {}).get("schema_version") == 2:
+            raise AppError("INVALID_AGENT_STATE", "Understanding must finish before video generation", 409)
     model = (select_video_model(policy, capability, model_id) if policy
              else model_guard.effective_model(capability, node_key, model_id))
     if policy:
@@ -108,8 +113,17 @@ def pin_model(
     return model
 
 
-def resolve_artifact(artifact_id: str, image_only: bool = False) -> Artifact:
+def resolve_artifact(artifact_id: str, image_only: bool = False, ctx: ToolContext | None = None) -> Artifact:
     artifact = ArtifactService.get_by_artifact_id(artifact_id)
+    if ctx:
+        from app.agent.attachments import attachment_for_owner
+        from app.models import AgentRun
+        run = AgentRun.query.filter_by(run_id=ctx.budget_scope).first()
+        if run and (run.request or {}).get("schema_version") == 2:
+            if artifact.artifact_id in run.request.get("attachment_ids", []):
+                artifact = attachment_for_owner(artifact.artifact_id, run.owner_id)
+            elif (artifact.job.config or {}).get("skill", {}).get("budget_scope") != run.run_id:
+                raise AppError("ATTACHMENT_NOT_FOUND", "Artifact is not part of this run", 404)
     if image_only and not str(artifact.mime_type or "").startswith("image/"):
         raise AppError(
             "INVALID_INPUT",

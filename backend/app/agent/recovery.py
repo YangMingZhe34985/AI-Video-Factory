@@ -60,7 +60,7 @@ def invoke_once(registry, name, data, ctx):
             return registry.invoke(name, data, ctx)
         if previous.status in {"failed", "rejected"}:
             raise AppError(previous.error_code or "TOOL_FAILED", previous.error_message or "Previous call failed", 409)
-        job_backed = name in {"produce_shot", "remix_shot", "analyze_video"}
+        job_backed = name in {"produce_shot", "remix_shot", "analyze_video", "generate_image", "generate_video", "animate_shot"}
         if job_backed and not previous.job:
             # A crash can occur between JobService's commit and ledger linking.
             job = Job.query.filter(

@@ -28,6 +28,7 @@ def test_registry_exposes_all_tools_with_schemas(app_ctx):
     assert registry.names() == [
         "analyze_image",
         "analyze_video",
+        "animate_shot",
         "generate_image",
         "generate_video",
         "get_task_status",

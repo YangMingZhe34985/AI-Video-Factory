@@ -66,13 +66,15 @@ class DashScopeGenerationAdapter(MockAdapter):
         output = data.get("output") or {}
         vendor_status = str(output.get("task_status") or "UNKNOWN").upper()
         status = self._map_status(vendor_status)
-        result_url = self._extract_image_url(data) if self.output_kind == "image" else self._extract_video_url(data)
+        image_urls = self._extract_image_urls(data) if self.output_kind == "image" else []
+        result_url = (image_urls[0] if image_urls else None) if self.output_kind == "image" else self._extract_video_url(data)
         return {
             "provider_task_id": task_id,
             "status": status,
             "vendor_status": vendor_status,
             "output_kind": self.output_kind,
             "result_url": result_url,
+            "result_urls": image_urls,
             "raw_response": data,
             "error_message": data.get("message") or output.get("message") or output.get("code"),
         }
@@ -174,7 +176,13 @@ class DashScopeGenerationAdapter(MockAdapter):
 
     @staticmethod
     def _extract_image_url(task_data: dict[str, Any]) -> str | None:
+        urls = DashScopeGenerationAdapter._extract_image_urls(task_data)
+        return urls[0] if urls else None
+
+    @staticmethod
+    def _extract_image_urls(task_data: dict[str, Any]) -> list[str]:
         output = (task_data or {}).get("output") or {}
+        urls = []
         choices = output.get("choices") or []
         if isinstance(choices, list):
             for choice in choices:
@@ -183,12 +191,12 @@ class DashScopeGenerationAdapter(MockAdapter):
                     if isinstance(block, dict):
                         url = block.get("image") or block.get("url")
                         if isinstance(url, str) and url:
-                            return url
+                            urls.append(url)
         results = output.get("results")
         if isinstance(results, list):
             for item in results:
                 if isinstance(item, dict):
                     url = item.get("url") or item.get("image_url") or item.get("image")
                     if isinstance(url, str) and url:
-                        return url
-        return None
+                        urls.append(url)
+        return list(dict.fromkeys(urls))

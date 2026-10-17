@@ -1,7 +1,7 @@
 """Server-owned video model constraints shared by every generation capability.
 
-User intent is extracted from the original request, never from an LLM's
-rewritten brief. The saved policy is checked again at approval and submission.
+v1 preserves its original-request extraction. v2 consumes validated RequestSpec
+constraints, never reinterpreting the text with legacy regular expressions.
 """
 
 import re
@@ -127,13 +127,23 @@ def build_policy(goal: str, preference: str | None = None) -> dict:
     return policy
 
 
-def request_policy(request: dict) -> dict:
+def request_policy(request: dict, request_spec: dict | None = None) -> dict | None:
+    if request.get("schema_version", 1) == 2:
+        if request_spec is None:
+            return None  # Understanding must finish before generation model selection.
+        from app.agent.model_selection import video_policy_for_request
+        return video_policy_for_request(request_spec)
     return request.get("video_model_policy") or build_policy(request["goal"], request.get("video_model_preference"))
 
 
 def scope_policy(scope: str) -> dict | None:
     row = AgentRun.query.filter_by(run_id=scope).first()
-    return request_policy(row.request) if row else None
+    if row is None:
+        return None
+    if row.request.get("schema_version", 1) == 2:
+        snapshot = row.snapshot or {}
+        return snapshot.get("video_model_policy") or request_policy(row.request, snapshot.get("request_spec"))
+    return request_policy(row.request)
 
 
 def candidates(policy: dict, mode: str):

@@ -62,11 +62,11 @@ def run(data: GenerateVideoInput, ctx: ToolContext):
     job_backed.pin_model(config, mode["nodes"][0], mode["capability"], data.model_id, data.params, ctx=ctx)
     initial_artifacts = {}
     if data.first_frame_artifact_id:
-        frame = job_backed.resolve_artifact(data.first_frame_artifact_id, image_only=True)
+        frame = job_backed.resolve_artifact(data.first_frame_artifact_id, image_only=True, ctx=ctx)
         initial_artifacts["first_frame_image"] = [frame.artifact_id]
     if data.reference_artifact_ids:
         references = [
-            job_backed.resolve_artifact(artifact_id, image_only=True)
+            job_backed.resolve_artifact(artifact_id, image_only=True, ctx=ctx)
             for artifact_id in data.reference_artifact_ids
         ]
         initial_artifacts["reference_images"] = [ref.artifact_id for ref in references]
