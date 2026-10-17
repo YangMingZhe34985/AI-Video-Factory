@@ -39,6 +39,14 @@ os.environ.update(
         "AGENT_MODE_ENABLED": "false",
         "AGENT_ACCEPT_NEW_RUNS": "true",
         "AGENT_ALLOWED_USERS": "",
+        "AGENT_SEARCH_PROVIDER": "mock",
+        "AGENT_SEARCH_TIMEOUT_SEC": "10",
+        "AGENT_SEARCH_COST_PER_CALL": "0.2",
+        "AGENT_FETCH_MAX_BYTES": "2000000",
+        "AGENT_REFERENCE_MAX_MB": "10",
+        "AGENT_RESEARCH_MAX_QUERIES": "6",
+        "AGENT_RESEARCH_MAX_FETCHES": "6",
+        "AGENT_MAX_REFERENCE_DOWNLOADS": "24",
         "FAILURE_AGENT_ON_ERROR": "false",
         "FAILURE_AGENT_ENABLED": "false",
         "FAILURE_AGENT_MAX_RETRIES": "1",
@@ -59,6 +67,7 @@ os.environ.update(
 
 import pytest  # noqa: E402
 import requests  # noqa: E402
+from urllib3.connection import HTTPConnection, HTTPSConnection  # noqa: E402
 
 from app import create_app  # noqa: E402
 from app.extensions import db  # noqa: E402
@@ -73,6 +82,12 @@ def block_network(monkeypatch):
         raise RuntimeError(f"Outbound HTTP is blocked in tests: {request.method} {request.url}")
 
     monkeypatch.setattr(requests.Session, "send", _blocked)
+
+    def _blocked_connection(_self):
+        raise RuntimeError("Outbound urllib3 connections are blocked in tests")
+
+    monkeypatch.setattr(HTTPConnection, "connect", _blocked_connection)
+    monkeypatch.setattr(HTTPSConnection, "connect", _blocked_connection)
 
 
 @pytest.fixture

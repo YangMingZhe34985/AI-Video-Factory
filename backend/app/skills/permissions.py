@@ -16,4 +16,6 @@ WRITE = "write"        # local side effects only (e.g. packaging), free
 LLM = "llm"            # runs billed text / vision LLM calls
 GENERATE = "generate"  # submits billed image / video generation
 
-LEDGER_PERMISSIONS = frozenset({WRITE, LLM, GENERATE})
+EXTERNAL = "external"  # external research operations, including free audited fetches
+
+LEDGER_PERMISSIONS = frozenset({WRITE, LLM, GENERATE, EXTERNAL})
