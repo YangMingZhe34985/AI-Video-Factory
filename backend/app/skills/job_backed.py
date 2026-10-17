@@ -136,8 +136,8 @@ def launch(
     # succeeded are skipped, so nothing paid is submitted twice.
     if ctx.previous is not None and ctx.previous.job is not None:
         job = ctx.previous.job
-        from app.agent.model_policy import scope_policy, validate_job_policy
-        validate_job_policy(job, scope_policy(ctx.budget_scope))
+        from app.agent.model_policy import validate_job_policy
+        validate_job_policy(job)
         JobRunService.start(job.job_id, "run_full")
         return job
 

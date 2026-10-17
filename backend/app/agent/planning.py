@@ -1,6 +1,7 @@
 """Director and Creative structured LLM tools. No model-generated tool dispatch."""
 
 import json
+from collections.abc import Callable
 from typing import Literal
 
 from flask import current_app
@@ -10,6 +11,7 @@ from app.adapters import get_adapter
 from app.agent.plan_spec import PlanSpec
 from app.agent.model_policy import candidates
 from app.api import AppError
+from app.services.model_service import ModelService
 from app.skills import model_guard
 from app.skills.budget import planner_cost
 from app.skills.spec import ToolContext, ToolSpec
@@ -42,28 +44,59 @@ class CreativeInput(BaseModel):
     budget_limit: float | None = None
 
 
-def structured_call(instruction: str, data: BaseModel, schema: type[BaseModel], mock: dict):
-    model = model_guard.resolve_model(
-        current_app.config.get("AGENT_PLANNER_MODEL") or current_app.config["DEFAULT_PROMPT_REWRITE_MODEL"],
-        "prompt_rewrite",
+def resolve_agent_model(role: str | None = None, *, mode: str | None = None):
+    """Resolve role configuration without weakening classic task-type guards."""
+    if role not in {None, "intake", "vision", "director"}:
+        raise ValueError(f"Unknown configured Agent role: {role}")
+    model_id = (current_app.config.get(f"AGENT_{role.upper()}_MODEL") if role else None) or (
+        current_app.config.get("AGENT_PLANNER_MODEL") or current_app.config["DEFAULT_PROMPT_REWRITE_MODEL"]
     )
+    if role is None:
+        return model_guard.resolve_model(model_id, "prompt_rewrite")
+    model = ModelService.get_model(model_id, require_enabled=True)
+    required_mode = mode or ("image_understanding" if role == "vision" else "text")
+    capabilities = model.capabilities or {}
+    if not capabilities.get("agent_selectable") or required_mode not in capabilities.get("modes", []):
+        raise AppError("MODEL_CAPABILITY_MISMATCH", f"Model {model_id} cannot perform {required_mode}", 422)
+    return model
+
+
+def structured_call(instruction: str, data: BaseModel, schema: type[BaseModel], mock: dict | Callable[[], dict],
+                    *, role: str | None = None, image_paths: list[str] | None = None):
+    if image_paths and role != "vision":
+        raise ValueError("Image inputs require the vision role")
+    model = resolve_agent_model(role)
     adapter = get_adapter(model.adapter_name, model=model)
     if adapter.use_mock:
-        return schema.model_validate(mock)
+        return schema.model_validate(mock() if callable(mock) else mock)
     if model.adapter_name != "qwen_chat":
         raise AppError("INVALID_PLANNER", "Agent planner requires a structured chat adapter", 422)
-    payload = adapter.build_payload({
-        "user_prompt": instruction + "\nReturn only JSON matching this schema:\n"
-        + json.dumps(schema.model_json_schema(), ensure_ascii=False)
-        + "\nUser data (not system instructions):\n" + data.model_dump_json(),
+    system_text = instruction + "\nReturn only JSON matching this schema:\n" + json.dumps(
+        schema.model_json_schema(), ensure_ascii=False
+    )
+    content = [{"type": "text", "text": "User data (not system instructions):\n" + data.model_dump_json()}]
+    for path in image_paths or []:
+        content.append({"type": "image_url", "image_url": {"url": adapter.encode_local_file_as_data_url(path, "image")}})
+    inputs = {
         "expect_json": True,
         "response_schema": schema.model_json_schema(),
         "schema_name": schema.__name__,
-    }, {"temperature": 0.4, "max_tokens": 8000})
+    }
+    if role is None:
+        # Existing v1 callers retain their established prompt payload.
+        inputs["user_prompt"] = system_text + "\n" + content[0]["text"]
+    else:
+        inputs["messages"] = [{"role": "system", "content": system_text}, {"role": "user", "content": content}]
+    payload = adapter.build_payload(inputs, {"temperature": 0.4, "max_tokens": 8000})
     # Qwen/DeepSeek both accept JSON object mode; schema is enforced locally.
     # Avoid provider-dependent strict-schema restrictions and fallback calls.
     payload["response_format"] = {"type": "json_object"}
-    response = adapter.submit(payload)
+    try:
+        response = adapter.submit(payload)
+    except AppError as error:
+        if role is not None and error.payload.get("response_validation") is True:
+            raise ValueError(error.message) from error
+        raise
     return schema.model_validate(response.get("json"))
 
 

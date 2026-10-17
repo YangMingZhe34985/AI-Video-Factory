@@ -6,7 +6,7 @@ from app.api import AppError
 from app.extensions import db
 from app.models import PromptVersion, ToolInvocation
 from app.services.job_service import JobService
-from app.skills.permissions import CREATIVE, DIRECTOR, PRODUCTION, READ, SYSTEM
+from app.skills.permissions import CREATIVE, DIRECTOR, INTAKE, PRODUCTION, READ, SYSTEM
 from app.skills.spec import ToolContext, ToolSpec
 from app.utils.time_utils import as_utc
 
@@ -119,6 +119,9 @@ def run(data: GetTaskStatusInput, ctx: ToolContext):
             else None
         )
 
+    if ctx.role == INTAKE and (job.config or {}).get("skill", {}).get("budget_scope") != ctx.budget_scope:
+        raise AppError("TOOL_FORBIDDEN", "Cannot inspect another run's analysis job", 403)
+
     if invocation is not None:
         sync_invocation_from_job(invocation)
         db.session.commit()
@@ -194,6 +197,6 @@ SPEC = ToolSpec(
     output_model=TaskStatusOutput,
     handler=run,
     permission=READ,
-    allowed_roles=frozenset({DIRECTOR, CREATIVE, PRODUCTION, SYSTEM}),
+    allowed_roles=frozenset({DIRECTOR, CREATIVE, INTAKE, PRODUCTION, SYSTEM}),
     timeout_sec=10,
 )
