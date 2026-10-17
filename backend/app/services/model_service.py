@@ -1,3 +1,6 @@
+from copy import deepcopy
+from math import gcd
+
 from app.api import AppError
 from app.extensions import db
 from app.models import ModelRegistry
@@ -331,6 +334,43 @@ DEFAULT_MODELS = [
     },
 ]
 
+def _seed_capabilities(data: dict) -> dict:
+    """Describe the existing registered adapters, not unverified provider features."""
+    modes = {
+        "video_understanding": ["text", "image_understanding", "video_understanding"],
+        "text_to_text": ["text"], "prompt_rewrite": ["text"],
+        "text_to_image": ["t2i"], "text_to_video": ["t2v"],
+        "image_to_video": ["i2v"], "reference_to_video": ["r2v"],
+    }[data["task_type"]]
+    schema = data["parameter_schema"]
+    duration = schema.get("duration")
+    unit = "second" if duration else "image" if "t2i" in modes else "call"
+    ratios = list(schema.get("ratio", {}).get("enum", []))
+    for size in schema.get("size", {}).get("enum", []):
+        width, height = (int(value) for value in size.split("*"))
+        divisor = gcd(width, height)
+        ratio = f"{width // divisor}:{height // divisor}"
+        if ratio not in ratios:
+            ratios.append(ratio)
+    return {
+        "modes": modes,
+        "duration": {"min": duration["min"], "max": duration["max"], "step": 1} if duration else None,
+        "resolutions": list(schema.get("resolution", {}).get("enum", [])),
+        "aspect_ratios": ratios,
+        "reference_images": {"max": 1} if set(modes) & {"i2v", "r2v", "image_understanding"} else None,
+        "pricing": {"unit": unit, "credits_per_unit": 2.0 if unit == "image" else 1.0},
+        "quality_tier": "standard", "agent_selectable": True,
+        "notes": "演示单价，非供应商报价；参考图采用保守单图策略，其他范围沿用项目参数目录，接入真实模型前须核实。",
+    }
+
+
+for _seed in DEFAULT_MODELS:
+    _seed["capabilities"] = _seed_capabilities(_seed)
+    # This registered model is also used by the existing I2I workflow adapter.
+    if _seed["model_id"] == "wan2.7-image":
+        _seed["capabilities"]["modes"].append("i2i")
+        _seed["capabilities"]["reference_images"] = {"max": 1}
+
 DEFAULT_MODEL_BY_ID = {model["model_id"]: model for model in DEFAULT_MODELS}
 
 
@@ -365,6 +405,10 @@ class ModelService:
             existing = ModelRegistry.query.filter_by(model_id=data["model_id"]).first()
             if existing:
                 changed = False
+                # Backfill legacy rows, but never overwrite operator pricing/selection.
+                if not existing.capabilities:
+                    existing.capabilities = deepcopy(data["capabilities"])
+                    changed = True
                 for field in (
                     "display_name",
                     "provider",
@@ -393,6 +437,7 @@ class ModelService:
                 parameter_schema=data.get("parameter_schema") or {},
                 output_schema=data.get("output_schema") or {},
                 default_params=data.get("default_params") or {},
+                capabilities=deepcopy(data["capabilities"]),
             )
             db.session.add(model)
             created += 1

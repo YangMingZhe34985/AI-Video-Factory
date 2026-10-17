@@ -14,6 +14,7 @@ class CreateModelSchema(BaseModel):
     parameter_schema: dict = Field(default_factory=dict)
     output_schema: dict = Field(default_factory=dict)
     default_params: dict = Field(default_factory=dict)
+    capabilities: dict = Field(default_factory=dict)
 
 
 class UpdateModelSchema(BaseModel):
@@ -28,3 +29,4 @@ class UpdateModelSchema(BaseModel):
     parameter_schema: dict | None = None
     output_schema: dict | None = None
     default_params: dict | None = None
+    capabilities: dict | None = None
