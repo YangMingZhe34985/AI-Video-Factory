@@ -16,13 +16,13 @@
 
 | ID | 任务 | 负责 | 依赖 | 契约 | 验收要点 | 状态 |
 |---|---|---|---|---|---|---|
-| A1 | 能力目录：`models.capabilities` 列、迁移、种子数据（演示单价） | Codex | P0-3 | A.4 | 迁移幂等；种子模型都有完整能力字段；经典页面不受影响 | 进行中（独立工作树 agent-v2-codex） |
+| A1 | 能力目录：`models.capabilities` 列、迁移、种子数据（演示单价） | Codex | P0-3 | A.4 | 迁移幂等；种子模型都有完整能力字段；经典页面不受影响 | 完成（a3b9ef0） |
 | A2 | 按秒计费：`estimate_model_cost`，替换固定常量 | Codex | A1 | A.5 | 5 秒与 15 秒费用不同；缺少 pricing 时回退并告警；预算相关测试更新后全绿 | 进行中（独立工作树 cinecrew-agent-v2-a2） |
 | A3 | 附件上传接口与归属校验；`/sources` 转调 | Codex | P0-3 | A.3 | 合法图片/视频、各类非法输入、他人附件各有用例 | 进行中（独立工作树 cinecrew-agent-v2-a3） |
 | A4 | `analyze_image` Skill + Intake 节点 + RequestSpec 校验 | Codex（Claude 评审提示词） | A3 | A.6、A.12、A.13 | Mock 下 10 个样例得到预期配方与附件用途；校验失败重试一次 | 进行中（独立工作树，等待 A3 集成验收） |
 | A5 | 澄清协议：`clarify` 中断、`answer` 动作、轮数上限、按默认继续 | Claude | P0-3 | A.7、A.9 | 阻塞题未答不前进；超过轮数取默认并记入假设；非法答案被拒 | 完成（4bf4fc6） |
 | A6 | Simple 配方：Director-lite、`generate_image` i2i 扩展、`animate_shot`、v2 图路由（含 remix 与 story_video 过渡） | Codex | A1 A2 A4 A5 | A.8、A.11、A.12 | “西装照 + 人像”无需任何选项完成（Mock）；remix 与旧 from_scratch 回归通过 | 待开始 |
-| A7 | 前端：新输入框、附件、理解卡片、选择题卡片、Simple 计划审批；移除旧字段 | Codex | A3 A5（接口） | A.2、A.7、A.8、A.10 | `npm run build` 通过；空文本不可提交；选择题可提交 | 待开始 |
+| A7 | 前端：新输入框、附件、理解卡片、选择题卡片、Simple 计划审批；移除旧字段及界面美化 | Claude（用户指定） | A3 A5（接口）；A6/A8 联调 | A.2、A.7、A.8、A.10 | `npm run build` 通过；空文本不可提交；选择题可提交 | 待开始 |
 | A8 | 兼容：`DEPRECATED_FIELD`、`schema_version` 分图、`serialize` 去除 `shot_count` 依赖、`model_policy` 改读 RequestSpec | Codex | A6 | A.1 | v1 Run 可恢复；v1 字段请求被明确拒绝 | 待开始 |
 | A-Gate | 阶段评审 | Claude | A1–A8 | — | 见开发计划第 5 节清单 | 待开始 |
 
