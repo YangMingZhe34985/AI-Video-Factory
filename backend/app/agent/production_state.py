@@ -68,6 +68,10 @@ def usable_artifact(task):
             path = StorageService.resolve(artifact.file_path).resolve()
             expected = "video/" if task.target_type == "video" else "image/"
             if path.is_relative_to(StorageService.root()) and path.is_file() and path.stat().st_size > 0 and str(artifact.mime_type or "").startswith(expected):
+                if task.target_type == "tail_frame":
+                    from app.skills.tools.extract_frame import cached_frame_is_valid
+                    if not cached_frame_is_valid(artifact):
+                        continue
                 return artifact
         except (OSError, ValueError):
             continue

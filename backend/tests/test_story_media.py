@@ -276,16 +276,25 @@ def test_only_reserved_repair_receipt_may_change_motion(app_ctx, monkeypatch, in
         assert job.config["agent_story_production"]["motion_prompt"] == revised["prompt"]
 
 
-def test_missing_extracted_file_restores_original_artifact_without_model_call(app_ctx):
+@pytest.mark.parametrize("corruption", [None, b"", MOCK_PNG_BYTES])
+def test_missing_extracted_file_restores_original_artifact_without_model_call(app_ctx, corruption):
     row, version, _registry = setup(characters=False)
     video = private_artifact(row, "i2v_video", MOCK_VIDEO_BYTES)
     data = {"video_artifact_id": video.artifact_id}
     result = get_registry().invoke("extract_frame", data, context(row))
     artifact = Artifact.query.filter_by(artifact_id=result["output"]["artifact_id"]).one()
-    StorageService.resolve(artifact.file_path).unlink()
+    path = StorageService.resolve(artifact.file_path)
+    if corruption is None:
+        path.unlink()
+    else:
+        path.write_bytes(corruption)
+    before = BudgetGuard.spent(row.run_id)
     restored = invoke_once(get_registry(), "extract_frame", data, context(row))
     assert restored["output"] == result["output"]
-    assert StorageService.resolve(artifact.file_path).is_file()
+    with Image.open(path) as frame:
+        frame.verify()
+    assert BudgetGuard.spent(row.run_id) == before
+    assert ToolInvocation.query.filter_by(tool_name="extract_frame").count() == 1
     assert Artifact.query.filter_by(artifact_type="tail_frame_image").count() == 1
     assert not ApiTask.query.first()
 

@@ -46,11 +46,28 @@ def validate_source(data, ctx):
     return owner, source
 
 
+def cached_frame_is_valid(artifact):
+    """Treat missing, truncated and corrupt PNGs as repairable local cache misses."""
+    if artifact is None:
+        return False
+    try:
+        path = StorageService.resolve(artifact.file_path)
+        if not path.is_file():
+            return False
+        with Image.open(path) as frame:
+            if frame.format != "PNG":
+                return False
+            frame.verify()
+        return True
+    except (OSError, ValueError, SyntaxError, Image.DecompressionBombError):
+        return False
+
+
 def run(data: ExtractFrameInput, ctx: ToolContext):
     owner, source = validate_source(data, ctx)
     invocation = ToolInvocation.query.filter_by(invocation_id=ctx.invocation_id, budget_scope=owner.run_id).one()
     existing = Artifact.query.filter(Artifact.meta["frame_extraction"]["invocation_id"].as_string() == ctx.invocation_id).first()
-    if existing and StorageService.resolve(existing.file_path).is_file():
+    if cached_frame_is_valid(existing):
         return _finish(existing, invocation)
     directory = StorageService.root() / "agent" / "frames" / sha256(owner.run_id.encode()).hexdigest()
     directory.mkdir(parents=True, exist_ok=True)

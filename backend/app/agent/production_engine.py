@@ -214,6 +214,77 @@ def retry_shot(run, task, registry, *, automatic=False):
     return True
 
 
+def recoverable_tail(run, version, shot_id):
+    """Find a local dependency failure without treating it as a paid video failure."""
+    tasks = latest_tasks(run, version)
+    parents = dependencies(version).get(shot_id, [])
+    if shot_id in tasks or not parents:
+        return None
+    source = tasks.get(parents[0])
+    video = usable_artifact(source)
+    if not video or (source.error or {}).get("category") == "submit_unknown":
+        return None
+    tail = versions.latest_task(run, version.version, "tail_frame", parents[0])
+    if not tail or tail.status not in {"failed", "stale", "success"} or usable_artifact(tail):
+        return None
+    from app.skills.tools.extract_frame import ExtractFrameInput
+    data = ExtractFrameInput(video_artifact_id=video.artifact_id, position="last").model_dump(mode="json")
+    if tail.inputs_hash != versions.inputs_hash(data):
+        return None
+    return {"shot_id": shot_id, "source_task_id": source.id, "tail_task_id": tail.id,
+            "video_artifact_id": video.artifact_id, "restore_existing": tail.status == "success"}
+
+
+def _run_tail(run, task, data, registry):
+    try:
+        response = invoke_once(registry, "extract_frame", data, _context(run, task))
+        versions.update_task(run, task, status="success", invocation_id=response["invocation_id"],
+                             artifact_ids=[response["output"]["artifact_id"]], error=None)
+    except AppError as error:
+        failure = {"category": "transient", "code": error.code, "summary": error.message,
+                   "stage": "local", "submission_state": "not_submitted", "provider_task_id": None,
+                   "recovery_action": "recover_tail"}
+        if task.status == "success":
+            versions.mark_stale(run, task.plan_version, target_type="tail_frame", target_ids={task.target_id})
+            event(run, "tail_extraction_failed", task=task, error=failure)
+        else:
+            versions.update_task(run, task, status="failed", error=failure)
+    return bool(usable_artifact(task))
+
+
+def retry_tail(run, version, recovery, registry):
+    """Restore one approved tail from the successful source; never regenerate its video."""
+    versions.require_current_version(run, version.version)
+    if (run.snapshot or {}).get("production", {}).get("approved_version") != version.version:
+        raise AppError("PLAN_VERSION_CONFLICT", "当前版本尚未批准生产。", 409)
+    parents = dependencies(version).get(recovery["shot_id"], [])
+    source = latest_tasks(run, version).get(parents[0]) if parents else None
+    video = usable_artifact(source)
+    original = db.session.get(AgentShotTask, recovery["tail_task_id"])
+    if (not source or source.id != recovery["source_task_id"] or not video
+            or video.artifact_id != recovery["video_artifact_id"]
+            or (source.error or {}).get("category") == "submit_unknown"
+            or not original or original.run_id != run.run_id or original.plan_version != version.version
+            or original.target_type != "tail_frame" or original.target_id != source.target_id):
+        raise AppError("UNSAFE_RETRY", "上游视频或提帧任务已变化，请刷新后重试。", 409)
+    from app.skills.tools.extract_frame import ExtractFrameInput
+    data = ExtractFrameInput(video_artifact_id=video.artifact_id, position="last").model_dump(mode="json")
+    task = versions.latest_task(run, version.version, "tail_frame", source.target_id)
+    if original.inputs_hash != versions.inputs_hash(data) or task.inputs_hash != original.inputs_hash:
+        raise AppError("UNSAFE_RETRY", "尾帧输入已变化，请刷新后重试。", 409)
+    if task.id == original.id and task.status in {"failed", "stale"}:
+        if recovery.get("restore_existing"):
+            return False  # This action already attempted to restore its original successful receipt.
+        task = versions.create_task(run, version.version, "tail_frame", source.target_id, data, force=True)
+    elif task.id != original.id and task.attempt != original.attempt + 1:
+        raise AppError("UNSAFE_RETRY", "已有其他提帧修复，请刷新后重试。", 409)
+    if usable_artifact(task):
+        return True
+    if task.status in {"failed", "stale", "cancelled"}:
+        return False  # One new local attempt per explicit action, including crash recovery.
+    return _run_tail(run, task, data, registry)
+
+
 def _extract_tail(run, version, source_id, registry):
     from app.skills.tools.extract_frame import ExtractFrameInput
     source = latest_tasks(run, version).get(source_id)
@@ -232,13 +303,7 @@ def _extract_tail(run, version, source_id, registry):
         return True
     if task.status in {"failed", "stale", "cancelled"}:
         return False
-    try:
-        response = invoke_once(registry, "extract_frame", data, _context(run, task))
-        versions.update_task(run, task, status="success", invocation_id=response["invocation_id"],
-                             artifact_ids=[response["output"]["artifact_id"]])
-    except AppError as error:
-        versions.update_task(run, task, status="failed", error={"code": error.code, "summary": error.message})
-    return bool(usable_artifact(task))
+    return _run_tail(run, task, data, registry)
 
 
 def tick_production(run, registry):
