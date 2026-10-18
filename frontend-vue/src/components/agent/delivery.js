@@ -30,6 +30,11 @@ export function deliveryChecks(delivery) {
     check && typeof check.code === 'string' && typeof check.summary === 'string')
 }
 
+export function deliveryKeptShots(keptDownstream) {
+  return [...new Set((Array.isArray(keptDownstream) ? keptDownstream : [])
+    .filter((shot) => typeof shot === 'string').map((shot) => shot.trim()).filter(Boolean))]
+}
+
 export function deliveryWarnings(delivery) {
   return [...new Set([...(delivery?.warnings || []), ...(delivery?.qc?.warnings || [])]
     .filter((warning) => typeof warning === 'string' && warning.trim()))]

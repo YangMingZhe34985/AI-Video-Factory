@@ -137,7 +137,7 @@
             />
 
             <DeliveryPanel
-              v-if="deliveryVisible" :key="`delivery-${selected.run_id}`" :delivery="delivery"
+              v-if="deliveryVisible" :key="`delivery-${selected.run_id}`" :delivery="delivery" :kept-downstream="production?.kept_downstream || []"
               :disabled="busy || Boolean(selected.command)" :demo="mode === 'mock'" @action="storyAction"
             />
 

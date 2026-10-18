@@ -7,6 +7,7 @@
     <p v-if="!delivery.enabled" class="notice mt-4">{{ t('disabled') }}</p>
     <p class="mt-3 text-xs text-slate-500">{{ t('localCost') }}</p>
     <p v-if="demo" class="mt-2 text-xs text-amber-700 dark:text-amber-400">{{ t('mock') }}</p>
+    <p v-if="keptShots.length" class="notice mt-4" data-testid="delivery-continuity-warning">{{ t('keptWarning', { shots: keptShots.join(', ') }) }}</p>
     <div v-if="delivery.error" role="alert" class="notice error mt-4"><p class="font-medium">{{ t('error') }}</p><p class="mt-1">{{ delivery.error.message }} <span class="text-xs">{{ delivery.error.code }}</span></p></div>
     <p v-if="actionError" role="alert" class="mt-3 text-sm text-red-600 dark:text-red-400">{{ actionError }}</p>
     <p v-if="submitted" role="status" class="mt-3 text-xs text-slate-500">{{ t('submitted') }}</p>
@@ -43,13 +44,14 @@ import { useI18n } from 'vue-i18n'
 import request from '@/api/request'
 import AuthedVideo from './AuthedVideo.vue'
 import messages from './delivery-messages'
-import { buildDeliveryAction, deliveryActionAllowed, deliveryAssetUrl, deliveryChecks, deliveryReady, deliveryWarnings, downloadFilename } from './delivery'
+import { buildDeliveryAction, deliveryActionAllowed, deliveryAssetUrl, deliveryChecks, deliveryKeptShots, deliveryReady, deliveryWarnings, downloadFilename } from './delivery'
 
-const props = defineProps({ delivery: { type: Object, required: true }, disabled: { type: Boolean, default: false }, demo: { type: Boolean, default: false } })
+const props = defineProps({ delivery: { type: Object, required: true }, keptDownstream: { type: Array, default: () => [] }, disabled: { type: Boolean, default: false }, demo: { type: Boolean, default: false } })
 const emit = defineEmits(['action'])
 const { t, te } = useI18n({ useScope: 'local', messages })
 const actionError = ref(''), downloadError = ref(''), downloading = ref(''), submitted = ref(false)
 const ready = computed(() => deliveryReady(props.delivery))
+const keptShots = computed(() => deliveryKeptShots(props.keptDownstream))
 const master = computed(() => props.delivery.master || {})
 const previewUrl = computed(() => deliveryAssetUrl(master.value, 'preview'))
 const compressedUrl = computed(() => deliveryAssetUrl(props.delivery.compressed))

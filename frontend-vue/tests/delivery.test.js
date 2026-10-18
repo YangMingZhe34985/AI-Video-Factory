@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { buildDeliveryAction, deliveryActionAllowed, deliveryAssetUrl, deliveryChecks, deliveryReady, deliveryWarnings, downloadFilename } from '../src/components/agent/delivery.js'
+import { buildDeliveryAction, deliveryActionAllowed, deliveryAssetUrl, deliveryChecks, deliveryKeptShots, deliveryReady, deliveryWarnings, downloadFilename } from '../src/components/agent/delivery.js'
 
 const asset = (id) => ({ artifact_id: id, preview_url: `/api/artifacts/${id}/preview`, download_url: `/api/artifacts/${id}/download`, file_name: `${id}.mp4` })
 const ready = { enabled: true, plan_version: 3, status: 'success', stage: 'complete', cost_credits: 0,
@@ -60,4 +60,17 @@ test('download names do not introduce filesystem separators or control character
   assert.equal(downloadFilename({ file_name: 'story.mp4' }, 'master.mp4'), 'story.mp4')
   assert.equal(downloadFilename({ file_name: '../folder/a.mp4' }, 'master.mp4'), '.._folder_a.mp4')
   assert.equal(downloadFilename(null, 'sources.zip'), 'sources.zip')
+})
+
+test('retained downstream IDs remain a read-only warning without changing delivery authorization', () => {
+  const kept = ['s04', ' s02 ', 's04', '', '  ', null, 3, { shot_id: 's03' }]
+  const original = structuredClone(kept)
+  assert.deepEqual(deliveryKeptShots(kept), ['s04', 's02'])
+  assert.deepEqual(kept, original)
+  for (const missing of [undefined, null, '', 's04', {}]) assert.deepEqual(deliveryKeptShots(missing), [])
+  const withRetained = { ...ready, kept_downstream: kept, can_retry: true }
+  assert(deliveryReady(withRetained))
+  assert.deepEqual(buildDeliveryAction(withRetained, 'retry_delivery'), {
+    action: 'retry_delivery', payload: { plan_version: 3 },
+  })
 })
