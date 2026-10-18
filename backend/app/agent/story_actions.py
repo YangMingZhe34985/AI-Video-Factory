@@ -35,8 +35,35 @@ def public_view(run):
         row.estimated_cost for row in ToolInvocation.query.filter_by(budget_scope=run.run_id, tool_name="generate_image")
         if row.status != "rejected"))
     return {"story": version.story_package, "plan": version.plan, "plan_version": version.version,
-            "plan_issues": version.check.get("issues", []), "estimates": estimates,
+            "plan_issues": _review_issues(run, version), "estimates": estimates,
             "previews": preview_view(run, version), "story_rules": rules()}
+
+
+def _review_issues(run, version):
+    """Re-project only the budget issue when returning from production to review.
+
+    Immutable checks still describe their original draft. Once this version's
+    actual previews are ready, the production estimator can prove which exact
+    video inputs are reusable without making speculative draft assumptions.
+    """
+    issues = deepcopy(version.check.get("issues", []))
+    if run.status != "awaiting_storyboard" or not (run.snapshot or {}).get("production"):
+        return issues
+    from app.agent.production_state import remaining_video_cost
+    try:
+        require_previews(run, version, "all")
+        remaining = remaining_video_cost(run, version)
+    except AppError:
+        return issues
+    issues = [item for item in issues if item["code"] != "BUDGET_EXCEEDED"]
+    try:
+        BudgetGuard.check(run.run_id, run.request["budget_limit"], remaining)
+    except AppError as error:
+        if error.code != "BUDGET_EXCEEDED":
+            raise
+        issues.append({"code": "BUDGET_EXCEEDED", "shot_id": None,
+                       "message": "剩余预算不足以支付尚需生成的视频，请调整分镜或预算。"})
+    return issues
 
 
 def missing_prompt_issues(plan):
