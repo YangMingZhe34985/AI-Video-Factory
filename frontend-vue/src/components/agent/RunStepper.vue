@@ -32,17 +32,17 @@ const STATUS_STAGE = {
   awaiting_input: 'clarify', planning: 'plan', awaiting_approval: 'review',
   previewing: 'preview', awaiting_characters: 'characters', awaiting_storyboard: 'storyboard', storyboard_approved: 'approved',
   producing: 'produce', production_attention: 'produce', awaiting_video_review: 'videoReview', videos_approved: 'videoApproved',
-  awaiting_delivery: 'deliver', delivering: 'deliver',
+  awaiting_delivery: 'deliver', delivering: 'deliver', editing: 'deliver', delivery_attention: 'deliver',
 }
 
 const stages = computed(() => {
   const keys = ['understand', ...(props.asked || props.status === 'awaiting_input' ? ['clarify'] : []), 'plan',
-    ...(props.storyMode ? ['preview', 'characters', 'storyboard', 'approved', 'produce', 'videoReview', 'videoApproved'] : ['review', 'produce', 'deliver'])]
+    ...(props.storyMode ? ['preview', 'characters', 'storyboard', 'approved', 'produce', 'videoReview', 'videoApproved', 'deliver'] : ['review', 'produce', 'deliver'])]
   const labels = { understand: 'stageUnderstand', clarify: 'stageClarify', plan: 'stagePlan', review: 'stageReview', produce: 'stageProduce', deliver: 'stageDeliver', preview: 'stagePreview', characters: 'stageCharacters', storyboard: 'stageStoryboard', approved: 'stageApproved', videoReview: 'stageVideoReview', videoApproved: 'stageVideoApproved' }
   let current = STATUS_STAGE[props.status]
   const finished = ['success', 'partial_success'].includes(props.status)
-  const broken = ['failed', 'cancelled', 'needs_attention', 'production_attention'].includes(props.status)
-  if (broken && props.status !== 'production_attention') current = props.hasResults ? 'produce' : props.hasPlan ? (props.storyMode ? 'storyboard' : 'review') : 'understand'
+  const broken = ['failed', 'cancelled', 'needs_attention', 'production_attention', 'delivery_attention'].includes(props.status)
+  if (broken && !['production_attention', 'delivery_attention'].includes(props.status)) current = props.hasResults ? 'produce' : props.hasPlan ? (props.storyMode ? 'storyboard' : 'review') : 'understand'
   const activeIndex = finished ? keys.length : keys.indexOf(current)
   return keys.map((key, index) => ({
     key,
