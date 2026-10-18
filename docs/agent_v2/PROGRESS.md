@@ -430,3 +430,11 @@ C-Gate 评审结论：通过。
 - E-Gate 可评审 D-023/D-024、源摘要授权、结构 QC、原片/主片/压缩副本语义、恢复与公开接口边界；全链路证据可复用。原 D-Gate 的预算提示、列表性能与全局侧栏事项保持原记录，未扩展处理。
 - 隔离 Mock 联调需同时开启 `AGENT_STORY_V2_ENABLED=true`、`AGENT_STORY_PRODUCTION_ENABLED=true`、`AGENT_STORY_DELIVERY_ENABLED=true`，配合 `MODEL_ADAPTER_MODE=mock`、临时 SQLite/存储和可用 FFmpeg（`FFMPEG_BINARY` 或 PATH；必须在应用配置导入前设置，或用 config_overrides）。这三个新链路开关默认仍关闭，真实 .env 未自动启用。历史视频审核完成的 Run 使用 start_delivery。
 - 真实模型画质、角色一致性、首尾帧质量、真实费用及高分辨率长片的负载未评测；结构 QC 不能替代视觉评审。F 与任何付费测试等待新的用户指令。本轮没有新增必须由用户决定的事项。
+
+
+## 2026-10-18 · Codex · M0 完成，模型升级与任务中心开始
+状态：本轮用户追加工作，暂停后续Agent阶段；M/T章与D-025已写入，M1–M3/T1并行推进。官网确认五模型存在，价格/模型质量/账号开通情况未实测。
+分工：M1目录/选型/费用；M2 Wan3；M3 Qwen3/DeepSeek与集成；T1任务中心功能均由Codex独立工作树实现。Claude主目录agent-v2/E-Gate及其未提交交付修复不触碰；E-Gate、美化与MT-Gate保留Claude。
+明确约束：依用户最新要求仍使用旧DASHSCOPE_API_BASE_URL / DASHSCOPE_OPENAI_BASE_URL，不引入workspace-id。新模型不替换默认。官方能力与当前Agent可用模式分列，首尾质量未实测。模型价格仍为演示credits；Wan3参考视频按输入+输出秒数估算，不能只算新增延长段。
+验证计划：Mock HTTP请求体与旧URL、隔离SQLite选择/预算/队列权限回归、前端测试/build，随后集成检查；无真实.env修改、付费、推送或PR。任务中心是业务只读页，不是Redis管理台；本人Agent+共享经典，未知Worker健康如实展示。
+给Claude：请先读M/T章与D-025。新目录及任务中心接口将在独立任务分支合入feat后提供SHA；当前无需修改Agent图/ProductionBoard/DeliveryPanel或抢占上述文件。本记录后续会追加实际验收与剩余限制。

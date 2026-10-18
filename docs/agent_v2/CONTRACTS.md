@@ -97,7 +97,7 @@
 | `quality_tier` | `fast` `standard` `high` |
 
 规则：
-- `capabilities` 与现有 `task_type` 并存；`model_guard` 的 `task_type` 校验保持不变，Agent 选型额外要求所需 `mode ∈ capabilities.modes`。
+- `capabilities` 与现有 `task_type` 并存；单分类兼容与多模式扩展见 M.1（D-025），Agent 仍额外要求所需 `mode ∈ capabilities.modes`。
 - 换用新模型只需新增或更新一条目录记录（种子或模型注册表 API），Agent 代码不得硬编码模型 ID。现有 `DEFAULT_*_MODEL` 配置继续作为“未指定时的默认值”。
 - 种子中的单价是**演示值**，真实单价由用户在模型注册表中填写（见 DECISIONS D-003）。
 
@@ -975,3 +975,48 @@ qc:null|{passed,checks:[{code,passed,summary}],warnings:[]}, warnings:[]
 |E3|probe_media/qc_video/package_story、Editor、graph/worker/protocol/API及测试|完整Mock交付、全片QC、缺镜头/损坏/漂移注入、断点重放无新增模型费用|
 |E4|独立DeliveryPanel/helper/messages/tests、AgentStudio/RunStepper最小接线|播放及鉴权下载、状态/恢复、前端构建与Mock联调；保留Claude样式|
 本轮不进入 F 或付费评测；E-Gate 留 Claude。错误使用现有归属/版本/状态错误，并可增加 DELIVERY_DISABLED、DELIVERY_INCOMPLETE、DELIVERY_QC_FAILED；错误不暴露本地绝对路径。
+
+
+# M 章：百炼模型目录升级（2026-10-18，M0）
+
+## M.1 目录、选择与兼容
+- 新增真实 ID：qwen-image-3.0 / qwen-image-3.0-pro（dashscope，text_to_image，dashscope_qwen_image）、wan3.0-video / wan3.0-video-prime（dashscope，text_to_video，dashscope_wan3）、deepseek-v4.1-flash（dashscope，prompt_rewrite，qwen_chat）。不创建伪造的 -i2v/-t2v 别名发送给服务商，不改变现有默认模型。
+- task_type 保留原单值；统一 supports_task_type(model, requested_type) 保留原分类匹配，并允许 capabilities.modes 中已接入的生成模式映射到 text_to_image/text_to_video/image_to_video/reference_to_video。LLM 模式不扩大旧任务权限；Agent 额外要求 agent_selectable 与具体 mode。API /models 筛选、Skill guard、Agent 新旧选择器、经典下拉使用相同语义。
+- capabilities.family 为可选规范系列（wan3.0、qwen-image-3.0）；精确 ID 优先，系列匹配必须边界精确，不能把 wan3.0 误匹配 wan3.01。未指定模型仍严格使用服务器配置。
+- capabilities.modes 仅放当前执行链支持项：Qwen 3.0 为 t2i/i2i；Wan 3.0 为 t2v/i2v/first_last_frame/r2v（参考图片）；DeepSeek 为 text。provider_capabilities 另记官方多模态参考、编辑/延长、file/link 与接入状态；这些元数据不构成 Agent 自动调用许可。首尾仍需要原开关、能力与实际适配器支持；质量未实测。
+- Qwen 参数：n 1–6、可选 size（宽*高，面积512²–2048²、比例1:8–8:1）、prompt_extend / enable_thinking / watermark、prompt_extend_mode direct|agent、negative_prompt、seed。最多3张输入图片；i2i 不允许 prompt_extend_mode=agent。入口 RequestSpec.output_count 的1–4限制不变。
+- Wan 参数：duration 整数2–30（默认5）、resolution 480P|720P|1080P、ratio adaptive|21:9|16:9|4:3|1:1|3:4|9:16、audio、prompt_extend、watermark及官方允许的seed。duration=-1暂拒绝；首帧/尾帧与任意参考媒体互斥。输入视频合计≤15秒且输入+输出≤30秒；输入图片≤10、视频/音频各≤5。高级输入暂不自动接入 Agent；若适配层无法可靠检验某项媒体约束，必须明确拒绝，不假称可用。
+- 种子升级幂等并保留运营者能力/价格修改；旧模型记录、经典19节点与默认配置不改变。
+
+## M.2 传输与费用
+- 用户明确要求旧地址。新图片异步 POST 使用现有 DASHSCOPE_API_BASE_URL + /services/aigc/image-generation/generation；新视频异步 POST 使用该配置 + /services/aigc/video-generation/video-synthesis；轮询均 /tasks/{task_id}。默认 base 仍 https://dashscope.aliyuncs.com/api/v1。DeepSeek 走已有 DASHSCOPE_OPENAI_BASE_URL /chat/completions 与 DASHSCOPE_API_KEY，不走 DeepSeek 自营服务。不新增 workspace-id 环境变量。
+- Qwen 请求 input.messages 的单个 user.content 包含 image / text；Wan 请求 input.prompt + media:[{type,url}]。仅模型协议转换，不绕过现有异步 MQ、ToolRegistry、预算与授权。所有接口测试 stub HTTP，验证旧 URL 与 payload；实际账号对旧域名新模型支持尚待获批实测。
+- 新图片适配器需保留多输出，不把 n>1 静默裁成1；若下游尚有限制，补对应下载/工件处理的最小兼容实现与回归。不得无记录地重复生成。
+- estimate_model_cost(model, params, *, input_video_seconds=0.0) 向后兼容；pricing 可带 resolution_rates（resolution→credits/秒）与 billing_basis=output_seconds|input_plus_output_seconds。Wan为后者，cost=(input_video_seconds + duration*n_outputs)*rate；无视频输入时输入秒数为0。分档未知、时长非有限或非正等拒绝，不能算成零。输入秒数必须来自服务端媒体检验，不能信任用户声称的时长；当前 Agent 仅图片参考因此为0。
+- 保留原 pricing.credits_per_unit 回退；新增条目使用明确标记的演示 credits，前端估算与后端同分档。官方人民币价格可在文档列出处与地域，不将其混入 credits；LLM token 计费也不冒充按次真实账单。提交后未知/失败的预算仍按原保守累计语义，不自动退款。
+
+## M.3 本次范围与验收
+- 模型登记、真实协议 payload、Agent/经典多模式选择、首尾候选、系列限制、按秒估算、异步恢复与多图输出均有隔离 Mock 回归；不改变任务默认选择，不引入真实数据库迁移。
+- 官方媒体编辑/延长是相同 media+prompt 协议，无额外 task_type 参数。后续 Agent 如要使用，须补受控附件、媒体时长、计划/授权/成本、局部修复契约，不因目录声明就自动启用。
+- 文件边界：M1 为 model_service / 新 capability helper、model_selection/model_policy/model_guard、budget、经典模型筛选与 storyboard.js/helper，以及对应测试；M2 为新 Wan adapter、animate_shot 首尾 guard 及对应测试；M3 为新 Qwen image adapter、adapter 注册、qwen_chat/planning 默认参数、必要下载多输出接线及对应测试，README/.env.example（仅有必要说明、不改实际.env）。其他 Agent 图、交付授权及 Claude E-Gate 文件不改。
+
+# T 章：只读任务中心（2026-10-18，T1）
+
+## T.1 接口与权限
+- GET /api/task-center?source=all|agent|workflow&state=all|queued|running|waiting|attention|completed|cancelled&search=...&page=1&per_page=20。
+- GET /api/task-center/<source>/<id>?page=1&per_page=50 返回相同父项与分页子任务，越权或不存在返回404。参数非法返回422，分页上限100；列表稳定排序（created_at、source、id），搜索/统计与分页统一权限范围。
+- envelope沿用现有success(data)；data含observed_at、scope=own_agent_and_shared_workflow、data_source=database、mq_admission_enabled、worker_health=unknown、items、total/page/per_page、summary（各state计数，尊重source/search；state筛选不遮蔽同范围汇总）。
+- item含source/id/title/state/stage/wait_reason/progress/queue_counts/created_at/updated_at；progress为unit/completed/total/failed数量。queue_counts含submit_waiting/submitting/provider_running/download_waiting/downloading/unknown；详情 children含shot_id/node_key/model_id/state/stage/wait_reason/depends_on/attempt/next_check_at/updated_at/error_code（无意义字段可null）。
+- 本人AgentRun按owner SQL过滤；经典Job当前共享（没有owner/admin模型），通过ToolInvocation.job_id/budget_scope归并内部Job到Agent父Run。上传/孤立私有/归属异常Job不得成为共享任务，兼容已有私有标记；当前版本/当前轮次/最新attempt计数，不把旧Outbox代数当待办。
+- 不返回prompt、内部命令/输入输出快照、签名URL、路径、租约token、Redis地址、provider task_id或原始异常文本。旧 /api/jobs/queue/status 同样按所有者保护，保留经典共享兼容。
+
+## T.2 状态与只读边界
+- storyboard_approved=等待授权；awaiting_* 为待用户处理，均不是已排队。pending先区分依赖等待；Job.queued+ready才称等待调度。poll是服务商处理，不能冒充本地等待名额。
+- submit/submit_active、poll/poll_active、download/download_active分别显示待提交/提交中、服务商生成/查询、待下载/下载中；submit_unknown停止待核实。退避next_check_at仅表示下次检查，不是ETA。
+- editing 显示交付stage；本地FFmpeg步骤不冒充Redis任务。以镜头/节点完成数量表达进度，不编造耗时百分比。
+- 所有GET仅读SQL；不调用完整Run serialize、文件检验、Redis、工具、重试或任何写入。MQ开关只代表新任务准入，关闭也可显示存量；无Worker心跳，不显示在线结论，不显示精确队列排名。
+
+## T.3 页面与验收
+- /task-center独立页面：筛选/分页/数量摘要/阶段列表/详情子任务，跳转现有Agent或经典作业页继续操作。每5秒刷新，隐藏/卸载停止；失败保留旧数据并标记过期。无重排/取消/重试/清空按钮。
+- Codex只做现有设计语言下的功能接线；Claude负责美化与评审。新增task_center API/services/tests、TaskCenterView/api/components/tests、blueprint/router/NAV/i18n最小改动；不改ProductionBoard/DeliveryPanel/全局布局/MQ调度器/Agent图。
+- 双用户隔离、经典共享、父子去重、SQL分页/计数、旧版本排除、等待/未知/退避映射、无Redis可读、GET无新增Job/Outbox/调用均需Mock隔离回归。前端测试与build通过，交接声明未验证项。
