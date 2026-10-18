@@ -16,7 +16,8 @@
     "ask_user",
     "finish",
     "list_models",
-    "estimate_cost"
+    "estimate_cost",
+    "check_plan"
   ],
   "can_delegate_to": [],
   "limits": {

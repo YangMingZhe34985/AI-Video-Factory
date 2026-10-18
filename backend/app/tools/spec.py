@@ -35,6 +35,8 @@ class ToolContext:
     shot_task_id: int | None = None
     delivery_version: int | None = None
     transform_hash: str | None = None
+    plan_node_task_id: int | None = None
+    plan_preview_id: str | None = None
     # Valid only inside one Registry invocation; never a caller-supplied permit.
     _delivery_authorization: tuple | None = field(default=None, init=False, repr=False)
     _analyze_images_prepared: object | None = field(default=None, init=False, repr=False)

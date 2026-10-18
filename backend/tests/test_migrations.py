@@ -41,7 +41,7 @@ def test_alembic_upgrade_creates_ledger_table(tmp_path):
         assert inspector.has_table("job_dispatches")
         assert inspector.has_table("task_outbox")
         assert "operation_key" in {c["name"] for c in inspector.get_columns("api_tasks")}
-        assert _version() == "20261018_004"
+        assert _version() == "20261019_005"
         db.engine.dispose()
 
 
@@ -56,7 +56,7 @@ def test_upgrade_tolerates_table_created_by_schema_repair(tmp_path):
 
         assert inspect(db.engine).has_table("agent_runs")
         assert inspect(db.engine).has_table("task_outbox")
-        assert _version() == "20261018_004"
+        assert _version() == "20261019_005"
         db.engine.dispose()
 
 

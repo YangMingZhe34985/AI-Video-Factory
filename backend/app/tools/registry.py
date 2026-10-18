@@ -28,7 +28,7 @@ REPLAYABLE_STATUSES = {"pending", "running", "success", "partial_success"}
 TERMINAL_JOB_STATUSES = {"success", "partial_success", "failed", "cancelled"}
 CONTEXT_FIELDS = frozenset({"caller_agent", "delegation_id", "agent_step", "approved",
     "budget_scope", "budget_limit", "idempotency_key", "preview_task_id", "shot_task_id",
-    "delivery_version", "transform_hash", "tool_name", "invocation_id", "previous", "_delivery_authorization", "_analyze_images_prepared"})
+    "delivery_version", "transform_hash", "plan_node_task_id", "plan_preview_id", "tool_name", "invocation_id", "previous", "_delivery_authorization", "_analyze_images_prepared"})
 DELIVERY_TOOLS = frozenset({"compose_video", "probe_media", "qc_video", "package_story"})
 
 
@@ -118,7 +118,7 @@ class ToolRegistry:
         try:
             return self._invoke(name, raw_input, ctx)
         except Exception:
-            if ctx.caller_agent is not None:
+            if ctx.caller_agent is not None or ctx.plan_node_task_id is not None:
                 # Release the per-Run admission lock on pre-execution errors.
                 db.session.rollback()
             raise
@@ -143,15 +143,21 @@ class ToolRegistry:
         if spec.name == "agent_llm_turn":
             from app.tools.agent_chat import validate_turn_submission
             validate_turn_submission(data, ctx, self)
+        if spec.name == "request_preview":
+            from app.plans.preview import validate_submission
+            validate_submission(data, ctx)
         ctx.tool_name = spec.name
         if ctx.caller_agent is not None:
             from app.agents.budget import validate_context
             validate_context(ctx, tool_name=spec.name)
-        from app.agent.production_policy import require_task_authorization
-        require_task_authorization(spec.name, ctx)
-        from app.agent.transform_policy import require_tool_authorization
-        require_tool_authorization(spec.name, ctx)
-        if spec.name == "transform_video":
+        from app.plans.policy import authorize_tool
+        plan_task = authorize_tool(spec.name, data, ctx)
+        if plan_task is None:
+            from app.agent.production_policy import require_task_authorization
+            require_task_authorization(spec.name, ctx)
+            from app.agent.transform_policy import require_tool_authorization
+            require_tool_authorization(spec.name, ctx)
+        if spec.name == "transform_video" and plan_task is None:
             from app.agent.transform_policy import validate_submission
             validate_submission(data, ctx)
         if spec.name == "capture_reference_page":
@@ -163,7 +169,7 @@ class ToolRegistry:
         if spec.name == "extract_frame":
             from app.tools.specs.extract_frame import validate_source
             validate_source(data, ctx)
-        if spec.name in DELIVERY_TOOLS:
+        if spec.name in DELIVERY_TOOLS and plan_task is None:
             from app.agent.delivery_policy import require_delivery_authorization
             require_delivery_authorization(ctx, getattr(data, "plan_version", None))
             _delivery_module(spec.name).validate_sources(data, ctx)
@@ -206,11 +212,11 @@ class ToolRegistry:
             )
 
     def _invoke_with_ledger(self, spec: ToolSpec, data: BaseModel, ctx: ToolContext) -> dict:
-        if ctx.caller_agent is not None:
+        if ctx.caller_agent is not None or ctx.plan_node_task_id is not None:
             from app.agent.search.scope import require_run
             from app.agent.plan_versions import _lock_run
             _lock_run(require_run(ctx))
-        scoped = ctx.caller_agent is not None or spec.name == "agent_llm_turn" or spec.permission == "external" or spec.name in {"analyze_image", "analyze_images", "extract_frame"} | DELIVERY_TOOLS or ctx.shot_task_id is not None or spec.name == "transform_video"
+        scoped = ctx.caller_agent is not None or ctx.plan_node_task_id is not None or spec.name == "agent_llm_turn" or spec.permission == "external" or spec.name in {"analyze_image", "analyze_images", "extract_frame"} | DELIVERY_TOOLS or ctx.shot_task_id is not None or spec.name == "transform_video"
         generated_key = idempotency_key_for(spec.name, data)
         if ctx.caller_agent is not None:
             generated_key = f"{ctx.caller_agent}:{ctx.delegation_id}:{generated_key}"
@@ -247,13 +253,20 @@ class ToolRegistry:
             if invocation.job is not None:
                 db.session.refresh(invocation.job)
             sync_invocation_from_job(invocation)
+            if ctx.plan_node_task_id is not None and spec.permission == "generate" and invocation.status == "failed":
+                raise AppError("UNSAFE_RETRY", "Failed Plan attempts require a reviewed patch and a new task", 409)
             recovering_download = spec.name in {"download_reference", "extract_frame"} and invocation.status in {"pending", "running"}
             if spec.name == "extract_frame" and invocation.status == "success":
                 from app.models import Artifact
                 from app.tools.specs.extract_frame import cached_frame_is_valid
                 output_artifact = Artifact.query.filter_by(artifact_id=(invocation.output_payload or {}).get("artifact_id")).first()
                 recovering_download = not cached_frame_is_valid(output_artifact)
-            if spec.name in DELIVERY_TOOLS:
+            if ctx.plan_node_task_id is not None and spec.name in DELIVERY_TOOLS | {"retain_video_segment"}:
+                from app.plans.media import cached_output_is_valid
+                recovering_download = invocation.status in {"pending", "running"}
+                if invocation.status == "success":
+                    recovering_download = spec.name in {"probe_media", "qc_video"} or not cached_output_is_valid(invocation)
+            elif spec.name in DELIVERY_TOOLS:
                 recovering_download = invocation.status in {"pending", "running"}
                 if invocation.status == "success":
                     recovering_download = (spec.name in {"probe_media", "qc_video"}
@@ -399,7 +412,7 @@ class ToolRegistry:
 
     @staticmethod
     def _check_scoped_replay(spec, invocation, data, ctx):
-        if ctx.caller_agent is not None or spec.name == "agent_llm_turn" or spec.permission == "external" or spec.name in {"analyze_image", "analyze_images", "extract_frame"} | DELIVERY_TOOLS or ctx.shot_task_id is not None or spec.name == "transform_video":
+        if ctx.caller_agent is not None or ctx.plan_node_task_id is not None or spec.name == "agent_llm_turn" or spec.permission == "external" or spec.name in {"analyze_image", "analyze_images", "extract_frame"} | DELIVERY_TOOLS or ctx.shot_task_id is not None or spec.name == "transform_video":
             if (invocation.tool_name != spec.name or invocation.budget_scope != ctx.budget_scope
                     or invocation.input_payload != data.model_dump(mode="json")
                     or (ctx.caller_agent is not None and (invocation.caller_agent != ctx.caller_agent

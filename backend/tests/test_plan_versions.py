@@ -284,7 +284,7 @@ def test_repeatable_migration_repair_and_downgrade(tmp_path):
         assert not {"agent_plan_versions", "agent_shot_tasks"} & set(SchemaService.ensure_compatible_schema())
         db.session.remove()
         upgrade(directory=MIGRATIONS_DIR)
-        assert db.session.execute(text("SELECT version_num FROM alembic_version")).scalar() == "20261018_004"
+        assert db.session.execute(text("SELECT version_num FROM alembic_version")).scalar() == "20261019_005"
         db.session.remove()
         db.engine.dispose()
 

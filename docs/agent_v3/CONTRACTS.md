@@ -251,6 +251,7 @@ PlanNode
   id: str (^[a-z0-9_]{1,40}$), tool: str (plan_executable)
   inputs: {field: literal | {ref: "<node_id>.<output_field>"} | {artifact: "<id>"}}
   model_id: str | null, params: dict
+  depends_on: [node_id] (默认 [])             # 控制依赖，与数据引用共同形成 DAG
   stage: str | null
   gate: "preview" | null                      # 该节点完成后暂停，等用户确认再执行其后代
   origin: {agent, skills: [], blueprint?: {name, version}}
@@ -380,3 +381,20 @@ PlanPatch
 | V6 Agent 上线 | 七个 Agent 的卡片与提示词、委派策略 | 真实评测达标，且简单任务不发生无谓委派 |
 | V7 界面 | 协作时间线、通用计划视图（分镜板作为 stage 渲染）、规划额度、Patch 审批卡片 | 构建与浏览器验收（Claude 负责美化） |
 | V8 经典路径 | 开工前补写契约（D-031） | — |
+
+## V.16 V4 实施精化（D-034）
+
+本节细化 V.2.2/V.8/V.9，不改变经典/v2 Registry：
+- 新增仅 Plan 可执行的免费 `retain_video_segment({video_artifact_id,source_start_sec,source_end_sec}) -> {artifact_id:video}`，用于保留原片明确时间范围；输入必须属于当前 Run，区间须在实际视频内。
+- `compile_plan(raw,run,*,registry=None,plan_version=1)` 返回 `{plan,issues,estimates,experimental,dag}`，内部另含 `validated_inputs`、`output_metadata`。`dag={order,dependencies,children}`；`node_inputs(node,*,plan_version=1)` 注入模型/参数及服务端版本，`resolve_inputs(value,outputs)` 递归解析引用。
+- 输入只接受字面值、纯 `{artifact:id}`、纯 `{ref:node.output}` 或类型允许的容器；数组整体引用与单值元素引用严格区分。inputs 禁止 model_id/params/template_id/plan_version，媒体引用只在工具声明的媒体字段使用。generate_image.image 为首张、images 为完整数组，image 交付可用两者。
+- estimates.video_seconds 为视频交付总时长，不重复累计中间合成；generated_video_seconds 限制全部计费生成节点秒数，两者均受 AGENT_V3_MAX_VIDEO_SECONDS 限制。未来引用按上游类型、数量与时长上界估价，真实执行复验；超出批准上界则停止，不以零秒报价未知素材。Wan3 保留完整 I+G 与全部实际媒体检查。
+- v3 transform_video 明确输入为 `{operation:reference|edit|extend,prompt,media:[{type,artifact_id}],source_artifact_id?}`，model_id/params 由 PlanNode 顶层注入。交付工具 plan_version 由服务端注入。package_story 必须有针对同一视频的 QC 祖先且其结果通过。
+- dry-run 使用隔离内存 Stub 执行整张 DAG，逐节点解析引用、校验真实输入 Schema、模拟类型化命名输出并验证依赖顺序；禁止生产 handler、数据库写入、文件写入与网络，费用为零。实际 Mock Job/MQ 贯通另有执行器回归，不将 dry-run 当作模型质量验收。
+- 复用 AgentPlanVersion 保存 ExecutionPlan 与编译/dry-run 结果；plan_node_tasks 在 V.9 字段上增加 inputs/output/state JSON，state 保存输入/产物摘要、恢复次数与复用来源。未来产物在实际就绪时冻结解析值与摘要；已受理任务优先恢复原 provider_id。
+- 一次计划批准覆盖整张 DAG，包括交付处理；gate 仅阻塞其后代。全部节点完成后 awaiting_result_review，approve_results 只确认交付、不重跑工具；终端处理可显示 delivering。规划费用与生产费用分开展示但共用 Run 总预算。
+- Blueprint 收据保存服务端生成的原始及规范化草稿哈希，只有匹配才允许 experimental=false；原始输入不得自带服务端价格/manifest/quote/许可。四个关键 Skill 与正式提示词的 Claude 审定状态不因此改变。
+- 规划工具输入：`check_plan({plan:PlanDraft})` 只读；`instantiate_blueprint({name,params})` 返回计划、说明、workspace_ref、issues、估价与 experimental，并原子保存工作区及来源收据；`submit_plan({plan_ref:{key,version}})` 仅 Producer 调用，通过编译与 dry-run 后原子创建审核版本，失败保留草稿及 issues，不授予生成许可。`finish(outcome=plan_submitted)` 必须携带与服务端提交收据相同的 plan_ref。
+- `request_preview({purpose,prompt,reference_artifact_ids?})` 只提供一张规划图，服务端按有无参考图选择 t2i/i2i 默认模型；不接收 model_id/params/n。Registry 外层账本计费一次、最多六个非 rejected 调用、每次不超过配置的三 credits 上限；独立冻结 permit 保护 Job/MQ 调度，成功结果生成不可变工作区 note。公开工具输入不得设置 plan_node_task_id/plan_preview_id 等服务端上下文。
+- 编译器内部另返回 source_artifact_ids/input_artifact_metadata；批准时冻结现有源素材摘要，节点就绪时复验源文件与前驱产物摘要。公开 Run 只返回可审核计划、节点状态、工件链接和统计，不返回内部校验占位值、原始模型消息或服务端许可。
+- submit_plan 成功时在同一事务完成 Producer 委派并保存 plan_submitted 输出；无需额外模型回合才能进入审核。request_preview 已创建未提交 Job 的恢复仍使用原 permit/账本/Job；存在提交证据时只允许最多两次原 provider_id 的免费读取恢复，未知提交停止。QC 时长以批准的源片段时长为基准，打包前复验 QC 输入摘要；compressed_artifact_id 只能来自同一 compose 节点的明确压缩副本。

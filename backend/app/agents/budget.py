@@ -9,6 +9,14 @@ from app.tools.budget import BudgetGuard
 TERMINAL = frozenset({"completed", "returned", "failed", "limit", "cancelled"})
 
 
+def submitted_producer(run, delegation):
+    return (delegation.agent == "producer" and delegation.status == "completed"
+            and run.status == "awaiting_plan_review"
+            and (delegation.output or {}).get("outcome") == "plan_submitted"
+            and (run.snapshot or {}).get("v3_plan_submission", {}).get("plan_ref")
+            == (delegation.output or {}).get("plan_ref"))
+
+
 def validate_context(ctx, tool_name=None):
     run = AgentRun.query.filter_by(run_id=ctx.budget_scope).first()
     if run is None or not (run.request or {}).get("_v3_runtime"):
@@ -26,6 +34,11 @@ def own_spent(delegation):
     return sum(float(row.estimated_cost or 0) for row in ToolInvocation.query.filter_by(
         budget_scope=delegation.run_id, delegation_id=delegation.id).all()
         if row.status != "rejected")
+
+
+def planning_spent(run_id):
+    return sum(float(row.estimated_cost or 0) for row in ToolInvocation.query.filter_by(budget_scope=run_id).filter(
+        ToolInvocation.caller_agent.is_not(None), ToolInvocation.status != "rejected").all())
 
 
 def subtree_spent(delegation):
@@ -46,6 +59,8 @@ def check_admission(ctx, cost):
     if found is None:
         return
     run, delegation = found
+    if not cost and ctx.tool_name == "finish" and submitted_producer(run, delegation):
+        return
     if delegation.status in TERMINAL or run.status in {"cancelled", "failed", "success"}:
         raise AppError("AGENT_NOT_ACTIVE", "This delegation is no longer active", 409)
     # Free bookkeeping remains available when an Agent has spent its quota.
@@ -53,7 +68,7 @@ def check_admission(ctx, cost):
         return
     root = AgentDelegation.query.filter_by(run_id=run.run_id, parent_id=None).one()
     run_limit = float(root.credits_limit)
-    if BudgetGuard.spent(run.run_id) + cost > run_limit + 1e-9:
+    if planning_spent(run.run_id) + cost > run_limit + 1e-9:
         raise AppError("AGENT_PLANNING_BUDGET_EXCEEDED", "Run planning quota is exhausted", 422)
     if cost > remaining(delegation) + 1e-9:
         raise AppError("AGENT_DELEGATION_BUDGET_EXCEEDED", "Delegation quota is exhausted or allocated", 422)

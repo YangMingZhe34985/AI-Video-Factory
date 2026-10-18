@@ -134,7 +134,7 @@
 | V2 | Skill 库：加载器、`list_skills`/`load_skill`/`read_skill_resource`、首批 Skill | Codex（Claude 审定关键 Skill） | V1 | Codex 实现及 Mock 回归完成（20 项 Skill）；关键 Skill 待 Claude 审定 |
 | V3 | Agent 运行时：卡片/目录、循环、委派、提问、工作区、上限、步骤记录、v3 图骨架 | Codex | V1 | 完成（后端全量 1732 项、前端 64 项与构建通过；D-033，见 PROGRESS） |
 | V-Gate1 | V1–V3 评审 | Claude | V1–V3 | 待开始 |
-| V4 | Plan IR：编译器、dry-run、通用运行时、预览门、六个 Blueprint、审核动作 | Codex | V2 V3 | 待开始 |
+| V4 | Plan IR：编译器、dry-run、通用运行时、预览门、六个 Blueprint、审核动作 | Codex | V2 V3 | 完成（D-034；后端1906项、前端64项与构建通过；Gate待Claude） |
 | V5 | Plan Patch：Repair、Director 审阅、增量报价、低风险自动授权 | Codex | V4 | 待开始 |
 | V-Gate2 | V4–V5 评审 | Claude | V4 V5 | 待开始 |
 | V6 | Agent 上线：七个 Agent 的卡片与提示词、委派策略 | Codex（Claude 审定 Producer/Director/委派策略） | V-Gate2 | 待开始 |

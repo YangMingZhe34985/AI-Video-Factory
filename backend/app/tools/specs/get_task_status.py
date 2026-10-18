@@ -79,9 +79,8 @@ class TaskStatusOutput(BaseModel):
 def _overdue(invocation: ToolInvocation | None, terminal: bool) -> bool:
     if terminal or invocation is None:
         return False
-    from app.tools import get_registry
-
-    spec = get_registry().get(invocation.tool_name)
+    from app.tools import get_registry, build_v3_registry
+    spec = (build_v3_registry() if invocation.tool_name == "request_preview" else get_registry()).get(invocation.tool_name)
     if not spec.max_wait_sec:
         return False
     started = as_utc(invocation.started_at or invocation.created_at)
@@ -124,6 +123,9 @@ def run(data: GetTaskStatusInput, ctx: ToolContext):
         invocation = ToolInvocation.query.filter_by(invocation_id=data.invocation_id).first()
         if invocation is None:
             raise AppError("INVOCATION_NOT_FOUND", "Tool invocation not found", 404)
+        if ctx.caller_agent is not None and invocation.tool_name == "request_preview":
+            from app.plans.preview import recover_invocation
+            recover_invocation(invocation, ctx)
         if invocation.job is None:
             raise AppError("JOB_NOT_FOUND", "This invocation has no (remaining) job", 404)
         job = invocation.job
@@ -135,10 +137,16 @@ def run(data: GetTaskStatusInput, ctx: ToolContext):
             if skill.get("invocation_id")
             else None
         )
+        if ctx.caller_agent is not None and invocation is not None and invocation.tool_name == "request_preview":
+            from app.plans.preview import recover_invocation
+            recover_invocation(invocation, ctx)
 
     if ctx.caller_agent is not None:
         original = require_v3_job_scope(job, ctx, invocation)
         invocation = invocation or original
+        if (job.config or {}).get("agent_plan_preview"):
+            from app.plans.preview import record_result
+            record_result(job, ctx=ctx)
     elif ctx.role == INTAKE and (job.config or {}).get("skill", {}).get("budget_scope") != ctx.budget_scope:
         raise AppError("TOOL_FORBIDDEN", "Cannot inspect another run's analysis job", 403)
 

@@ -659,3 +659,43 @@ W-Gate 结论：通过。
 3. V5 Patch、V6 正式创作提示词/策略、V7 协作与审核界面、V8 经典生产意图均未实现。当前最小 Card 只证明运行机制，不代表高质量长片规划已经验收。旧页面不作为 v3 新交互的验收结果。
 4. 契约中的 600 秒为从委派开始计算的墙钟时限，当前包括排队与人工等待；恢复不重置此上限。Claude 可在 Gate 审查此取舍，如调整应先变更契约并补跨长等待回归。MySQL 迁移/并发、真实函数调用质量、真实价格与媒体效果均未验收。
 需要对方或用户决定：关键 Skill 与 V-Gate1 待 Claude；本轮无需新增用户授权。
+
+## 2026-10-19 · Codex · V4–V7 续作检查点（V4 集成中）
+状态：进行中；用户要求逐阶段推进 V4–V7、每阶段验证，本轮不调用真实 LLM/模型。V4 尚未完成全量回归，不将本条视作阶段验收或 Gate 通过。
+分支与基线：agent-v3/V4 从本地 feat/agent-v2 @bb68ad2 分出；当前改动未提交、未合并、未推送。保留用户未跟踪的 AI_Video_Factory_Technical_Notes_CN.md 与私人报告。
+完成内容：
+- D-034 与 v3 契约 V.16 先明确控制依赖、免费原片裁切、私有 Plan 工具 Schema、未来素材时长上界、typed Stub dry-run、审批与异步 Job 冻结边界。
+- Plan IR 编译器、typed Stub dry-run、六个 Blueprint、PlanNodeTask 表与迁移 20261019_005、确定性节点调度、预览门、生成/交付私有工具已落盘；经典 19 节点与默认 22 项 Registry 保持不变。
+- 正在集成 check_plan / instantiate_blueprint / submit_plan、request_preview、审核动作、公开节点视图与任务中心；Agent 规划费与生产费分开统计，总预算共同约束。提交前、Job 调度前、MQ 真正 POST 前分别验证冻结输入与价格，未知提交停止，轮询/下载可免费恢复。
+已有定向证据（集合有交叉，不相加冒充全量）：六 Blueprint 33 passed；编译器/dry-run 39 passed；真实 Mock Job/MQ 图→视频、预览门、局部输入哈希复用、免费恢复、拼接/QC/ZIP 等定向通过，执行器完整集合仍在补测。Root 的审核/API/工作区/配额回归正在运行。
+未完成 / 下一步：
+1. 先完成 V4 所有定向测试及经典/v1/v2 全量回归、前端基线构建，再提交并本地合并；当前不得宣称 V4 全绿。
+2. V5 Patch、V6 正式卡片/策略、V7 功能界面随后分别建分支推进与验证；不得进入 V8。Claude 继续负责关键 Skill/提示词审定、各 Gate 与美化。
+3. Windows 测试继续使用 AGENTS 指定 Conda Python、短临时目录、Mock/Stub、隔离 SQLite、已有 FFmpeg；禁止读取真实 .env 启动测试、连接真实 MySQL/Redis 或真实模型。真实调用累计 0，真实费用 0。
+需要对方或用户决定：无新增；Gate 与真实效果仍待 Claude/后续明确授权验收。
+
+## 2026-10-19 · Codex · V4 Plan IR、Blueprint 与受控执行
+状态：Codex 实现与 Mock/Stub 回归完成；V-Gate1/2、关键 Skill 审定仍由 Claude 负责，不宣称真实模型效果通过。进入 V5 前进行本地任务分支合并，不推送、不进入 V8。
+分支：agent-v3/V4，从 feat/agent-v2 @bb68ad2 分出。用户未跟踪技术笔记、私人报告、真实 .env、AGENTS.md/CLAUDE.md 均保留。
+
+完成内容：
+- D-034 与 v3 CONTRACTS V.16 明确 Plan 控制依赖、异步命名输出、按秒/张及 Wan3 I+G 估价、隔离 typed Stub dry-run、审批许可、预览恢复和媒体 QC 边界。
+- 六个 Blueprint builder、check_plan / instantiate_blueprint / submit_plan、不可变计划审核版本和可修订 issues；Blueprint 身份通过服务端草稿哈希收据验证。提交版本与 Producer 完成原子保存，崩溃不会额外要求一轮 LLM。
+- plan_node_tasks 与迁移 20261019_005；通用 DAG 按依赖和并发限额调度，共用现有 Job/MQ。源素材和生成产物按 SHA 校验，门只阻塞后代；终端门同样须批准。成功结果复用，未知 POST 停止，已受理任务仅有界免费恢复。
+- 仅 v3 私有 Registry 开放 Plan 输入 Schema，默认经典目录仍 22 项、19 节点 DAG 不变；v3 共 39 工具。正式生成工具不可见，request_preview 是唯一有界规划生成例外（每次一图、最多六次、每次三演示 credits 上限）。预览创建/链接/绑定/启动间隙只恢复原 Job，Agent 重放补回原输出，已受理读取最多两次，不新增生成费用。
+- 原片保留裁切、Wan3 reference/edit/extend、提取尾帧、拼接/可选显式压缩、probe/QC/ZIP 贯通；QC 对比批准的片段/总时长，打包前与落盘前复验 QC 输入。压缩副本必须来自同一 compose 的明确输出。
+- approve_plan / approve_gate / approve_results 接入幂等动作箱、公开计划与节点状态、私有产物归属和任务中心 plan_nodes 进度；规划/生产花费分开展示，仍共同受 Run 总预算限制。
+
+验证：
+- 后端最终全覆盖：1906 passed，0 failed，0 skipped，覆盖全部 102 个测试文件。使用四组隔离进程；运行时组修正两条 V3 阶段的过时断言后保留先前已通过的 133 项，再重跑该组全部运行时及剩余文件，最终报告按 node id 去重并与 collect-only 清单比对。原失败运行不冒充通过。
+- 原断言分别是“任何生成权限工具均不可见”和“Plan 提交尚未实现”；现验证仅 request_preview 例外、没有服务端提交收据无法 finish(plan_submitted)。没有为迎合测试放宽生产审批。
+- 最终聚合证据：%TEMP%/cinecrew-v4-final-results.xml；原分片 cinecrew-v4-full-0/1/3.xml、cinecrew-v4-full-2-prefix.xml、cinecrew-v4-full-2-tail.xml。既有 record_property/JUnit 格式警告不影响结果。
+- 前端未改源码，node --test tests/*.test.js 为64 passed，npm run build通过；沙箱下 esbuild 启动权限问题经相同命令授权重试后成功。git diff --check通过。
+- 定向故障覆盖提交后收据丢失、预览创建/链接/绑定断点、未知POST、免费读取/下载恢复、失效产物、源文件漂移、门与取消、批准时长和 QC 后素材篡改。既有 Mock PNG sentinel 仅证明管线，不证明真实图像解码或模型质量。
+
+真实调用：0次，真实费用0。使用指定 Conda Python、短临时目录、隔离SQLite/存储与Mock/Stub，网络阻断；pypdf沿用临时PYTHONPATH、FFmpeg使用仓库已有7.1。未连接真实MySQL/Redis，未安装或修改用户环境。
+
+下一步：
+1. 本地合入 feat/agent-v2 后创建 agent-v3/V5，先落 D-035 / V.17，再实现 Patch 编译/审阅/报价/授权/恢复；V6正式提示词与V7功能界面随后逐阶段验证。
+2. Claude仍负责各Gate与美化。当前AGENT_V3_ENABLED默认false；真实函数调用质量、媒体质量/服务商实际价格、MySQL并发迁移仍未验收。
+需要用户决定：无新增；继续执行已授权 V4–V7，当前禁止真实 LLM/付费调用。

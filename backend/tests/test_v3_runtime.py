@@ -76,7 +76,7 @@ def test_simple_task_finishes_without_delegation_and_never_exposes_generation(en
     assert BudgetGuard.spent(run.run_id) <= root.credits_limit
     registry = build_v3_registry()
     for card in get_catalog().cards.values():
-        assert all(registry.get(name).permission != "generate" for name in card.tools)
+        assert all(registry.get(name).permission != "generate" or name == "request_preview" for name in card.tools)
 
 
 def test_default_mock_is_labelled_and_produces_no_artifacts(env):
@@ -147,11 +147,12 @@ def test_invalid_role_output_gets_structured_error_then_correction(env):
     assert "INVALID_AGENT_OUTPUT" in str(root.state["messages"])
 
 
-def test_plan_submission_is_unavailable_until_compiler_and_approval(env):
+def test_plan_finish_requires_a_compiled_server_submission_receipt(env):
     _app, run, root = env
-    script(env, {"producer": [[call("finish", {"kind": "completed", "outcome": "plan_submitted", "message": "submitted"})], done()]})
+    script(env, {"producer": [[call("finish", {"kind": "completed", "outcome": "plan_submitted", "message": "submitted",
+        "plan_ref": {"key": "forged_plan", "version": 1}})], done()]})
     drain(run)
-    assert "PLAN_RUNTIME_UNAVAILABLE" in str(root.state["messages"])
+    assert "PLAN_NOT_SUBMITTED" in str(root.state["messages"])
     assert run.snapshot["plan"] is None
 
 

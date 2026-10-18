@@ -47,6 +47,12 @@ def process_event(event_id, expected_phase=None):
         if phase == "submit":
             if not model or not model.enabled:
                 raise AppError("MODEL_DISABLED", "Model was removed or disabled before submission", 400)
+            if (job.config or {}).get("agent_plan_preview"):
+                from app.plans.preview import validate_before_submit as validate_preview_submit
+                validate_preview_submit(job, model, logical_inputs, params, adapter_name=task.adapter_name)
+            if (job.config or {}).get("agent_plan"):
+                from app.plans.policy import validate_before_submit as validate_plan_submit
+                validate_plan_submit(job, model, logical_inputs, params, adapter_name=task.adapter_name)
             if (job.config or {}).get("agent_transform"):
                 from app.agent.transform_policy import validate_before_submit
                 validate_before_submit(job, model, logical_inputs, params, adapter_name=task.adapter_name)
@@ -62,6 +68,10 @@ def process_event(event_id, expected_phase=None):
                 db.session.commit()
             if (job.config or {}).get("agent_transform"):
                 validate_before_submit(job, model, logical_inputs, params, adapter_name=task.adapter_name)
+            if (job.config or {}).get("agent_plan"):
+                validate_plan_submit(job, model, logical_inputs, params, adapter_name=task.adapter_name)
+            if (job.config or {}).get("agent_plan_preview"):
+                validate_preview_submit(job, model, logical_inputs, params, adapter_name=task.adapter_name)
             response = adapter.submit(payload)
         elif phase == "poll":
             response = adapter.poll(provider_id)
@@ -77,7 +87,7 @@ def process_event(event_id, expected_phase=None):
         if task:
             task.queue_attempts += 1
             code = getattr(error, "status_code", None)
-            if (job.config or {}).get("agent_story_production"):
+            if any((job.config or {}).get(key) for key in ("agent_story_production", "agent_plan", "agent_plan_preview")):
                 from app.agent.production_repair import failure_evidence
                 task.queue_data = {**(task.queue_data or {}), "failure_detail": failure_evidence(error, phase)}
             # A transport failure or server error after POST may have billed already.
@@ -102,7 +112,7 @@ def process_event(event_id, expected_phase=None):
         return
     task.response_payload = response
     task.error_message = None
-    if (job.config or {}).get("agent_story_production") and task.queue_data:
+    if any((job.config or {}).get(key) for key in ("agent_story_production", "agent_plan", "agent_plan_preview")) and task.queue_data:
         task.queue_data = {key: value for key, value in task.queue_data.items() if key != "failure_detail"}
     reason = inactive_reason(task)
     if reason:

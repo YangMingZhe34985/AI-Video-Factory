@@ -100,6 +100,11 @@ def run(data: ExtractFrameInput, ctx: ToolContext):
                              "position": data.position, "timestamp_sec": timestamp}})
     job.status = "success"
     invocation.job = job
+    if ctx.plan_node_task_id is not None:
+        from app.plans.policy import bind_job, job_marker
+        job.config = {**job.config, "agent_plan": job_marker(ctx)}
+        job.config.pop("agent_story_production", None)
+        bind_job(ctx, job)
     return _finish(artifact, invocation)
 
 

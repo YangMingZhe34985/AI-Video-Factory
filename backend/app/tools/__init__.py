@@ -31,12 +31,20 @@ def build_v3_registry():
     from app.tools.specs import ALL_SPECS
     roles = frozenset({"producer", "research", "creative", "director", "prompt_smith", "critic", "repair"})
     registry = ToolRegistry()
+    from app.plans.node_tools import plan_spec, extra_specs
     for spec in ALL_SPECS:
+        spec = plan_spec(spec)
         registry.register(replace(spec, allowed_roles=spec.allowed_roles | roles) if spec.agent_visible else spec)
+    for spec in extra_specs():
+        registry.register(spec)
     for module in (analyze_images, list_models, estimate_cost):
         registry.register(module.SPEC)
     from app.tools.specs.skill_library import register_skill_tools
     from app.agents.tools import register_agent_tools
     register_skill_tools(registry)
     register_agent_tools(registry)
+    from app.plans.tools import register_plan_tools
+    register_plan_tools(registry)
+    from app.plans.preview import SPEC as preview_spec
+    registry.register(preview_spec)
     return registry

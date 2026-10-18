@@ -145,6 +145,10 @@ def scope_policy(scope: str) -> dict | None:
     row = AgentRun.query.filter_by(run_id=scope).first()
     if row is None:
         return None
+    if row.request.get("schema_version") == 3:
+        from app.plans.compiler import request_spec_for_run
+        from app.agent.model_selection import video_policy_for_request
+        return video_policy_for_request(request_spec_for_run(row))
     if row.request.get("schema_version", 1) == 2:
         snapshot = row.snapshot or {}
         return snapshot.get("video_model_policy") or request_policy(row.request, snapshot.get("request_spec"))
@@ -174,6 +178,14 @@ def select_video_model(policy: dict, mode: str, requested: str | None = None):
 
 
 def validate_job_policy(job, policy=None):
+    if (job.config or {}).get("agent_plan_preview"):
+        from app.plans.preview import validate_job
+        validate_job(job)
+        return
+    if (job.config or {}).get("agent_plan"):
+        from app.plans.policy import validate_job
+        validate_job(job)
+        return
     if (job.config or {}).get("agent_transform"):
         from app.agent.transform_policy import validate_job
         validate_job(job)

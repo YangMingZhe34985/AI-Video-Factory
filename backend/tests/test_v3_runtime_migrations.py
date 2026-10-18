@@ -16,7 +16,7 @@ def test_v3_alembic_tables_match_create_all_schema(tmp_path):
     with app.app_context():
         upgrade(directory=MIGRATIONS_DIR)
         inspector = inspect(db.engine)
-        assert _version() == "20261018_004"
+        assert _version() == "20261019_005"
         for model in MODELS:
             columns = inspector.get_columns(model.__tablename__)
             assert {column["name"] for column in columns} == set(model.__table__.columns.keys())
@@ -29,7 +29,7 @@ def test_v3_alembic_tables_match_create_all_schema(tmp_path):
         assert {"caller_agent", "delegation_id"} <= {
             column["name"] for column in inspect(db.engine).get_columns("tool_invocations")}
         upgrade(directory=MIGRATIONS_DIR)
-        assert _version() == "20261018_004"
+        assert _version() == "20261019_005"
         db.engine.dispose()
 
 
@@ -44,7 +44,7 @@ def test_v3_schema_repair_and_migration_are_idempotent(tmp_path):
         # another connection. End the simulated startup context's transaction.
         db.session.remove()
         upgrade(directory=MIGRATIONS_DIR)
-        assert _version() == "20261018_004"
+        assert _version() == "20261019_005"
         db.engine.dispose()
 
 

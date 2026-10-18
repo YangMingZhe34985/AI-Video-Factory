@@ -20,7 +20,10 @@
     "delegate",
     "list_models",
     "estimate_cost",
-    "analyze_images"
+    "analyze_images",
+    "check_plan",
+    "instantiate_blueprint",
+    "request_preview"
   ],
   "can_delegate_to": [
     "creative",

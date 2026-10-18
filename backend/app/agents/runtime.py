@@ -129,6 +129,21 @@ def _recover_local_receipt(name, data, ctx, registry):
         return
     from app.agents.budget import validate_context
     validate_context(ctx, tool_name=name)
+    if name == "request_preview":
+        from app.plans.preview import recover_invocation, validate_job
+        from app.tools.registry import sync_invocation_from_job
+        run = AgentRun.query.filter_by(run_id=ctx.budget_scope).one()
+        if (run.command or {}).get("action") == "reject":
+            return
+        job = recover_invocation(invocation, ctx)
+        if job is not None:
+            _owner, permit = validate_job(job)
+            invocation.output_payload = {"job_id": job.job_id, "status": job.status,
+                "expected_outputs": ["artifact:first_frame_image"], "preview_id": permit["preview_id"]}
+            invocation.status = "running"
+            sync_invocation_from_job(invocation)
+            db.session.commit()
+        return
     output = None
     delegation = db.session.get(AgentDelegation, ctx.delegation_id)
     if name == "delegate":
@@ -141,6 +156,9 @@ def _recover_local_receipt(name, data, ctx, registry):
         if item:
             from app.agents.workspace import resolve_workspace_ref
             output = resolve_workspace_ref({"key": item.key, "version": item.version}, ctx)
+    elif name in {"instantiate_blueprint", "submit_plan"}:
+        from app.plans.tools import recover_receipt
+        output = recover_receipt(name, normalized, ctx)
     elif (name == "finish" and delegation.status == normalized.get("kind")
             and (delegation.output or {}).get("kind") == normalized.get("kind")):
         output = {"status": delegation.status, "output": delegation.output}
@@ -356,19 +374,23 @@ def answer(run, submission):
 def cancel(run):
     root = initialize(run)
     _stop(root, "cancelled", "USER_CANCELLED")
+    from app.plans.runtime import cancel as cancel_plan
+    cancel_plan(run)
     run.status = "cancelled"
     db.session.commit()
     return snapshot(run)
 
 
 def snapshot(run):
+    from app.agents.budget import planning_spent
+    from app.plans.views import public_plan
     root = AgentDelegation.query.filter_by(run_id=run.run_id, parent_id=None).first()
     state = root.state or {} if root else {}
     value = deepcopy(run.snapshot or {})
     value.update({"schema_version": 3, "status": run.status,
         "pending_card": state.get("pending_card"), "clarify_rounds": state.get("clarify_rounds", 0),
-        "planning_budget": {"limit": float(root.credits_limit) if root else 0, "spent": BudgetGuard.spent(run.run_id)},
-        "plan": None, "plan_issues": [], "nodes": [], "patches": [], "estimates": None, "experimental": False})
+        "planning_budget": {"limit": float(root.credits_limit) if root else 0, "spent": planning_spent(run.run_id)},
+        **public_plan(run), "patches": value.get("patches", [])})
     run.snapshot = value
     db.session.commit()
     return value
@@ -382,7 +404,7 @@ def advance(run, saver=None):
     # free and runs even if that handler already ended its delegation.
     for receipt in ToolInvocation.query.filter(ToolInvocation.budget_scope == run.run_id,
             ToolInvocation.status.in_(["pending", "running"]),
-            ToolInvocation.tool_name.in_(["delegate", "write_workspace", "ask_user", "finish"])).all():
+            ToolInvocation.tool_name.in_(["delegate", "write_workspace", "ask_user", "finish", "instantiate_blueprint", "submit_plan", "request_preview"])).all():
         owner = db.session.get(AgentDelegation, receipt.delegation_id)
         if owner is not None:
             ctx = _context(run, owner)
@@ -398,8 +420,22 @@ def advance(run, saver=None):
         elif action == "resume" and root.status == "failed":
             # Failed/unknown paid submissions never receive a new step/key.
             run.status = "attention"
+        elif action in {"approve_plan", "approve_gate", "approve_results"}:
+            from app.plans import runtime as execution_runtime
+            if action == "approve_plan":
+                execution_runtime.begin(run, command["plan_version"], command.get("repair_budget_credits", 0), registry=registry)
+            elif action == "approve_gate":
+                execution_runtime.approve_gate(run, command["plan_version"], command["gate_node_id"])
+            else:
+                execution_runtime.approve_results(run, command["plan_version"])
         run.command = None
         db.session.commit()
+    from app.agent.plan_versions import current_version
+    if current_version(run) is not None and run.status in {
+            "executing", "awaiting_gate", "delivering", "awaiting_plan_review", "awaiting_result_review", "attention", "success"}:
+        from app.plans.runtime import advance as advance_plan
+        advance_plan(run, registry)
+        return snapshot(run)
     if root.status == "awaiting_input" and run.status != "cancelled":
         run.status = "awaiting_input"
         run.error = None
@@ -424,7 +460,8 @@ def advance(run, saver=None):
             graph.invoke({"delegation_id": ready.id, "completed_steps": ready.steps, "status": ready.status}, config)
     db.session.refresh(root)
     if root.status == "completed":
-        run.status = "cancelled" if (root.output or {}).get("outcome") == "cancelled" else "success"
+        outcome = (root.output or {}).get("outcome")
+        run.status = "awaiting_plan_review" if outcome == "plan_submitted" else "cancelled" if outcome == "cancelled" else "success"
     elif root.status in {"failed", "limit", "returned"}:
         run.status = "attention"
         run.error = root.error or {"code": "AGENT_TASK_RETURNED"}

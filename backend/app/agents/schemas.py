@@ -92,6 +92,7 @@ class PlanDraftNode(StrictModel):
     model_id: str | None = Field(default=None, min_length=1, max_length=120)
     params: dict = Field(default_factory=dict)
     stage: str | None = Field(default=None, max_length=80)
+    depends_on: list[NodeId] = Field(default_factory=list, max_length=200)
     gate: Literal["preview"] | None = None
     origin: PlanOrigin
     rationale: str = Field(max_length=300)

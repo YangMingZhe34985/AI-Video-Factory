@@ -20,7 +20,11 @@
     "analyze_video",
     "get_task_status",
     "list_models",
-    "estimate_cost"
+    "estimate_cost",
+    "check_plan",
+    "instantiate_blueprint",
+    "submit_plan",
+    "request_preview"
   ],
   "can_delegate_to": [
     "research",

@@ -58,7 +58,9 @@ def _check_references(name, data, owner_id, budget_scope=None):
                 reference_run = ((job.config or {}).get("agent_reference_run")
                                  or (job.config or {}).get("agent_story_preview", {}).get("run_id")
                                  or (job.config or {}).get("agent_story_production", {}).get("run_id")
-                                 or (job.config or {}).get("agent_transform", {}).get("run_id"))
+                                 or (job.config or {}).get("agent_transform", {}).get("run_id")
+                                 or (job.config or {}).get("agent_plan", {}).get("run_id")
+                                 or (job.config or {}).get("agent_plan_preview", {}).get("run_id"))
                 if model is Artifact and row.artifact_type in {"agent_reference_image", "agent_reference_document"}:
                     reference_run = (row.meta or {}).get("reference", {}).get("run_id")
                 if reference_run and reference_run != budget_scope:

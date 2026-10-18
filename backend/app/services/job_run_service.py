@@ -99,6 +99,11 @@ class JobRunService:
         validate_dispatch(job, run_type, node_key, force, restart)
         from app.agent.transform_policy import validate_dispatch as validate_transform_dispatch
         validate_transform_dispatch(job, run_type, node_key, force, restart)
+        from app.plans.policy import validate_dispatch as validate_plan_dispatch
+        validate_plan_dispatch(job, run_type, node_key, force, restart)
+        if (job.config or {}).get("agent_plan_preview"):
+            from app.plans.preview import validate_dispatch as validate_preview_dispatch
+            validate_preview_dispatch(job, run_type, node_key, force, restart)
         if run_type == "run_from":
             cls.validate_start_node(job, node_key or "")
         elif run_type == "run_node":

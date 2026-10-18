@@ -110,6 +110,14 @@ class NodeRunner:
         if job and effective_node_key:
             merged_params.update(((job.config or {}).get("node_model_params") or {}).get(effective_node_key) or {})
         merged_params.update(params or {})
+        if job and (job.config or {}).get("agent_plan_preview"):
+            from app.plans.preview import validate_before_submit
+            merged_params = dict((job.config.get("node_model_params") or {}).get(effective_node_key) or {})
+            validate_before_submit(job, model, inputs, merged_params, operation=effective_node_key)
+        if job and (job.config or {}).get("agent_plan"):
+            from app.plans.policy import validate_before_submit
+            merged_params = dict((job.config.get("node_model_params") or {}).get(effective_node_key) or {})
+            validate_before_submit(job, model, inputs, merged_params, operation=effective_node_key)
         if job and (job.config or {}).get("agent_transform"):
             from app.agent.transform_policy import validate_before_submit
             merged_params = dict((job.config.get("node_model_params") or {}).get(effective_node_key) or {})
@@ -175,6 +183,16 @@ class NodeRunner:
         if job and effective_node_key:
             merged_params.update(((job.config or {}).get("node_model_params") or {}).get(effective_node_key) or {})
 
+        if job and (job.config or {}).get("agent_plan_preview"):
+            from app.plans.preview import validate_before_submit
+            merged_params = dict((job.config.get("node_model_params") or {}).get(effective_node_key) or {})
+            validate_before_submit(job, model, inputs, merged_params, operation=effective_node_key,
+                                   adapter_name=effective_adapter_name)
+        if job and (job.config or {}).get("agent_plan"):
+            from app.plans.policy import validate_before_submit
+            merged_params = dict((job.config.get("node_model_params") or {}).get(effective_node_key) or {})
+            validate_before_submit(job, model, inputs, merged_params, operation=effective_node_key,
+                                   adapter_name=effective_adapter_name)
         payload = self._build_adapter_payload(adapter, model, inputs, merged_params)
         self._release_db_connection()
         try:
@@ -192,6 +210,12 @@ class NodeRunner:
         return adapter, effective_adapter_name, payload, response
 
     def _submit_adapter(self, adapter, model, payload, inputs, params, job, adapter_name, operation):
+        if job and (job.config or {}).get("agent_plan_preview"):
+            from app.plans.preview import validate_before_submit
+            validate_before_submit(job, model, inputs, params, operation=operation, adapter_name=adapter_name)
+        if job and (job.config or {}).get("agent_plan"):
+            from app.plans.policy import validate_before_submit
+            validate_before_submit(job, model, inputs, params, operation=operation, adapter_name=adapter_name)
         if getattr(self, "_mq", False):
             from app.queue.dispatch import require_lease
             require_lease(job.job_id, getattr(self, "_dispatch_token", None))
@@ -704,6 +728,14 @@ class NodeRunner:
 
     def _task_model(self, task: ApiTask) -> ModelRegistry:
         # Admission changes must not strand an already accepted result.
+        if task.provider_task_id and (task.job.config or {}).get("agent_plan_preview"):
+            from app.plans.preview import validate_job
+            validate_job(task.job)
+            return self._get_model(task.model_id, require_enabled=False)
+        if task.provider_task_id and (task.job.config or {}).get("agent_plan"):
+            from app.plans.policy import validate_job
+            validate_job(task.job)
+            return self._get_model(task.model_id, require_enabled=False)
         transform_read = bool(task.provider_task_id and (task.job.config or {}).get("agent_transform"))
         if transform_read:
             from app.agent.transform_policy import validate_job
@@ -1149,6 +1181,8 @@ class NodeRunner:
         }
 
     def _run_submit_r2v_flash(self, job: Job, node, node_run: JobNodeRun) -> dict:
+        if (job.config or {}).get("agent_plan_inputs") and (job.config or {}).get("agent_plan"):
+            return self._run_submit_transform(job, node, node_run)
         if (job.config or {}).get("agent_transform"):
             return self._run_submit_transform(job, node, node_run)
         prompt = self._prompt(job, "r2v_flash")
@@ -1205,8 +1239,13 @@ class NodeRunner:
         }
 
     def _run_submit_transform(self, job, node, node_run):
-        from app.agent.transform_policy import submission_inputs
-        inputs = submission_inputs(job)
+        if (job.config or {}).get("agent_plan"):
+            from app.plans.policy import validate_job
+            validate_job(job)
+            inputs = dict(job.config["agent_plan_inputs"])
+        else:
+            from app.agent.transform_policy import submission_inputs
+            inputs = submission_inputs(job)
         prompt = self._prompt(job, "r2v_flash")
         model = self._model_for(job, node, "r2v_flash", "DEFAULT_R2V_FLASH_MODEL")
         adapter, payload, response = self._adapter_payload(model, inputs, job=job, node=node)

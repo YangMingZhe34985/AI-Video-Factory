@@ -37,6 +37,8 @@ def shared_workflow():
         Job.config["agent_story_preview"].as_string().is_not(None),
         Job.config["agent_story_production"].as_string().is_not(None),
         Job.config["agent_transform"].as_string().is_not(None),
+        Job.config["agent_plan"].as_string().is_not(None),
+        Job.config["agent_plan_preview"].as_string().is_not(None),
         Job.config["skill"].as_string().is_not(None),
         exists(select(Template.id).where(Template.id == Job.template_id, Template.template_id == "agent_workspace")),
         exists(select(ToolInvocation.id).where(ToolInvocation.job_id == Job.id)),
@@ -54,6 +56,8 @@ def visible_job(owner):
         Job.config["agent_story_preview"]["run_id"].as_string(),
         Job.config["agent_story_production"]["run_id"].as_string(),
         Job.config["agent_transform"]["run_id"].as_string(),
+        Job.config["agent_plan"]["run_id"].as_string(),
+        Job.config["agent_plan_preview"]["run_id"].as_string(),
     ]
     marker_checks = []
     for marker in markers:
@@ -149,7 +153,7 @@ def current_agent_job(run_id, snapshot=None):
             newer.target_type == AgentShotTask.target_type, newer.target_id == AgentShotTask.target_id,
             newer.attempt > AgentShotTask.attempt))).correlate(Job, AgentRun))
     markers = [Job.config[key]["plan_version"].as_integer()
-               for key in ("agent_story_production", "agent_story_preview")]
+               for key in ("agent_story_production", "agent_story_preview", "agent_plan")]
     if snapshot is None:
         snapshot = select(AgentRun.snapshot).where(AgentRun.run_id == run_id).scalar_subquery()
     shot_id = Job.config["shot"]["shot_id"].as_string()

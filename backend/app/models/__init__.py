@@ -6,6 +6,7 @@ from .agent_step import AgentStep
 from .agent_workspace_item import AgentWorkspaceItem
 from .agent_plan_version import AgentPlanVersion
 from .agent_shot_task import AgentShotTask
+from .plan_node_task import PlanNodeTask
 from .artifact import Artifact
 from .job import Job
 from .job_event import JobEvent
@@ -26,6 +27,7 @@ __all__ = [
     "AgentWorkspaceItem",
     "AgentPlanVersion",
     "AgentShotTask",
+    "PlanNodeTask",
     "ApiTask",
     "JobDispatch",
     "TaskOutbox",

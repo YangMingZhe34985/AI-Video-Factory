@@ -10,7 +10,9 @@ def private_jobs():
     return Job.query.filter(or_(Job.strategy == "agent_upload",
         Job.config["agent_story_preview"]["run_id"].as_string().is_not(None),
         Job.config["agent_story_production"]["run_id"].as_string().is_not(None),
-        Job.config["agent_transform"].as_string().is_not(None))).all()
+        Job.config["agent_transform"].as_string().is_not(None),
+        Job.config["agent_plan"].as_string().is_not(None),
+        Job.config["agent_plan_preview"].as_string().is_not(None))).all()
 
 
 def hidden_job_ids(owner_id):

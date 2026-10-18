@@ -55,31 +55,44 @@ def require_artifact(artifact_id, ctx, *, run=None):
     return resolve_artifact(artifact_id, ctx=ctx)
 
 
-def _artifact_ids(value):
+def _artifact_ids(value, *, plan_refs=False):
     """Recognized structured references only; text never confers ownership."""
     found = set()
     if isinstance(value, list):
         for child in value:
-            found.update(_artifact_ids(child))
+            found.update(_artifact_ids(child, plan_refs=plan_refs))
     elif isinstance(value, dict):
+        if plan_refs and set(value) == {"ref"}:
+            return found
         for key, child in value.items():
             if (key in {"artifact", "artifact_id", "attachment_id", "reference_id"}
                     or key.endswith("_artifact_id")) and child is not None:
+                if plan_refs and isinstance(child, dict) and set(child) in ({"ref"}, {"artifact"}):
+                    found.update(_artifact_ids(child, plan_refs=True))
+                    continue
                 if not isinstance(child, str) or not child:
                     raise AppError("INVALID_WORKSPACE_PAYLOAD", "Artifact references must be IDs", 422)
                 found.add(child)
             elif key in {"artifact_ids", "attachment_ids", "reference_ids"} or key.endswith("_artifact_ids"):
-                if not isinstance(child, list) or any(not isinstance(item, str) or not item for item in child):
+                if plan_refs and isinstance(child, dict) and set(child) == {"ref"}:
+                    continue
+                if not isinstance(child, list):
                     raise AppError("INVALID_WORKSPACE_PAYLOAD", "Artifact lists must contain IDs", 422)
-                found.update(child)
+                for item in child:
+                    if isinstance(item, str) and item:
+                        found.add(item)
+                    elif plan_refs and isinstance(item, dict) and set(item) in ({"ref"}, {"artifact"}):
+                        found.update(_artifact_ids(item, plan_refs=True))
+                    else:
+                        raise AppError("INVALID_WORKSPACE_PAYLOAD", "Artifact lists must contain IDs or Plan references", 422)
             else:
-                found.update(_artifact_ids(child))
+                found.update(_artifact_ids(child, plan_refs=plan_refs))
     return found
 
 
-def validate_artifact_references(payload, ctx):
+def validate_artifact_references(payload, ctx, *, plan_refs=False):
     run, _delegation = require_context(ctx)
-    ids = sorted(_artifact_ids(payload))
+    ids = sorted(_artifact_ids(payload, plan_refs=plan_refs))
     for artifact_id in ids:
         require_artifact(artifact_id, ctx, run=run)
     return ids
@@ -188,7 +201,7 @@ def write_workspace(key, kind, payload, ctx):
             _validate_brief(value, run)
         elif kind == "research_dossier":
             value = validate_payload(kind, _validate_research(value, run))
-        ids = validate_artifact_references(value, ctx)
+        ids = validate_artifact_references(value, ctx, plan_refs=kind == "plan_draft")
         latest = AgentWorkspaceItem.query.filter_by(run_id=run.run_id, key=key).order_by(
             AgentWorkspaceItem.version.desc()).first()
         if latest and latest.kind != kind:

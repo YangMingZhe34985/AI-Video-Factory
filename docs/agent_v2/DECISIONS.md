@@ -206,3 +206,14 @@ retry_shot 允许服务端识别的 blocked 子镜头恢复本地尾帧提取：
 - 决定：V3 澄清复用 A.7 的问题、答案和默认规则，卡片 asked_by 使用 producer；不扩展旧卡片的角色枚举。子 Agent 的问题作为 returned 数据交回父级，由 Producer 决定是否询问。规划额度耗尽时本轮停止并展示部分结果，不隐式追加预算。
 - 影响：V2/V3 实现及 V4/V6 接续；用户本轮明确仅 Mock/Stub，优先于 D-030 的历史可选真实调用授权。本地合并，不推送。
 - 接续边界：工作区中的 `origin.blueprint` 同其他 Agent 草稿字段一样未验证；V4 需要依据确定性 builder 的服务端收据核验来源，不能凭模型自填标记将 experimental 置 false。V2 的资源读取返回 `{name,path,content}`，正文与资源在启动时固定为同一内存快照。
+
+## D-034 · 2026-10-19 · V4–V7 分阶段实现与 Plan 执行边界
+- 用户明确要求连续推进 V4–V7、每阶段验证，暂不调用 LLM 测试。V-Gate1/2/3 与关键提示词/Skill 审定仍由 Claude 负责，不将 Mock 验证冒充 Gate 或真实质量验收；V6 先完成实现及剧本验证，真实评测保持未验收。AGENT_V3_ENABLED 默认关闭，不进入 V8，不推送。
+- 复用 AgentPlanVersion 存不可变 ExecutionPlan 与编译/dry-run 结果；新增 PlanNodeTask 保存已解析输入、命名输出和输入/产物摘要。PlanNode 增加默认空 depends_on 控制依赖，和数据引用共同形成 DAG。image 交付可引用 image 或 images 数组，image 是多输出的第一张，images 为完整数组。交付视频总时长不重复计入中间合成，另限制全部生成节点总秒数，均受配置上限约束。
+- v3 私有 Registry 为 transform/交付工具提供可编译的明确输入，不改变经典/v2 工具 Schema。model_id、params 仅在节点顶层，plan_version 与执行许可由服务器注入。增加仅 Plan 可执行的免费 retain_video_segment，用于保留明确的原片区间，不扩大经典 19 节点 DAG 或 Agent 可见生成工具。
+- 未来引用按已验证上游产物的类型、数量和时长上界估价，不能将未来输入视频按零秒计费。执行时重新核验真实产物，超出冻结能力/时长/费用上界则停止等待修订和批准。Wan3 继续用完整输入 I + 完整输出 G，拒绝自动裁片、伪造 manifest/hash 与智能时长。
+- dry-run 使用完全隔离的内存 Stub DAG 执行器：逐节点解析引用、校验真实输入 Schema、执行类型化模拟并检查命名产物，不调用生产 handler、数据库写入、文件写入或网络。实际 Mock Job/MQ 贯通另由执行器回归验证，dry-run 不证明服务商可用性、媒体质量或实际账单。
+- 整张 DAG（含合成、QC、打包）由一次明确计划批准授权，预览 gate 只阻塞后代，独立分支可继续。所有节点完成后进入 awaiting_result_review，approve_results 只接受交付、不再次执行；终端处理可显示 delivering，不按工具类别硬插入会导致 DAG 死锁的审核关卡。打包必须依赖同产物的成功 QC。
+- 批准回执冻结计划、模型/价格、素材摘要及修复额度；只有精确绑定的服务端上下文能提交。公共 Skill/Job 重跑、线程与 MQ 最终提交均检查同一许可。已受理任务仅查询/下载恢复，不因之后模型禁用/改价重发 POST；未知提交停止。Blueprint 身份须匹配服务端 builder 草稿哈希收据，不能信任 origin 自报。
+- 影响 V4 编译/执行/Blueprint/预览与 V5 Patch、V6 Agent、V7 功能界面；Claude 保留 Gate 与美化，经典/v1/v2 逐阶段回归。本轮仅 Mock/Stub，真实模型调用 0。
+- 集成精化：submit_plan 成功时，在创建审核版本的同一事务结束 Producer 委派并保存 plan_submitted 输出，避免版本提交后还需额外 LLM 回合才能结束、崩溃后永久 running；显式 finish 仍仅可引用相同提交收据。预览恢复只允许重接没有任何提交证据的同一 Job 或读取已有 provider_id，不新增付费尝试。QC 按批准时长检查，并在打包前重验 QC 输入摘要；压缩副本必须来自同一主片的显式压缩输出。

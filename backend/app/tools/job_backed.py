@@ -124,6 +124,13 @@ def resolve_artifact(artifact_id: str, image_only: bool = False, ctx: ToolContex
         from app.agent.attachments import attachment_for_owner
         from app.models import AgentRun
         run = AgentRun.query.filter_by(run_id=ctx.budget_scope).first()
+        if run and (run.request or {}).get("schema_version") == 3:
+            if (artifact.artifact_id in run.request.get("attachment_ids", [])
+                    or artifact.artifact_type in {"agent_reference_image", "agent_reference_document"}):
+                artifact = attachment_for_owner(artifact_id, run.owner_id, run_id=run.run_id)
+            else:
+                from app.tools.specs.get_task_status import require_v3_job_scope
+                require_v3_job_scope(artifact.job, ctx)
         if run and (run.request or {}).get("schema_version") == 2:
             if artifact.artifact_id in run.request.get("attachment_ids", []):
                 artifact = attachment_for_owner(artifact.artifact_id, run.owner_id)
@@ -194,6 +201,14 @@ def launch(
     if ctx.transform_hash is not None:
         from app.agent.transform_policy import job_marker
         config["agent_transform"] = job_marker(ctx)
+    if ctx.plan_node_task_id is not None:
+        from app.plans.policy import job_marker
+        config["agent_plan"] = job_marker(ctx)
+        from flask import current_app
+        config.setdefault("negative_prompt", current_app.config.get("DEFAULT_NEGATIVE_PROMPT") or "")
+    if ctx.plan_preview_id is not None:
+        from app.plans.preview import job_marker
+        config["agent_plan_preview"] = job_marker(ctx)
     job = JobService.create_job(
         {
             "template_id": template.template_id,
@@ -210,7 +225,18 @@ def launch(
         invocation = ToolInvocation.query.filter_by(invocation_id=ctx.invocation_id).one()
         invocation.job = job
         db.session.commit()
-    if ctx.transform_hash is not None:
+    if ctx.plan_node_task_id is not None:
+        from app.plans.policy import bind_job
+        bind_job(ctx, job)
+        from app.plans.policy import authorized_job_dispatch
+        with authorized_job_dispatch(job, "run_full"):
+            JobRunService.start(job.job_id, "run_full")
+    elif ctx.plan_preview_id is not None:
+        from app.plans.preview import bind_job, authorized_job_dispatch
+        bind_job(ctx, job)
+        with authorized_job_dispatch(job, "run_full"):
+            JobRunService.start(job.job_id, "run_full")
+    elif ctx.transform_hash is not None:
         from app.agent.transform_policy import authorized_job_dispatch
         with authorized_job_dispatch(job, "run_full"):
             JobRunService.start(job.job_id, "run_full")

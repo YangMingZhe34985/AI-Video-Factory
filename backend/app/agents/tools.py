@@ -200,8 +200,14 @@ def _ask(data, ctx):
 
 
 def _finish(data, ctx):
-    from app.agents.workspace import resolve_workspace_ref
-    _run, delegation = _context(ctx)
+    from app.agents.workspace import require_context, resolve_workspace_ref
+    from app.agents.budget import submitted_producer
+    _run, delegation = require_context(ctx)
+    submitted = submitted_producer(_run, delegation)
+    if not submitted:
+        _run, delegation = _context(ctx)
+    elif data.kind != "completed" or data.outcome != "plan_submitted":
+        raise AppError("AGENT_NOT_ACTIVE", "Submitted Producer may only acknowledge its submitted Plan", 409)
     output = data.model_dump(mode="json", exclude_none=True)
     fields = set(output) - {"kind"}
     if data.kind in {"returned", "failed"}:
@@ -213,10 +219,16 @@ def _finish(data, ctx):
             "director": {"plan_ref", "rationale"}, "prompt_smith": {"updates"},
             "critic": {"verdict", "issues"}, "repair": {"patch_ref", "diagnosis"},
         }[delegation.agent]
+        if delegation.agent == "producer" and data.outcome == "plan_submitted":
+            required = required | {"plan_ref"}
         if fields != required:
             raise AppError("INVALID_AGENT_OUTPUT", "Completed output does not match this Agent's contract", 422)
         if delegation.agent == "producer" and data.outcome == "plan_submitted":
-            raise AppError("PLAN_RUNTIME_UNAVAILABLE", "Plan submission requires V4 compilation, dry-run and approval", 422)
+            submission = (_run.snapshot or {}).get("v3_plan_submission", {})
+            from app.agent.plan_versions import require_current_version
+            if not data.plan_ref or submission.get("plan_ref") != data.plan_ref.model_dump():
+                raise AppError("PLAN_NOT_SUBMITTED", "Finish must reference the server-submitted Plan", 409)
+            require_current_version(_run, submission.get("plan_version"))
         for field, kind in (("dossier_ref", "research_dossier"), ("story_ref", "story"),
                             ("plan_ref", "plan_draft"), ("patch_ref", "patch")):
             if getattr(data, field) is not None:
@@ -225,6 +237,8 @@ def _finish(data, ctx):
             output["updates"] = [PromptUpdate.model_validate(item).model_dump() for item in data.updates]
         if data.issues is not None:
             output["issues"] = [ReviewIssue.model_validate(item).model_dump() for item in data.issues]
+    if submitted:
+        return {"status": "completed", "output": delegation.output}
     delegation.status = data.kind
     delegation.output = output
     from app.agents.budget import TERMINAL

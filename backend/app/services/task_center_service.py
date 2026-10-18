@@ -153,8 +153,10 @@ def project_parent(row, owner):
         videos = [shot for shot in shots if shot.target_type == "video"]
         planned = (version.plan or {}).get("shots", []) if version else []
         if obj.request.get("schema_version") == 3:
-            # Planning has no execution nodes until the V4 compiler is enabled.
-            item["progress"] = _progress([], 0, "plan_nodes")
+            from app.plans.runtime import latest_tasks
+            plan_tasks = latest_tasks(obj, version) if version else {}
+            item["progress"] = _progress([task.status for task in plan_tasks.values()],
+                len((version.plan or {}).get("nodes", [])) if version else 0, "plan_nodes")
         elif version:
             item["progress"] = _progress([task.status for task in videos], len(planned), "video_shots")
         else:
@@ -286,11 +288,34 @@ def task_detail(owner, source, task_id, args):
         row = _parent(owner, source, task_id)
         item, context = project_parent(row, owner)
         if source == "agent" and context["object"].request.get("schema_version") == 3:
-            children, total = [], 0
+            children, total = plan_children(context, page, per_page)
         else:
             children, total = (story_children(context, page, per_page)
                 if source == "agent" and context["version"] else workflow_children(context, page, per_page))
     return {**metadata(), "item": item, "children": children, "total": total, "page": page, "per_page": per_page}
+
+
+def plan_children(context, page, per_page):
+    from app.plans.runtime import latest_tasks
+    run, version = context["object"], context["version"]
+    if version is None:
+        return [], 0
+    tasks = latest_tasks(run, version)
+    planned = version.plan.get("nodes", [])
+    dependencies = version.check.get("dag", {}).get("dependencies", {})
+    job_ids = {job.job_id: job.id for job in context["jobs"]}
+    children = []
+    for node in planned[(page - 1) * per_page:page * per_page]:
+        task = tasks.get(node["id"])
+        api, _ = _phase_for([item for item in context["api_tasks"] if task and item.job_id == job_ids.get(task.job_id)])
+        child = _child(node["id"], task.status if task else "pending", node_key=node["tool"],
+            model_id=node.get("model_id"), depends_on=dependencies.get(node["id"], []),
+            attempt=task.attempt if task else 0, updated_at=task.updated_at if task else run.updated_at,
+            error=task.error if task else None, task=api)
+        if not task:
+            child.update(stage="awaiting_authorization", wait_reason="user_authorization")
+        children.append(child)
+    return children, len(planned)
 
 
 def legacy_queue_status(owner):

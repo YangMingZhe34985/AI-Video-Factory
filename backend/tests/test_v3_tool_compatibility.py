@@ -90,7 +90,9 @@ def test_v3_catalog_does_not_mutate_legacy_roles_or_descriptions():
     assert set(v3.names()) - set(LEGACY_NAMES) == {
         "analyze_images", "estimate_cost", "list_models", "list_skills", "load_skill", "read_skill_resource",
         "list_agents", "delegate", "ask_user", "read_workspace", "write_workspace", "finish",
+        "check_plan", "instantiate_blueprint", "submit_plan", "request_preview", "retain_video_segment",
     }
+    assert len(v3.names()) == 39
     assert "producer" in v3.get("analyze_video").allowed_roles
     assert "producer" not in legacy.get("analyze_video").allowed_roles
 
@@ -205,6 +207,10 @@ def test_generation_tools_cannot_be_exported_to_agents():
     for name in registry.names():
         spec = registry.get(name)
         if spec.permission == "generate":
+            if name == "request_preview":
+                assert spec.agent_visible and not spec.plan_executable
+                assert registry.function_schemas([name])[0]["function"]["name"] == name
+                continue
             assert not spec.agent_visible
             with pytest.raises(AppError) as error:
                 registry.function_schemas([name])
