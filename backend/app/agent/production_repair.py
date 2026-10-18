@@ -139,10 +139,10 @@ def _finite(value, default=0.0):
     return max(0.0, float(value))
 
 
-def repair_decision(run, task, *, failure=None):
+def repair_decision(run, task, *, failure=None, automatic=True):
     task = _owned_task(run, task)
     previous = _receipts(run).get(str(task.id))
-    if previous:
+    if previous and not (not automatic and previous.get("status") == "stopped" and not previous.get("reserved_credits")):
         return deepcopy(previous)
     if task.status not in {"failed", "stale"}:
         return {"action": "stop", "estimated_cost": 0.0, "reason": "TASK_NOT_FAILED"}
@@ -155,13 +155,15 @@ def repair_decision(run, task, *, failure=None):
         action = "stop"
     if action == "retry_submit" and (failure.get("submission_state") != "not_submitted" or failure.get("provider_task_id")):
         action = "stop"
-    result = {"action": action, "estimated_cost": 0.0, "failure": failure, "reason": failure.get("category", "permanent")}
+    result = {"action": action, "automatic": automatic, "estimated_cost": 0.0, "failure": failure, "reason": failure.get("category", "permanent")}
     if action not in AUTO_ACTIONS:
         return result
     receipts = list(_receipts(run).values())
     shot_receipts = [item for item in receipts if item.get("shot_id") == task.target_id and item.get("action") in AUTO_ACTIONS]
     limit = min(2, max(0, int(current_app.config.get("AGENT_MAX_SHOT_AUTO_REPAIRS", 2))))
-    if len(shot_receipts) >= limit:
+    auto_receipts = [item for item in receipts if item.get("automatic", True)]
+    auto_shot_receipts = [item for item in shot_receipts if item.get("automatic", True)]
+    if automatic and len(auto_shot_receipts) >= limit:
         return {**result, "action": "stop", "reason": "REPAIR_LIMIT_EXCEEDED"}
     if action == "rewrite_prompt" and any(item.get("action") == action for item in shot_receipts):
         return {**result, "action": "stop", "reason": "CONTENT_REWRITE_LIMIT_EXCEEDED"}
@@ -172,10 +174,10 @@ def repair_decision(run, task, *, failure=None):
         cost += estimate_model_cost(resolve_agent_model("prompt_smith"), {})
     result["estimated_cost"] = round(cost, 6)
     allowance = _finite((run.snapshot or {}).get("production", {}).get("repair_budget_credits"))
-    reserved = sum(_finite(item.get("reserved_credits")) for item in receipts)
-    shot_reserved = sum(_finite(item.get("reserved_credits")) for item in shot_receipts)
+    reserved = sum(_finite(item.get("reserved_credits")) for item in auto_receipts)
+    shot_reserved = sum(_finite(item.get("reserved_credits")) for item in auto_shot_receipts)
     shot_limit = _finite(current_app.config.get("AGENT_MAX_SHOT_REPAIR_CREDITS", 60))
-    if cost <= 0 or cost + reserved > allowance + 1e-6 or cost + shot_reserved > shot_limit + 1e-6:
+    if cost <= 0 or (automatic and (cost + reserved > allowance + 1e-6 or cost + shot_reserved > shot_limit + 1e-6)):
         return {**result, "action": "stop", "reason": "REPAIR_BUDGET_EXCEEDED"}
     try:
         BudgetGuard.check(run.run_id, run.request["budget_limit"], cost)
@@ -186,21 +188,24 @@ def repair_decision(run, task, *, failure=None):
     return result
 
 
-def claim_repair(run, task, decision):
+def claim_repair(run, task, decision, *, automatic=True):
     """Reserve one repair once, under the Run lock; scheduler may safely replay it."""
     try:
         run = versions._lock_run(run)
         task = _owned_task(run, task)
         existing = _receipts(run).get(str(task.id))
-        if existing:
+        upgrade = bool(existing and not automatic and existing.get("status") == "stopped" and not existing.get("reserved_credits"))
+        if existing and not upgrade:
             db.session.commit()
             return deepcopy(existing)
-        checked = repair_decision(run, task, failure=decision.get("failure"))
+        checked = repair_decision(run, task, failure=decision.get("failure"), automatic=automatic)
         decision = checked
         receipt = {**deepcopy(decision), "category": decision.get("failure", {}).get("category", "permanent"),
                    "shot_id": task.target_id, "failed_task_id": task.id,
                    "plan_version": task.plan_version, "reserved_credits": decision["estimated_cost"] if decision["action"] in AUTO_ACTIONS else 0.0,
                    "status": "claimed" if decision["action"] in AUTO_ACTIONS else "stopped"}
+        if upgrade:
+            receipt["history"] = [*existing.get("history", []), {k: v for k, v in existing.items() if k != "history"}][-10:]
         run.snapshot = {**(run.snapshot or {}), "production_repairs": {**_receipts(run), str(task.id): receipt}}
         db.session.commit()
         return deepcopy(receipt)

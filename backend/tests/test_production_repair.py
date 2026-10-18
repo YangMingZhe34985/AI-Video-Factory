@@ -318,3 +318,37 @@ def test_cascaded_descendant_error_does_not_hide_original_content_rejection(app_
     db.session.add(later)
     db.session.commit()
     assert repair.classify_job_failure(job)["category"] == "content_policy"
+
+
+
+def test_explicit_manual_retry_can_upgrade_zero_allowance_stop_once(app_ctx, h):
+    run, task, job, api = fixture(h, allowance=0)
+    stopped = repair.claim_repair(run, task, repair.repair_decision(run, task))
+    assert stopped["reason"] == "REPAIR_BUDGET_EXCEEDED"
+    decision = repair.repair_decision(run, task, automatic=False)
+    assert decision["action"] == "retry_submit" and decision["estimated_cost"] == 10
+    receipt = repair.claim_repair(run, task, decision, automatic=False)
+    assert not receipt["automatic"] and receipt["reserved_credits"] == 10
+    assert receipt["history"] == [stopped]
+    assert repair.claim_repair(run, task, decision, automatic=False) == receipt
+
+
+@pytest.mark.parametrize("failure", ["unknown", "budget", "content_twice"])
+def test_manual_retry_keeps_submission_safety_budget_and_one_content_rewrite(app_ctx, h, failure):
+    params = {"http": 503} if failure == "unknown" else {"budget": 9} if failure == "budget" else {"http": 400, "provider_code": "DataInspectionFailed"}
+    run, task, job, api = fixture(h, allowance=0, **params)
+    if failure == "content_twice":
+        repair.claim_repair(run, task, repair.repair_decision(run, task, automatic=False), automatic=False)
+        task = next_task(run, task, new_version=True)
+    decision = repair.repair_decision(run, task, automatic=False)
+    assert decision["action"] == "stop"
+    expected = {"unknown": "submit_unknown", "budget": "BUDGET_EXCEEDED", "content_twice": "CONTENT_REWRITE_LIMIT_EXCEEDED"}
+    assert decision["reason"] == expected[failure]
+
+
+def test_manual_free_read_recovery_is_separately_authorized_after_auto_limit(app_ctx, h):
+    app_ctx.config["AGENT_MAX_SHOT_AUTO_REPAIRS"] = 0
+    run, task, job, api = fixture(h, phase="poll", provider_id="provider-fixed", allowance=0)
+    assert repair.repair_decision(run, task)["reason"] == "REPAIR_LIMIT_EXCEEDED"
+    decision = repair.repair_decision(run, task, automatic=False)
+    assert decision["action"] == "recover_read" and decision["estimated_cost"] == 0
