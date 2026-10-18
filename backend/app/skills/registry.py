@@ -80,6 +80,8 @@ class ToolRegistry:
         data = self._validate_input(spec, raw_input or {})
         self._authorize(spec, ctx)
         ctx.tool_name = spec.name
+        from app.agent.production_policy import require_task_authorization
+        require_task_authorization(spec.name, ctx)
         if ctx.shot_task_id is not None:
             from app.agent.production_policy import validate_submission
             validate_submission(data, ctx)
@@ -168,7 +170,9 @@ class ToolRegistry:
                     raise AppError("RECOVERY_REQUIRED", "Research call outcome is unknown; automatic repeat stopped", 409)
                 db.session.commit()
                 return self._result(spec, invocation, invocation.output_payload, replayed=True)
-            if invocation.status == "failed" and ctx.shot_task_id is not None and spec.name == "animate_shot":
+            if (invocation.status == "failed" and spec.name == "animate_shot"
+                    and (ctx.shot_task_id is not None or (invocation.job is not None
+                         and (invocation.job.config or {}).get("agent_story_production")))):
                 raise AppError("UNSAFE_RETRY", "Failed production attempts require the repair policy and a new task", 409)
             if recovering_download:
                 # Only this free local tool has a durable byte receipt and atomic

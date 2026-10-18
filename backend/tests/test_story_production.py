@@ -77,7 +77,11 @@ def deferred_jobs(monkeypatch, row, version):
 
 def complete_pending(pending):
     for job_id in list(pending):
-        JobRunService.run_inline(job_id, "run_full")
+        from app.agent.production_policy import authorized_job_dispatch
+        job = Job.query.filter_by(job_id=job_id).one()
+        # This helper simulates the executor of an already-admitted dispatch.
+        with authorized_job_dispatch(job, "run_full"):
+            JobRunService.run_inline(job_id, "run_full")
         pending.remove(job_id)
 
 

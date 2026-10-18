@@ -163,6 +163,8 @@ def launch(
     # succeeded are skipped, so nothing paid is submitted twice.
     if ctx.previous is not None and ctx.previous.job is not None:
         job = ctx.previous.job
+        from app.agent.production_policy import reject_manual_dispatch
+        reject_manual_dispatch(job)
         from app.agent.model_policy import validate_job_policy
         validate_job_policy(job)
         JobRunService.start(job.job_id, "run_full")
@@ -203,7 +205,12 @@ def launch(
         invocation = ToolInvocation.query.filter_by(invocation_id=ctx.invocation_id).one()
         invocation.job = job
         db.session.commit()
-    JobRunService.start(job.job_id, "run_full")
+    if ctx.shot_task_id is not None:
+        from app.agent.production_policy import authorized_job_dispatch
+        with authorized_job_dispatch(job, "run_full"):
+            JobRunService.start(job.job_id, "run_full")
+    else:
+        JobRunService.start(job.job_id, "run_full")
     return job
 
 

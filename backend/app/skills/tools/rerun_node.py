@@ -32,6 +32,8 @@ class RerunNodeOutput(BaseModel):
 
 def _nodes_to_run(data: RerunNodeInput) -> tuple[list[str], int]:
     job = JobService.get_job(data.job_id)
+    from app.agent.production_policy import reject_manual_dispatch
+    reject_manual_dispatch(job)
     if data.mode == "node":
         keys = [data.node_key]
     else:
@@ -62,6 +64,8 @@ def estimate_cost(data: RerunNodeInput, ctx=None) -> float:
 
 def run(data: RerunNodeInput, ctx: ToolContext):
     job = JobService.get_job(data.job_id)
+    from app.agent.production_policy import reject_manual_dispatch
+    reject_manual_dispatch(job)
     if not job_backed.is_skill_job(job) and ctx.role != SYSTEM:
         raise AppError(
             "TOOL_FORBIDDEN",

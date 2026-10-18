@@ -379,7 +379,9 @@ def _recover(data, ctx):
     else:
         # Poll_i2v also resumes an interrupted download from its durable output receipt.
         # No submit node appears in this explicit node-only run.
-        JobRunService.start(job.job_id, "run_node", node_key="poll_i2v", force=True)
+        from app.agent.production_policy import authorized_job_dispatch
+        with authorized_job_dispatch(job, "run_node", "poll_i2v", force=True):
+            JobRunService.start(job.job_id, "run_node", node_key="poll_i2v", force=True)
     return {"job_id": job.job_id, "provider_task_id": info["provider_task_id"], "phase": info["stage"]}
 
 
