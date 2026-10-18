@@ -21,3 +21,6 @@ export const uploadAgentAttachment = (file, onProgress) => {
 }
 
 export const listModels = () => request.get('/models')
+
+// CONTRACTS C.8: actions enter the same durable command inbox.
+export const actOnStoryboard = (id, action, payload = {}) => request.post(`/agent/runs/${id}/actions`, { ...payload, action })
