@@ -807,4 +807,117 @@ FrameSpec
 ---
 
 
-# D 章：依赖调度与局部修复（待写，任务 D0）
+# D 章：依赖调度与局部修复
+
+> 状态：已定稿（2026-10-18，任务 D0；D-017–D-019）。仅扩展 story_video 新链路；Simple、remix、经典 19 节点 DAG 保持兼容。
+
+## D.1 范围、授权与状态
+
+AGENT_STORY_V2_ENABLED 与 AGENT_STORY_PRODUCTION_ENABLED 均默认 false。已有 storyboard_approved 不自动生成视频；用户通过 start_production 再确认视频预计费用及可选的修复额度。D 阶段不拼接、不标记成片交付成功。
+流程：storyboard_approved → start_production → producing → awaiting_video_review / production_attention → approve_videos → videos_approved（E 阶段接入点）。
+- producing：推进无依赖的就绪镜头；单镜头失败不阻止其他独立镜头。
+- production_attention：当前无在途工作，但有失败、阻塞或需要改计划的镜头。
+- awaiting_video_review：当前计划所有视频已完成，等待审核 B。
+- videos_approved：用户已确认片段，仍未拼接。
+- 生产期不编辑分镜、不提交重做；在途工作结束后才接受改版本的动作。取消和重做不能杀死已付费服务商任务后又重复提交。
+
+## D.2 任务编译与执行
+
+复用 agent_shot_tasks，target_type 追加 video / tail_frame；存储状态仍为 C.7 六种。waiting_dependency / blocked 是生产视图推导的状态，不伪造成功任务。
+- video：target_id 为镜头 ID。只有输入完整时创建任务，inputs 为 AnimateShotInput 的完整 model_dump(mode="json")，包含 last_frame_artifact_id:null。
+- tail_frame：target_id 为源镜头 ID，inputs 为 ExtractFrameInput 完整 JSON。源视频成功后免费提尾帧，下一个镜头才可提交。
+- start / independent / hard_cut 没有视频前置依赖；tail_frame 只能依赖前一个镜头，依赖由代码重建；keyframe_bridge 的首尾图片均须已在审核 A 通过，不等待其他视频。
+- 同时在途视频数不超过 AGENT_MAX_PARALLEL_SHOTS；实际提交、轮询、下载仍走经典 Job 与共用 MQ，Agent 不另建 Redis/队列。
+- 参数、模型与输入图片在提交边界再次校验。审核页的显式模型覆盖通过 select_plan_model，用户排除约束不可绕过。
+- 幂等键：{run}:production:{version}:{target_type}:{shot_id}:{attempt}:{inputs_hash前12位}。成功输入相同则复用；未知结果禁止新 key 重交。
+- 编译/批准元数据保存在 run.snapshot.production；至少包含 plan_version、approved_version、status、repair_budget_credits。worker 保存 checkpoint 时必须保留此权威数据及 production_action_receipts、production_repairs。任务与回执是重启恢复依据，不依赖进程内 Future。
+- begin 时重新检查全部剩余视频费用与显式修复额度；每个 ToolRegistry.invoke 再次检查同一 Run 预算。已完成图片不重复计费，已批准视频模型不得退回旧服务器默认策略。
+- 依赖失败只阻塞其后代；其他就绪镜头继续完成。缺失本地下载先恢复原任务的下载，不重新提交模型。
+
+## D.3 Skill 与服务端绑定
+
+ToolContext 追加 shot_task_id:int|null，仅由服务器设置，公共 Skill JSON 不接受。生成任务必须属于当前 Run、当前已批准版本，输入哈希与冻结镜头/参考工件完全一致。
+- animate_shot 保留输入 first_frame_artifact_id、last_frame_artifact_id|null、prompt、model_id、params。无尾帧时 i2v；有尾帧时要求 AGENT_ENABLE_KEYFRAME_BRIDGE 和 first_last_frame 能力，服务商必须真正传递尾帧。按 params.duration 秒计费，不增加另一张视频费用。
+- extract_frame 输入 {video_artifact_id,position:"first"|"last",timestamp_sec?:number|null}，输出 {artifact_id,source_artifact_id,position,timestamp_sec}；零 credits 的 WRITE Skill，经 ToolRegistry.invoke，限制角色 production/system。仅接收归属正确的工件 ID，不能传任意路径/网址；校验文件并用持久收据重放。
+- 提帧使用本地媒体服务；Mock 可仅对固定 Mock 视频哨兵提供有效 PNG 替身，但必须另用有效 MP4 验证真实 FFmpeg 首/尾帧行为，不把该替身当成真实视频质量验证。
+- Job 启动前写 agent_story_production={run_id,plan_version,shot_id,task_id}；生产/提帧工件的预览、下载、引用、复制均受 Run 归属保护。无该标记的经典 Job 保持原权限行为。
+- 冻结的审核选型同样适用于预算报价、Job 重启恢复、MQ 提交；不能只放宽整个 budget_scope。
+
+## D.4 失败分类与修复
+
+FailureInfo：{category,code,summary,stage,submission_state,provider_task_id,recovery_action}。category 为 transient / content_policy / invalid_parameters / submit_unknown / permanent；stage 为 submit / poll / download / local。只使用结构化状态、HTTP/provider code 与持久 ApiTask，不从错误文本猜测提交是否成功。
+- submit_unknown：无可靠提交结论，一律 stop，不自动或通过普通 retry/redo 重交。
+- poll / download 瞬时错误：免费恢复，严格复用原 Job、ApiTask 与 provider_task_id；不得运行 submit 节点。
+- 明确拒绝且未提交的瞬时错误：可创建新 attempt；额外预计费用须在授权修复额度内。
+- content_policy：最多一次结构化合规提示词修订，不改变角色、模型、时长或绕过审核规则；修订 LLM 与再次生成费用一起纳入额度。
+- invalid_parameters：标记 replan，返回分镜规划/审核域供修正并再次确认；执行层不静默换模型、改变时长或整片重做。
+- 其他错误停止该镜头；不使全部独立镜头失败。
+- 单镜头自动修复次数 <= AGENT_MAX_SHOT_AUTO_REPAIRS（硬上限 2），额外费用 <= AGENT_MAX_SHOT_REPAIR_CREDITS；所有镜头共享 start_production 显式授权的 repair_budget_credits（默认 0）。免费恢复也有次数上限；额度和内容改写次数跨计划版本累计。
+- 修复回执位于 snapshot.production_repairs，以失败 task.id 为 key，包含 action/category/status/reserved_credits/replacement_task_id/motion_prompt；先持久预留，重复 tick 不重复修订/提交。未经授权的新付费调用停止并展示原因。
+- 内部边界：production_repair 提供 classify_job_failure、repair_decision、claim_repair、rewrite_motion_prompt、recover_read、record_repair；实际新 video task/提交由调度器负责。经典失败 Agent 与 D 修复不能同时作用于同一个生产 Job。
+
+## D.5 动作与报价
+
+沿用 POST /api/agent/runs/<id>/actions、owner 校验和命令收件箱。以下动作均带 request_key（1–128字符），相同 key 不同内容 409，完成后的重复提交重放原回执。
+
+| action | 状态 | 追加字段 |
+|---|---|---|
+| start_production | storyboard_approved | plan_version, repair_budget_credits（默认0） |
+| retry_shot | production_attention | shot_id, base_version, quote_id |
+| redo_shot | production_attention / awaiting_video_review | shot_id, base_version, quote_id, scope:"only" / "cascade" / "cancel", motion_prompt? |
+| review_plan | production_attention | plan_version |
+| approve_videos | awaiting_video_review | plan_version |
+
+所有版本均必须是当前版本。启动/审核再次校验图片或视频完整性和模型约束；review_plan 进入现有 awaiting_storyboard，保留旧产物，修改后重新审核 A、再显式开始生产。不自动抹除已完成无关镜头。
+只读报价：POST /api/agent/runs/<id>/production/quote，body={shot_id,base_version,operation:"redo"|"retry",motion_prompt?}，不启动任务或改版本。
+返回 {quote_id,base_version,shot_id,affected_shot_ids,kept_shot_ids,estimated_credits:{only,cascade},can_retry,reason,warnings}：
+- affected_shot_ids 包含当前镜头与真实 tail_frame 依赖的传递闭包；kept_shot_ids 为其中可保留的已完成下游。
+- quote_id 绑定计划版本、相关任务/工件、输入及当前报价；执行前重新计算，一旦变化返回 PRODUCTION_QUOTE_EXPIRED。它是乐观并发凭证，不替代 owner、预算和审批。
+- cascade：新计划版本、仅重做报价范围；其他镜头成功结果按哈希复用。only：只重做当前，明确保留旧下游及其来源版本/工件，并记录连贯性风险已被接受；cancel：不建版本、不启动 Job、不产生费用。
+- 旧 attempt/版本不覆盖。生产看板始终展示保留/重做影响，不把保留的旧下游伪装成使用了新尾帧。
+
+## D.6 Run 生产视图
+
+C.9 的 Run 顶层追加 production（无 StoryPackage 时为 null），字段如下：
+```text
+production:
+  enabled: bool
+  plan_version, approved_version (int|null), status
+  shots: [
+    shot_id, order, duration_sec, model_id, depends_on,
+    status (pending|waiting_dependency|running|success|failed|blocked|stale),
+    attempt, artifact_id|null, preview_url|null, download_url|null,
+    error: FailureInfo|null, repair_count, estimated_credits,
+    can_retry: bool, can_redo: bool, retained: bool
+  ]
+  estimates: {video_credits, remaining_credits, remaining_budget,
+              video_spent_credits, repair_spent_credits, spent_credits}
+  repair_budget_credits, kept_downstream: list[str], warnings: list[str]
+```
+价格为按秒/模型目录的估算；不可报价时数值可为 null，不能显示为零。remaining_credits 是剩余视频预计费用，remaining_budget 是剩余 Run 预算。spent_credits 包含理解、规划、预览和视频；video_spent_credits 只统计视频生成，repair_spent_credits 是修复子集，不能再与总支出相加。
+受保护的视频按鉴权 blob 按需加载；原视频地址不得作为未鉴权裸链接。生产状态与费用来自服务器，前端不自行推断失败安全性或级联闭包。
+
+## D.7 配置、错误与事件
+
+| 配置 | 默认 | 说明 |
+|---|---|---|
+| AGENT_STORY_PRODUCTION_ENABLED | false | Phase D 视频生产，需与 Story v2 同时开 |
+| AGENT_MAX_PARALLEL_SHOTS | 3 | 单 Run 同时在途视频数，至少1 |
+| AGENT_MAX_SHOT_AUTO_REPAIRS | 2 | 自动修复上限，代码硬上限2 |
+| AGENT_MAX_SHOT_REPAIR_CREDITS | 60 | 每个镜头额外修复估算上限，非真实价格承诺 |
+
+生产动作错误复用 INVALID_AGENT_STATE / PLAN_VERSION_CONFLICT / BUDGET_EXCEEDED / PREVIEW_INCOMPLETE；追加 PRODUCTION_DISABLED(409)、PRODUCTION_QUOTE_EXPIRED(409)、VIDEO_INCOMPLETE(409)、UNSAFE_RETRY(409)、REPAIR_LIMIT_EXCEEDED(409)。
+持久生产回执/任务记录表达 production_started、shot_submitted、shot_completed、shot_failed、repair_reserved、cascade_confirmed、videos_approved；若同时写应用事件日志，不能替代这些用于恢复的记录。外部资料/错误/提示词均作纯文本呈现，LLM 只产结构化决定，工具只能由代码经 Registry 调用。
+
+## D.8 任务文件范围与验收
+
+| 任务 | 范围 | 验收 |
+|---|---|---|
+| D0 | CONTRACTS D章、DECISIONS、PLAN、开发计划、交接 | 接口/授权/失败/级联清晰，保留C兼容 |
+| D1 | 新 production 调度模块、plan_versions target扩展、graph_v2/worker、config/.env.example；对应测试 | 10镜头并行/串行顺序；限并发；重启无重交；MQ/非MQ同一产物与账本 |
+| D2 | extract_frame / animate_shot、ToolContext/Registry/budget/job_backed/model_policy、必要媒体/适配器/私有工件路径；对应测试 | 有效尾帧；首尾参数真实传递；默认/指定模型一致；跨Run引用拒绝 |
+| D3 | production_repair、必要结构化错误与MQ失败详情；对应测试 | 五类注入、免费恢复、不确定停止、单镜头修复上限、跨版本账本 |
+| D4 | 生产动作/报价模块、protocol/API/图接线；对应测试 | 三种级联选择、版本冲突、重放不重复收费、仅当前/仅闭包重做 |
+| D5 | 新 ProductionBoard/helper/tests，AgentStudio/API/RunStepper/messages最小接线 | 构建与Mock联调；鉴权视频、实际影响/费用/确认；不做全局美化 |
+
+C-Gate 与界面美化保持 Claude 所有；D-Gate 待本轮完成后评审。全阶段 Mock、临时 SQLite/存储、无付费调用，不提前进入 E 的压缩/拼接交付。
