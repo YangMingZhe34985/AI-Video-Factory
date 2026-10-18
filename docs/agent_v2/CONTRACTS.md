@@ -924,3 +924,54 @@ production:
 | D5 | 新 ProductionBoard/helper/tests，AgentStudio/API/RunStepper/messages最小接线 | 构建与Mock联调；鉴权视频、实际影响/费用/确认；不做全局美化 |
 
 C-Gate 与界面美化保持 Claude 所有；D-Gate 待本轮完成后评审。全阶段 Mock、临时 SQLite/存储、无付费调用，不提前进入 E 的压缩/拼接交付。
+
+
+# E. 成片交付（E1–E4）
+
+## E.1 范围与压缩策略
+E 接续已完成审核 B 的 story_video；Editor 是确定性流程，不新增 LLM 或付费模型调用。D-Gate 与界面美化由 Claude 负责。AGENT_STORY_DELIVERY_ENABLED 默认 false；与 Story v2 开关同时使用，关闭时保留 videos_approved 终点。
+Agent Skill 创建的 Job 冻结 agent_output_policy={compress_output:bool}。默认 false；仅 RequestSpec.constraints.compress_output===true 才允许额外压缩。生产中的故事片源镜头一律不额外压缩，用户要求的压缩在最终交付另产副本。经典非 Agent Job 仍使用 VIDEO_COMPRESSION_ENABLED。线程下载与 MQ 下载遵循同一策略，保留原文件。
+历史已压缩工件拼接时优先读 compression.original_file_path，并核验归属、受管路径及文件；原件丢失不能静默改用压缩代理。
+
+## E.2 状态、授权与恢复
+新 approve_videos 在开关开启时自动进入 editing；历史 videos_approved 不自动处理，使用 start_delivery。动作 start_delivery / retry_delivery 带 plan_version、request_key，沿用 owner、当前版本和幂等收据；不同内容复用 key 返回冲突。
+start_delivery 限 videos_approved；retry_delivery 限 delivery_attention，或 success 但交付缓存缺失。不返回生产生成，不创建付费 attempt。成功阶段复用，失效本地产物可零费用重建；所有失败停 delivery_attention。
+snapshot.delivery 冻结 plan_version、按计划顺序的源工件 ID、输入哈希、授权及阶段/工具结果。ToolContext.delivery_version 为服务端字段，公共 Skill 请求不能设置；本地 Skill 每次含重放均重验授权、当前计划、来源与版本。跨 Run、旧版本、任意路径/URL 均拒绝。
+Run.status = editing / delivery_attention / success；delivery.stage = pending / composing / checking / packaging / complete / failed。仅拼接、结构质检、素材包全部完成才 success。零费用指新增模型 credits 为 0，不代表没有 CPU/存储成本。
+
+## E.3 Skill 契约与本地媒体
+所有工具经 ToolRegistry.invoke，角色 production/system、零费用、写操作有审批和账本；Editor 直接调用 Registry，不能绕过缓存验证。去重重放仍核验作用域与完整输入；本地 pending/running 崩溃或成功缓存丢失允许安全恢复。
+
+- compose_video 输入 {plan_version,video_artifact_ids:[str],compress_output:false}；严格等于批准计划的当前成功 video task 工件顺序与需求压缩值（含用户已接受的 retained 来源）。输出 {job_id,artifact_id,compressed_artifact_id:null|str,preview_url,download_url,composition:{mode:"stream_copy"|"normalized",source_artifact_ids,duration_sec,width,height,fps,mock_materialized,warnings}}。
+- probe_media 输入 {artifact_id}，返回媒体结构/可解码结果；不接受文件路径或网址。
+- qc_video 输入 {plan_version,artifact_id,video_artifact_ids}；返回 {passed,checks:[{code,passed,summary}],warnings}，检查主片与所有批准镜头，非内容语义评分。
+- package_story 输入 {plan_version,artifact_id,compressed_artifact_id:null|str}；返回 {artifact_id,download_url,file_name}。包含所有批准原镜头、主片、可选压缩副本、计划/故事/QC/费用 manifest，不包含密钥、绝对路径或外部下载 URL。
+
+本地交付 Job 复用 agent_story_production 私有标记 target_type:"delivery" 与 skill.budget_scope；不得运行经典 DAG 或通过公开 run-* 重交。所有交付工件走现有 owner 鉴权。
+MediaProbeService.probe(path,decode=False) 返回 duration_sec,width,height,fps,video(codec,pixel_format,time_base,sar,profile,level),audio(codec,sample_rate,channels,channel_layout)|null,has_audio,stream_count,copy_compatible_metadata,decoded,mock,duration_source,video_duration_verified。decode=True 全片解码，时长按视频流核验。
+同编码/流布局、画幅、fps、时间基等充分一致才 stream-copy；元数据不足或不一致走 normalized。规范化以首镜头宽高/fps 为基准、保比例 pad 到偶数尺寸，H.264 CRF18；音频保留，缺失段补静音并对齐视频时长。高质量重编码不称无损。主片默认未额外压缩；显式需求另产压缩副本，主片保留。
+Mock 模式仅识别适配器精确哨兵并在交付工作区构造有效示意 MP4，标注 mock_materialized；不改原工件，不把任意损坏视频当 Mock，不作为画质验证。
+
+## E.4 质检与交付视图
+核验可完整解码、非空、画幅/fps、源镜头齐全和顺序、每片及总时长。时长比较批准计划（不是用户最初目标），容差 max(0.5秒,期望时长×2%)。受管路径/归属、源 hash 或 manifest 不符即停止。QC 不承诺角色一致性或真实审美质量。
+
+Run.delivery（无 StoryPackage 时 null）：
+```text
+enabled, plan_version, status（Run状态）, stage（E.2枚举）,
+error:{code,message}|null, can_start, can_retry, cost_credits:0,
+master:null|{artifact_id,preview_url,download_url,file_name,duration_sec,width,height,fps,
+             composition_mode:"stream_copy"|"normalized"},
+compressed:null|同master,
+package:null|{artifact_id,download_url,file_name},
+qc:null|{passed,checks:[{code,passed,summary}],warnings:[]}, warnings:[]
+```
+前端仅 complete 且 success 时展示成片播放器/下载；权限以服务器 can_start/can_retry 为准。下载使用鉴权 blob，URL 必须匹配本地工件接口，不把 token 发往外站。展示“主文件·未额外压缩”及实际拼接方式；Mock 清晰标识。不得以审核 B 或拼接单独成功冒充最终交付。
+
+## E.5 文件范围与验收
+|任务|范围|验收|
+|---|---|---|
+|E1|job_backed、统一压缩策略、node_runner/MQ download、Registry/ToolContext/config 注册、E契约/交接及相关测试|Agent默认不压缩、显式需求、经典兼容、MQ/线程一致|
+|E2|delivery_policy、compose_video、视频拼接服务及测试|有效MP4同规格copy/混合规格规范化、音频/时长、源归属、缓存恢复、可选副本|
+|E3|probe_media/qc_video/package_story、Editor、graph/worker/protocol/API及测试|完整Mock交付、全片QC、缺镜头/损坏/漂移注入、断点重放无新增模型费用|
+|E4|独立DeliveryPanel/helper/messages/tests、AgentStudio/RunStepper最小接线|播放及鉴权下载、状态/恢复、前端构建与Mock联调；保留Claude样式|
+本轮不进入 F 或付费评测；E-Gate 留 Claude。错误使用现有归属/版本/状态错误，并可增加 DELIVERY_DISABLED、DELIVERY_INCOMPLETE、DELIVERY_QC_FAILED；错误不暴露本地绝对路径。

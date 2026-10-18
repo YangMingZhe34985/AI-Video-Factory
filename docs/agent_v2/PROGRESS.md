@@ -360,3 +360,10 @@ C-Gate 评审结论：通过。
 - 新链路默认仍关闭：隔离 Mock 联调需同时设置 `AGENT_STORY_V2_ENABLED=true`、`AGENT_STORY_PRODUCTION_ENABLED=true`，使用 `MODEL_ADAPTER_MODE=mock` 与临时 SQLite/存储。默认并行上限 3、自动修复最多 2 次；开始生产的显式修复额度默认 0，手动重试单独确认报价。`AGENT_ENABLE_KEYFRAME_BRIDGE=false` 仍保持默认关闭。
 - **Phase E 接入点是 videos_approved**：尚未实现本轮新链路的默认不压缩、拼接与最终交付；不要将审核 B 完成显示成成片交付成功。真实首尾帧效果、角色视觉一致性和服务商费用仍需后续单独批准的评测。
 - 本轮没有新增必须由用户决定的事项；不自动进入 E/F，不启动付费测试。
+
+
+## 2026-10-18 · Codex · E1–E4 开始
+状态：进行中。已读取最新D交接、任务看板与契约；追加D-023及E章后开始实现。
+分支：四个独立Codex工作树分别使用agent-v2/E1、E2、E3、E4，从feat/agent-v2 @ d06b3f4切出。主目录在Claude的agent-v2/D-Gate，不切换/修改其工作树。
+范围：Agent压缩策略、拼接与可选副本、结构质检/Editor/素材包、交付功能界面。D-Gate与美化保持Claude负责。
+验证：仅Mock、隔离SQLite/存储和本地FFmpeg有效测试片；不改真实.env、不做付费调用、推送或PR。完成后更新验收与交接。

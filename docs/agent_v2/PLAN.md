@@ -68,9 +68,19 @@
 | D5 | 生产看板功能及Mock联调（视觉美化由Claude负责） | Codex | D0 D4 | 完成（c15a7d0；29项前端回归、构建与Mock浏览器验收） |
 | D-Gate | 阶段评审 | Claude | D0–D5 | 待开始 |
 
-## Phase E–F
+## Phase E 成片交付
 
-见开发计划第3节，任务ID：E1–E4、F1–F3。本轮不进入E/F。
+契约：CONTRACTS E章。E1–E4由Codex完成，E-Gate及界面美化留Claude；本轮仅Mock。
+| ID | 任务 | 负责 | 依赖 | 状态 |
+|---|---|---|---|---|
+| E1 | Agent默认不压缩、统一下载策略与兼容 | Codex | D0–D5 | 进行中 |
+| E2 | compose_video、主片/显式压缩副本 | Codex | E1 | 进行中 |
+| E3 | probe/QC、Editor恢复与素材包 | Codex | E2 | 进行中 |
+| E4 | 成片播放器、鉴权下载、交付状态与恢复 | Codex（功能） | E3 | 进行中 |
+| E-Gate | 阶段评审 | Claude | E1–E4 | 待开始 |
+
+## Phase F
+见开发计划第3节，F1–F3；本轮不进入F。
 
 ## 待用户决定（不阻塞 Phase A）
 
