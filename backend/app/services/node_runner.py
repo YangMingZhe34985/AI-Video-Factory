@@ -432,7 +432,7 @@ class NodeRunner:
         downloaded: Path,
         artifact_type: str,
     ) -> tuple[Path, dict]:
-        selected_path, metadata = VideoCompressionService.compress_for_artifact(downloaded)
+        selected_path, metadata = VideoCompressionService.compress_for_job(downloaded, job)
         status = metadata.get("status")
         if status == "success":
             EventService.record(

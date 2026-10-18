@@ -178,6 +178,8 @@ def launch(
         "budget_scope": ctx.budget_scope,
         "caller_role": ctx.role,
     }
+    from app.agent.output_policy import for_submission
+    config["agent_output_policy"] = for_submission(ctx)
     if ctx.preview_task_id is not None:
         from app.agent.preview_production import invocation_key
         from app.models import AgentShotTask
