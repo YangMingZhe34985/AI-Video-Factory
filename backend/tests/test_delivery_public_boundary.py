@@ -92,3 +92,18 @@ def test_reused_context_rechecks_source_bytes_on_next_registry_call(app_ctx, mon
         registry.invoke("compose_video", data, ctx)
     assert error.value.code in {"INVALID_REFERENCE", "PLAN_VERSION_CONFLICT"}
     assert (ApiTask.query.count(), ToolInvocation.query.count()) == before
+
+
+@pytest.mark.parametrize("flag", ["AGENT_STORY_V2_ENABLED", "AGENT_STORY_DELIVERY_ENABLED"])
+def test_disabled_delivery_cannot_be_bypassed_by_internal_registry_context(app_ctx, monkeypatch, flag):
+    from app.api import AppError
+    from app.skills.spec import ToolContext
+    run, version, ids = approved(monkeypatch)
+    before = (ApiTask.query.count(), ToolInvocation.query.count())
+    app_ctx.config[flag] = False
+    with pytest.raises(AppError) as error:
+        build_default_registry().invoke("probe_media", {"artifact_id": ids[0]},
+            ToolContext(role="production", approved=True, budget_scope=run.run_id,
+                        delivery_version=version.version))
+    assert error.value.code == "DELIVERY_DISABLED"
+    assert (ApiTask.query.count(), ToolInvocation.query.count()) == before

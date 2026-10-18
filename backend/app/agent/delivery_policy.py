@@ -53,7 +53,8 @@ def approved_sources(run, version):
 
 
 def require_delivery_authorization(ctx, plan_version=None):
-    if not current_app.config.get("AGENT_STORY_DELIVERY_ENABLED"):
+    if not (current_app.config.get("AGENT_STORY_V2_ENABLED")
+            and current_app.config.get("AGENT_STORY_DELIVERY_ENABLED")):
         raise AppError("DELIVERY_DISABLED", "Story delivery is disabled", 409)
     server_version = getattr(ctx, "delivery_version", None)
     if not isinstance(server_version, int) or isinstance(server_version, bool):
