@@ -6,7 +6,7 @@ from app.agent.attachments import require_upload_job_owner
 from app.agent.search.scope import require_run
 from app.api import AppError
 from app.models import Artifact
-from app.services.generation_outputs import digest
+from app.services.file_fingerprint import cached_digest
 from app.services.storage_service import StorageService
 
 
@@ -83,7 +83,7 @@ def require_delivery_authorization(ctx, plan_version=None):
 
 
 def source_hashes(sources):
-    return [digest(resolve_source(item[2])) for item in sources]
+    return [cached_digest(resolve_source(item[2])) for item in sources]
 
 
 def resolve_delivery_artifact(run, version, artifact_id, *, kind="master"):
@@ -108,6 +108,6 @@ def resolve_delivery_artifact(run, version, artifact_id, *, kind="master"):
         raise AppError("INVALID_REFERENCE", "Delivery source manifest does not match approved media", 422)
     require_upload_job_owner(artifact.job, run.owner_id)
     path = resolve_source(artifact)
-    if digest(path) != meta.get("master_sha256" if kind == "master" else "compressed_sha256"):
+    if cached_digest(path) != meta.get("master_sha256" if kind == "master" else "compressed_sha256"):
         raise AppError("DELIVERY_INCOMPLETE", "Delivery media changed after composition", 409)
     return artifact

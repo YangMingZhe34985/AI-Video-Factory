@@ -10,6 +10,7 @@ from app.agent.delivery_policy import approved_sources, require_delivery_authori
 from app.extensions import db
 from app.models import Artifact, ToolInvocation
 from app.services.artifact_service import ArtifactService
+from app.services.file_fingerprint import cached_digest, memoized
 from app.services.job_service import JobService
 from app.services.storage_service import StorageService
 from app.skills import job_backed
@@ -53,6 +54,14 @@ def _digest(path):
     return digest.hexdigest()
 
 
+def _archive_is_complete(path):
+    try:
+        with zipfile.ZipFile(path) as archive:
+            return archive.testzip() is None and {"manifest.json", "plan.json", "story.json", "qc.json", "final/master.mp4"}.issubset(archive.namelist())
+    except (OSError, ValueError, zipfile.BadZipFile):
+        return False
+
+
 def cached_output_is_valid(invocation):
     output = invocation.output_payload or {}
     artifact = Artifact.query.filter_by(artifact_id=output.get("artifact_id")).first()
@@ -62,10 +71,9 @@ def cached_output_is_valid(invocation):
     try:
         path = StorageService.resolve(artifact.file_path)
         if (not path.resolve().is_relative_to(StorageService.root()) or not path.is_file()
-                or metadata.get("invocation_id") != invocation.invocation_id or _digest(path) != metadata.get("sha256")):
+                or metadata.get("invocation_id") != invocation.invocation_id or cached_digest(path) != metadata.get("sha256")):
             return False
-        with zipfile.ZipFile(path) as archive:
-            return archive.testzip() is None and {"manifest.json", "plan.json", "story.json", "qc.json", "final/master.mp4"}.issubset(archive.namelist())
+        return memoized(path, "story_package_zip", _archive_is_complete)
     except (OSError, ValueError, zipfile.BadZipFile):
         return False
 

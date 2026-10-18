@@ -438,3 +438,24 @@ C-Gate 评审结论：通过。
 明确约束：依用户最新要求仍使用旧DASHSCOPE_API_BASE_URL / DASHSCOPE_OPENAI_BASE_URL，不引入workspace-id。新模型不替换默认。官方能力与当前Agent可用模式分列，首尾质量未实测。模型价格仍为演示credits；Wan3参考视频按输入+输出秒数估算，不能只算新增延长段。
 验证计划：Mock HTTP请求体与旧URL、隔离SQLite选择/预算/队列权限回归、前端测试/build，随后集成检查；无真实.env修改、付费、推送或PR。任务中心是业务只读页，不是Redis管理台；本人Agent+共享经典，未知Worker健康如实展示。
 给Claude：请先读M/T章与D-025。新目录及任务中心接口将在独立任务分支合入feat后提供SHA；当前无需修改Agent图/ProductionBoard/DeliveryPanel或抢占上述文件。本记录后续会追加实际验收与剩余限制。
+
+## 2026-10-18 · Claude · E-Gate 评审
+状态：完成，分支 `agent-v2/E-Gate`，已合入本地 `feat/agent-v2`。
+评审结论：通过（修复 1 处性能问题）。
+- 契约与决策：E 章与 D-023 / D-024 和实现一致。交付开关默认关闭；历史 `videos_approved` 需显式 `start_delivery`；交付授权冻结源工件顺序与 `source_sha256`，恢复时不接受源漂移；Editor 全程经 Registry，零模型费用。
+- 媒体处理：FFmpeg 参数以列表传递；stream-copy 用受控相对文件名并开启 concat 安全模式与协议白名单；规范化滤镜写入脚本文件；临时目录生成后原子替换，源文件不被覆盖；原件缺失不回退压缩代理。
+- 质检：源镜头与主片、压缩副本均完整解码，时长按批准分镜比较，画幅与帧率按首镜头规格。素材包过滤密钥、路径与外部链接字段。
+- 前端：下载与预览只接受与工件编号完全匹配的本地接口地址，按需取鉴权 blob 并在切换与卸载时释放。
+- 修复：`delivery.public_delivery` 每次序列化 Run 都会对所有批准源视频完整计算约 3 遍 SHA-256，再加主片、压缩副本、素材包摘要和一次 `ZipFile.testzip()`（整包解压校验）。Agent Studio 每 3 秒轮询 Run **列表**，列表会序列化全部 Run，所以真实成片下每次轮询要读取所有已交付 Run 的全部媒体字节（Mock 文件很小，测试与联调看不出来）。新增 `app/services/file_fingerprint.py`：按文件身份（解析路径、大小、mtime_ns、inode）缓存摘要和 ZIP 完整性结果，读取期间文件变化则不缓存。`delivery_policy.source_hashes` / `resolve_delivery_artifact` 与 `package_story.cached_output_is_valid` 改用它。替换、改写或截断文件都会改变身份，校验语义不变。新增 `test_polled_delivery_view_does_not_rehash_unchanged_media`：成功交付后 5 次读取视图与列表时，`hashlib.file_digest` 和 `testzip` 调用均为 0；同尺寸原地改写主片后仍隐藏下载并允许恢复。修复前失败、修复后通过。
+- 文档：CONTRACTS 顶部章节状态行补上 D、E 已定稿。
+- 测试：Codex 交付代码完整回归 **992 passed**（26 分 38 秒，含 D-Gate 新增 1 项）；修复后交付相关 52 passed（含新增 1 项，合计 993）。
+- 隔离实测（临时 SQLite、端口 5058 / 5177、鉴权开启、三个新链路开关开启、真实 FFmpeg）：脚本驱动一分钟长片 → 角色 → 分镜 → 生产 → 审核 B → 自动交付 → success。主片 59.84 秒 / 320×180 / 25fps，规范化拼接，结构质检 14 项全过，素材包生成。主片与 ZIP 匿名下载 401、本人 200；浏览器交付面板显示正确，成片以鉴权 blob 加载并可播放，无控制台错误。账本：animate_shot 4 次 60 credits；compose / probe ×4 / qc / package 均 0 credits，交付没有新增模型调用。进程已停止，`.claude/launch.json` 已删除。
+非阻塞问题：
+1. 交付提示混合语言：拼接与 Mock 两条警告是后端英文原文（如 “Source formats differed; normalized…”），与中文界面混排。建议后端返回警告码，由前端本地化。
+2. Mock 示意片都是 320×180 / 25fps，仍走规范化并提示“源格式不一致”，措辞对 Mock 不准确（真实素材下语义正确）。
+3. D-Gate 记录的报价超预算提示、看板文案、私有列表性能与全局侧栏问题保持原状。
+给 Codex / 下一步：
+- 后续凡是在 GET 或轮询路径里校验文件完整性，请用 `file_fingerprint.cached_digest` / `memoized`，不要每次全量读取。
+- Phase F 尚未开始；F 章契约与任何付费评测都需要用户新的指令。
+需要用户决定：无新增。
+
