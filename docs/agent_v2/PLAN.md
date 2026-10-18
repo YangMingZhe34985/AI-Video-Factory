@@ -66,7 +66,7 @@
 | D3 | 失败分类、免费恢复、有界局部自动修复 | Codex | D0 D1 | 完成（9adaa00、aa81b3c、66eb0e1；集成 920 passed） |
 | D4 | 生产动作、只读报价、重做级联确认、审核B | Codex | D1 D3 | 完成（018d0df、ecc761e、9d64e63；集成 920 passed） |
 | D5 | 生产看板功能及Mock联调（视觉美化由Claude负责） | Codex | D0 D4 | 完成（c15a7d0；29项前端回归、构建与Mock浏览器验收） |
-| D-Gate | 阶段评审 | Claude | D0–D5 | 待开始 |
+| D-Gate | 阶段评审 | Claude | D0–D5 | 完成（921 项回归；生产看板美化暂缓，见 PROGRESS） |
 
 ## Phase E–F
 

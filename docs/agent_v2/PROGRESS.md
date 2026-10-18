@@ -360,3 +360,23 @@ C-Gate 评审结论：通过。
 - 新链路默认仍关闭：隔离 Mock 联调需同时设置 `AGENT_STORY_V2_ENABLED=true`、`AGENT_STORY_PRODUCTION_ENABLED=true`，使用 `MODEL_ADAPTER_MODE=mock` 与临时 SQLite/存储。默认并行上限 3、自动修复最多 2 次；开始生产的显式修复额度默认 0，手动重试单独确认报价。`AGENT_ENABLE_KEYFRAME_BRIDGE=false` 仍保持默认关闭。
 - **Phase E 接入点是 videos_approved**：尚未实现本轮新链路的默认不压缩、拼接与最终交付；不要将审核 B 完成显示成成片交付成功。真实首尾帧效果、角色视觉一致性和服务商费用仍需后续单独批准的评测。
 - 本轮没有新增必须由用户决定的事项；不自动进入 E/F，不启动付费测试。
+
+## 2026-10-18 · Claude · D-Gate 评审
+状态：完成，分支 `agent-v2/D-Gate`，已合入本地 `feat/agent-v2`。按用户指示，本轮跳过前端美化。
+评审结论：通过（修复 1 处）。
+- 契约与决策：D 章与 D-017–D-022 清晰，实现一致。显式 `start_production` 授权、默认修复额度 0、未知提交一律停止、报价编号绑定版本/任务指纹/修复回执并在执行前重算、cascade 只取真实尾帧依赖闭包、only 保留旧下游并记录风险。
+- 调度：`production_engine.tick_production` 以持久任务驱动，限并发、依赖失败只阻塞后代；`recover_job` 只处理非终态 Job，付费节点无服务商任务号即停止，不会重交。
+- 公共入口：生产 Job 的派发许可是 ContextVar，按 Job + 执行参数精确匹配，只在服务端同步准入时存在；公共 Skill、run-*、rerun_node 均拒绝（UNSAFE_RETRY）。`validate_job` 恢复时重新核对模型、参数、提示词与首尾帧来源。
+- 修复：`production_engine._submit` 原先把所有非参数类本地错误记为 `submit_unknown`，包括注册表在预算/权限检查阶段已拒绝、账本状态 `rejected` 且无 Job 的调用。结果是该镜头永久停止、手动重试和重做报价都返回 UNSAFE_RETRY，且新版本会继承这条“未知”记录。现在只有账本证明没有启动 Job（无记录，或 `rejected` 且按调用编号找不到 Job）时记为 `permanent / not_submitted / stop`，可通过重做或改计划恢复；其他情况仍保守记为未知。新增 `test_registry_rejection_is_not_an_unknown_submission`（修复前失败、修复后通过）。
+- 测试：Codex 交付代码完整回归 **920 passed**（23 分 17 秒）；修复后生产相关 166 passed（含新增 1 项，合计 921）。
+- 隔离 Mock 实测（临时 SQLite、端口 5057 / 5176、鉴权开启、Story v2 与生产开关开启）：一分钟长片 → 角色 → 分镜确认 → 生产看板 → 开始生产（修复额度 0）→ 4 镜头完成（60 credits）→ s03 重做报价（only 15 / cascade s03→s04 30）→ cascade 超出剩余预算被服务器拒绝、无任何调用 → only 执行生成版本 3，s04 标为保留旧下游 → 审核 B → `videos_approved`。账本：animate_shot 5 次共 75 credits、extract_frame 1 次。生产视频匿名 401、所有者 200、其他用户 404；其他用户的提示词与作业列表看不到该 Run 内容。进程已停止，`.claude/launch.json` 已删除。
+非阻塞问题（留给美化或后续）：
+1. 报价与超预算表达：报价弹窗没有对比剩余预算，cascade 超预算时直到确认才失败，且界面直接显示后端英文原文（含内部 Run 编号 `Budget exceeded for scope 'agent_…'`）。建议报价返回 `exceeds_budget` 或前端按 `remaining_budget` 提前禁用并给出中文说明；错误码映射为本地文案。
+2. 看板文案：开始生产前各镜头显示“排队待执行”（实际尚未排队）；新版本中重做的镜头显示“第 1 次执行”（按版本计数），用户可能以为未重做。
+3. 性能：`private_views.private_jobs()` 每次列表请求读取全部私有 Job 并逐个校验所有者，数据量增长后会变慢；建议改为 SQL 过滤（所有者字段或 Run 所有者子查询）。
+4. 已知：手机端全局侧栏导致整页裁切（美化事项）。
+给 Codex / 下一步：
+- Phase E 从 `videos_approved` 接续（拼接、默认不压缩、交付）。拼接时注意 `kept_downstream`：保留的旧下游片段与新上游可能不连贯，交付前应在界面再次提示。
+- 若后续新增提交前的服务端拒绝码，沿用本次规则：以账本与 Job 记录判断是否提交，不用错误类别猜测。
+需要用户决定：无新增。生产看板美化待用户安排。
+
