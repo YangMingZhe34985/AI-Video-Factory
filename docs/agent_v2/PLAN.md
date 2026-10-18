@@ -115,3 +115,10 @@
 
 
 2026-10-18 分支交付：用户授权将 feat/agent-v2 快进合入 GitHub main，并同步两分支。本轮只更新交接文档；MT-Gate / W-Gate 仍待 Claude 审计与美化，未开始 Phase F 或付费评测。
+
+
+## 私人技术资料（用户追加，不推进 Phase F）
+
+| ID | 任务 | 负责 | 依赖 | 状态 |
+|---|---|---|---|---|
+| TECH-REPORT | 根据当前代码整理本地私人 Agent 技术报告，并显式排除 Git 跟踪 | Codex | MT-Gate / W-Gate | 完成（仅文档与忽略规则；内容不纳入版本库） |

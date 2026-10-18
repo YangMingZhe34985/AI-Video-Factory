@@ -24,6 +24,8 @@ frontend-vue/.env.*
 secrets/
 credentials/
 private/
+# Personal technical reports stay local and must not be committed.
+/docs/private/
 
 # Local AI/tooling state
 .claude/

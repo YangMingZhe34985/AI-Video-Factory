@@ -578,3 +578,12 @@ W-Gate 结论：通过。
 - 原生文件选择控件上传、任务中心后台隐藏暂停未在浏览器验证（逻辑有前端单测覆盖）。
 - 依赖：后端测试与本机运行需要 `pypdf==6.21.1`（requirements 已声明）；本轮用 Codex 留下的隔离目录 `%TEMP%/cinecrew-w1-pypdf-6.21.1` 通过 PYTHONPATH 提供，未改用户 Conda 环境。用户本机启动新版前需 `pip install -r backend/requirements.txt`。
 需要用户决定：无新增。
+
+
+## 2026-10-18 · Codex · TECH-REPORT
+状态：完成；按用户要求仅整理私人技术资料，未推进 Phase F。
+分支与基线：agent-v2/TECH-REPORT 从 feat/agent-v2 @6697867 切出；本条所在提交仅包含忽略规则与协作状态，完成后本地合入 feat/agent-v2，不推送。
+完成内容：基于 Claude 最新审计与当前代码完成本地私人报告；docs/private/ 已显式加入 .gitignore。报告内容与个人排查线索不进入版本库，未改动应用代码或真实环境文件，保留用户已有未跟踪笔记。
+验证：静态核对默认 Skill 清单、报告源码链接及文件行号；复核图编排、费用与恢复语义；git check-ignore 确认报告被忽略，git ls-files 确认未跟踪；git diff --check 通过。没有启动应用、连接真实 MySQL/Redis、重跑应用回归或进行付费调用。历史测试证据保持上一条 Claude 记录的实际口径。
+未完成 / 下一步：私人报告已经交付；功能开发停在当前阶段，Phase F 需用户另行安排。
+需要对方或用户决定：无新增；私人资料不要使用 git add -f 纳入版本库。
