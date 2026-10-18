@@ -50,6 +50,7 @@ def test_provider_metadata_does_not_grant_execute_or_llm_roles(app_ctx):
     legacy = SimpleNamespace(task_type="image_to_video", capabilities={})
     assert ModelService.supports_mode(legacy, "i2v")
     assert not ModelService.supports_mode(legacy, "first_last_frame")
+    assert not ModelService.supports_mode(SimpleNamespace(task_type="text_to_image", capabilities={}), "i2i")
 
 @pytest.mark.parametrize("phrase", ["wan3.0系列", "WAN 3.0 series", "wan3.0视频模型"])
 def test_family_boundaries_and_exact_exclusions(app_ctx, phrase):
@@ -73,7 +74,7 @@ def test_defaults_are_unchanged(app_ctx):
 def test_dynamic_size_accepts_legal_nonpresets(app_ctx, size):
     assert validate_generation_model(ModelService.get_model("qwen-image-3.0"), "t2i", {"size": size, "n": 6})["size"] == size
 
-@pytest.mark.parametrize("size", ["511*511", "2049*2048", "4097*512", "0*1024", "-512*512", "1024x1024", "100*100000"])
+@pytest.mark.parametrize("size", ["511*511", "2049*2048", "4097*512", "0*1024", "-512*512", "1024x1024", "100*100000", "1" * 5000 + "*512"])
 def test_dynamic_size_rejects_invalid_range_and_syntax(app_ctx, size):
     with pytest.raises(AppError):
         validate_generation_model(ModelService.get_model("qwen-image-3.0"), "t2i", {"size": size})
@@ -82,6 +83,8 @@ def test_image_reference_extension_and_aspect_rules(app_ctx):
     model = ModelService.get_model("qwen-image-3.0-pro")
     params = _aspect_params({"parameters": model.parameter_schema}, "16:9")
     assert params == {"size": "1536*864"}
+    assert _aspect_params({"parameters": model.parameter_schema}, "4:3") == {"size": "1024*768"}
+    assert _aspect_params({"parameters": model.parameter_schema}, "3:4") == {"size": "768*1024"}
     assert validate_generation_model(model, "i2i", params, reference_count=3)
     with pytest.raises(AppError): validate_generation_model(model, "i2i", {}, reference_count=4)
     with pytest.raises(AppError): validate_generation_model(model, "i2i", {"prompt_extend_mode": "agent"}, reference_count=1)
@@ -111,3 +114,23 @@ def test_unknown_resolution_and_billing_basis_fail_closed(app_ctx):
     with pytest.raises(AppError): estimate_model_cost(model, {"duration": 5, "resolution": "4K"})
     model.capabilities = {**model.capabilities, "pricing": {**model.capabilities["pricing"], "billing_basis": "unknown"}}
     with pytest.raises(AppError): estimate_model_cost(model, {"duration": 5})
+
+
+@pytest.mark.parametrize("resolution", [None, [], False, "4K"])
+def test_invalid_resolution_input_raises_a_structured_error(app_ctx, resolution):
+    with pytest.raises(AppError) as error:
+        estimate_model_cost(ModelService.get_model("wan3.0-video"), {"duration": 5, "resolution": resolution})
+    assert error.value.code == "INVALID_INPUT"
+
+
+@pytest.mark.parametrize("model_id", sorted(VIDEO_IDS))
+def test_wan_random_seed_and_prime_speed_metadata(app_ctx, model_id):
+    model = ModelService.get_model(model_id)
+    assert model_guard.validate_params(model, {"seed": -1}) == {"seed": -1}
+    assert validate_generation_model(model, "i2v", {"seed": -1}, reference_count=1)["seed"] == -1
+    with pytest.raises(AppError):
+        validate_generation_model(model, "i2v", {"seed": -2}, reference_count=1)
+    assert model.capabilities["quality_tier"] == ("fast" if model_id.endswith("-prime") else "standard")
+    assert "画质未实测" in model.capabilities["notes"]
+    with pytest.raises(AppError):
+        model_guard.validate_params(ModelService.get_model("qwen-image-3.0"), {"seed": -1})

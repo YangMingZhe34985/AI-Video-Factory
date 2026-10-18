@@ -133,7 +133,7 @@ GENERATION_TASK_MODES = {
     "text_to_image": {"t2i", "i2i"}, "text_to_video": {"t2v"},
     "image_to_video": {"i2v"}, "reference_to_video": {"r2v"},
 }
-LEGACY_TASK_MODES = {**GENERATION_TASK_MODES, "video_understanding": {"text", "image_understanding", "video_understanding"},
+LEGACY_TASK_MODES = {**GENERATION_TASK_MODES, "text_to_image": {"t2i"}, "video_understanding": {"text", "image_understanding", "video_understanding"},
                      "text_to_text": {"text"}, "prompt_rewrite": {"text"}}
 
 QWEN3_IMAGE_PARAMETER_SCHEMA = {
@@ -156,7 +156,7 @@ WAN3_VIDEO_PARAMETER_SCHEMA = {
     "audio": {"type": "boolean", "label": "Audio", "default": False},
     "prompt_extend": {"type": "boolean", "label": "Prompt Extend", "default": False},
     "watermark": {"type": "boolean", "label": "Watermark", "default": False},
-    "seed": {"type": "integer", "label": "Seed", "min": 0, "max": 2147483647},
+    "seed": {"type": "integer", "label": "Seed", "min": -1, "max": 2147483647},
 }
 
 
@@ -439,14 +439,14 @@ for _seed in DEFAULT_MODELS:
             pricing={"unit": "second", "credits_per_unit": 2.0 * factor,
                      "resolution_rates": {"480P": factor, "720P": 2.0 * factor, "1080P": 3.0 * factor},
                      "billing_basis": "input_plus_output_seconds"},
-            quality_tier="high" if factor == 2 else "standard",
+            quality_tier="fast" if factor == 2 else "standard",
             provider_capabilities={"reference_images": {"max": 10, "agent_enabled": True},
                 "reference_video": {"max": 5, "max_total_seconds": 15, "agent_enabled": False, "adapter_enabled": False},
                 "reference_audio": {"max": 5, "agent_enabled": False},
                 "file": {"agent_enabled": False}, "link": {"agent_enabled": False},
                 "video_edit": {"agent_enabled": False}, "video_extend": {"agent_enabled": False},
                 "input_plus_output_seconds_max": 30},
-            notes="演示 credits，非供应商报价；按分辨率及输入视频秒数+输出秒数估算。当前Agent只接入图片参考；视频/音频/file/link/编辑延长不自动启用，首尾画质未实测。")
+            notes="演示 credits，非供应商报价；按分辨率及输入视频秒数+输出秒数估算。Prime为能力对齐的高速版，画质未实测。当前Agent只接入图片参考；视频/音频/file/link/编辑延长不自动启用，首尾画质未实测。")
 
 DEFAULT_MODEL_BY_ID = {model["model_id"]: model for model in DEFAULT_MODELS}
 
