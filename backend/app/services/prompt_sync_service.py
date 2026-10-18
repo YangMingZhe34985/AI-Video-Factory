@@ -55,6 +55,9 @@ class PromptSyncService:
         template = prompt.template
         if not job or not template:
             return None
+        from app.agent.attachments import is_private_agent_job
+        if is_private_agent_job(job):
+            return None
 
         existing = (
             PromptVersion.query.filter(
