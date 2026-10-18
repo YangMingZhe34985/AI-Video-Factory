@@ -68,7 +68,7 @@ def validate_job_attachment_sources(data: dict, owner_id: str) -> None:
     if data.get("source_video_path"):
         target = StorageService.resolve(data["source_video_path"]).resolve()
         # Download receipts also contain private bytes before artifact registration.
-        if any(target.is_relative_to(StorageService.root() / "agent" / child) for child in ("references", "frames")):
+        if any(target.is_relative_to(StorageService.root() / "agent" / child) for child in ("references", "frames", "delivery")):
             raise AppError("ATTACHMENT_NOT_FOUND", "Reference image requires its owning Agent run", 404)
         candidates = Artifact.query.join(Job).filter(or_(Job.strategy == "agent_upload",
             Job.config["agent_story_preview"]["run_id"].as_string().is_not(None),
