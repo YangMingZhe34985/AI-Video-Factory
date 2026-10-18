@@ -60,3 +60,35 @@ class VideoMediaService:
         cls._run(args, 180)
         if not target.is_file() or not target.stat().st_size:
             raise AppError("INVALID_SOURCE", "Source segment produced no usable output", 422)
+
+
+    @classmethod
+    def extract_frame(cls, path: Path, target: Path, *, position: str, timestamp_sec=None) -> float:
+        """Decode the first/requested frame, or keep the final decoded video frame."""
+        if not target.resolve().is_relative_to(StorageService.root()):
+            raise AppError("INVALID_SOURCE", "Frame output must stay in managed storage", 422)
+        media = cls.inspect(path)
+        duration = media["duration"]
+        if timestamp_sec is not None and (not math.isfinite(timestamp_sec) or timestamp_sec < 0 or timestamp_sec >= duration):
+            raise AppError("INVALID_INPUT", "Frame timestamp is outside the source video", 422)
+        if timestamp_sec is not None or position == "first":
+            timestamp = timestamp_sec if timestamp_sec is not None else 0.0
+            cls.extract(path, target, timestamp, duration, frame=True)
+            return timestamp
+        target.parent.mkdir(parents=True, exist_ok=True)
+        # Decode a bounded tail window and overwrite one PNG as frames arrive.
+        # Seeking to duration itself often produces no frame; -frames:v 1 would
+        # return the first frame in that window instead of the true last frame.
+        start = max(0.0, duration - 2.0)
+        target.unlink(missing_ok=True)
+        cls._run(["-ss", str(start), *cls._input(path), "-map", "0:v:0", "-an",
+                  "-fps_mode", "passthrough", "-update", "1", str(target)], 180)
+        if not target.is_file() or not target.stat().st_size:
+            # Container duration can include longer audio; decode from the start
+            # once in that uncommon case, still under the local timeout.
+            cls._run([*cls._input(path), "-map", "0:v:0", "-an", "-fps_mode", "passthrough",
+                      "-update", "1", str(target)], 180)
+        if not target.is_file() or not target.stat().st_size:
+            raise AppError("INVALID_SOURCE", "Source produced no usable final frame", 422)
+        # This is a display estimate; the PNG is the actual final decoded frame.
+        return max(0.0, duration - 1.0 / (media.get("fps") or 25.0))

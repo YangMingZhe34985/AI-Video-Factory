@@ -18,7 +18,7 @@ def test_skills_api_lists_and_invokes_tools(client, app):
 
     listing = client.get("/api/skills")
     assert listing.status_code == 200
-    assert len(listing.json["data"]["skills"]) == 15
+    assert len(listing.json["data"]["skills"]) == 16
 
     denied = client.post("/api/skills/produce_shot/invoke", json={"role": "production", "input": SHOT})
     assert denied.status_code == 403

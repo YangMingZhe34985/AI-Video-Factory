@@ -80,6 +80,12 @@ class ToolRegistry:
         data = self._validate_input(spec, raw_input or {})
         self._authorize(spec, ctx)
         ctx.tool_name = spec.name
+        if ctx.shot_task_id is not None:
+            from app.agent.production_policy import validate_submission
+            validate_submission(data, ctx)
+        if spec.name == "extract_frame":
+            from app.skills.tools.extract_frame import validate_source
+            validate_source(data, ctx)
         if spec.permission == "external" or spec.name == "analyze_image":
             from app.agent.search.scope import require_run
             require_run(ctx, getattr(data, "run_id", None))
@@ -119,7 +125,7 @@ class ToolRegistry:
             )
 
     def _invoke_with_ledger(self, spec: ToolSpec, data: BaseModel, ctx: ToolContext) -> dict:
-        scoped = spec.permission == "external" or spec.name == "analyze_image"
+        scoped = spec.permission == "external" or spec.name in {"analyze_image", "extract_frame"} or ctx.shot_task_id is not None
         generated_key = idempotency_key_for(spec.name, data)
         if scoped:
             generated_key = f"{ctx.budget_scope}:tool:{hashlib.sha256(generated_key.encode()).hexdigest()[:32]}"
@@ -151,9 +157,14 @@ class ToolRegistry:
             if invocation.job is not None:
                 db.session.refresh(invocation.job)
             sync_invocation_from_job(invocation)
-            recovering_download = spec.name == "download_reference" and spec.permission == "external" and invocation.status in {"pending", "running"}
+            recovering_download = spec.name in {"download_reference", "extract_frame"} and invocation.status in {"pending", "running"}
+            if spec.name == "extract_frame" and invocation.status == "success":
+                from app.models import Artifact
+                from app.services.storage_service import StorageService
+                output_artifact = Artifact.query.filter_by(artifact_id=(invocation.output_payload or {}).get("artifact_id")).first()
+                recovering_download = not output_artifact or not StorageService.resolve(output_artifact.file_path).is_file()
             if invocation.status in REPLAYABLE_STATUSES and not recovering_download:
-                if scoped and invocation.status in {"pending", "running"}:
+                if scoped and invocation.status in {"pending", "running"} and invocation.job is None:
                     raise AppError("RECOVERY_REQUIRED", "Research call outcome is unknown; automatic repeat stopped", 409)
                 db.session.commit()
                 return self._result(spec, invocation, invocation.output_payload, replayed=True)
@@ -266,7 +277,7 @@ class ToolRegistry:
 
     @staticmethod
     def _check_scoped_replay(spec, invocation, data, ctx):
-        if spec.permission == "external" or spec.name == "analyze_image":
+        if spec.permission == "external" or spec.name in {"analyze_image", "extract_frame"} or ctx.shot_task_id is not None:
             if (invocation.tool_name != spec.name or invocation.budget_scope != ctx.budget_scope
                     or invocation.input_payload != data.model_dump(mode="json")):
                 raise AppError("IDEMPOTENCY_KEY_CONFLICT", "Research key belongs to different input or Run", 409)

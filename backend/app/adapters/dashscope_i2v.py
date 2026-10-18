@@ -13,6 +13,10 @@ class DashScopeI2VAdapter(DashScopeGenerationAdapter):
 
     def build_payload(self, inputs: dict, params: dict) -> dict:
         self.validate_inputs(inputs, params)
+        if inputs.get("last_frame_image") and (not self.model_id.startswith("wan2.7-i2v")
+                or "first_last_frame" not in (self.model.capabilities or {}).get("modes", [])):
+            from app.api import AppError
+            raise AppError("KEYFRAME_BRIDGE_UNAVAILABLE", "This adapter model does not support a last frame", 422)
         image_value = inputs["first_frame_image"]
         image_url = (
             image_value
@@ -35,6 +39,10 @@ class DashScopeI2VAdapter(DashScopeGenerationAdapter):
             return {"model": self.model_id, "input": input_obj, "parameters": parameters}
 
         media = [{"type": "first_frame", "url": image_url}]
+        if inputs.get("last_frame_image"):
+            last = inputs["last_frame_image"]
+            last_url = last if self.use_mock or self.is_remote_resource(str(last)) else self.upload_local_file_get_oss_url(self.model_id, last)
+            media.append({"type": "last_frame", "url": last_url})
         if self.model_id.startswith("happyhorse-"):
             parameters = {
                 "resolution": params.get("resolution", "720P"),
