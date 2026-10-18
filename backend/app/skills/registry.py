@@ -160,9 +160,9 @@ class ToolRegistry:
             recovering_download = spec.name in {"download_reference", "extract_frame"} and invocation.status in {"pending", "running"}
             if spec.name == "extract_frame" and invocation.status == "success":
                 from app.models import Artifact
-                from app.services.storage_service import StorageService
+                from app.skills.tools.extract_frame import cached_frame_is_valid
                 output_artifact = Artifact.query.filter_by(artifact_id=(invocation.output_payload or {}).get("artifact_id")).first()
-                recovering_download = not output_artifact or not StorageService.resolve(output_artifact.file_path).is_file()
+                recovering_download = not cached_frame_is_valid(output_artifact)
             if invocation.status in REPLAYABLE_STATUSES and not recovering_download:
                 if scoped and invocation.status in {"pending", "running"} and invocation.job is None:
                     raise AppError("RECOVERY_REQUIRED", "Research call outcome is unknown; automatic repeat stopped", 409)
