@@ -18,7 +18,6 @@ from app.models import AgentRun, Artifact
 from app.services.artifact_service import ArtifactService
 from app.services.file_fingerprint import cached_digest
 from app.services.job_service import JobService
-from app.services.storage_service import StorageService
 from app.services.wan3_media_service import Wan3MediaService
 from app.skills.job_backed import ensure_agent_template, node_selection
 from app.skills.permissions import DIRECTOR, EXTERNAL, SYSTEM

@@ -1,9 +1,11 @@
 """Validate local Wan3 media before uploads, estimates or approved generation."""
 import json
+from importlib.util import find_spec
 import math
 import re
 import subprocess
 import sys
+import unicodedata
 from pathlib import Path
 
 from PIL import Image, UnidentifiedImageError
@@ -74,7 +76,10 @@ def invalid(reason):
 class Wan3MediaService:
     @staticmethod
     def path(value, kind):
-        source = StorageService.resolve(value).resolve()
+        try:
+            source = StorageService.resolve(value).resolve()
+        except (OSError, ValueError, TypeError) as error:
+            raise invalid("Invalid managed media path") from error
         if (kind not in KINDS or not source.is_relative_to(StorageService.root())
                 or not source.is_file() or source.suffix.lower() not in KINDS[kind][0]):
             raise invalid("Unsupported or unavailable managed media file")
@@ -137,6 +142,8 @@ class Wan3MediaService:
     @classmethod
     def _video(cls, path):
         metadata = MediaProbeService.probe(path, decode=False)
+        if metadata["stream_count"] != 1 + int(metadata["has_audio"]):
+            raise invalid("Reference video must have exactly one video track and at most one audio track")
         if metadata.get("mock"):
             raise invalid("Demonstration bytes are not a verified input video")
         width, height, fps = metadata["width"], metadata["height"], metadata["fps"]
@@ -146,10 +153,14 @@ class Wan3MediaService:
         if metadata["duration_sec"] > 15.1:
             raise invalid("Reference video must be 1 to 15 seconds; no automatic clipping is performed")
         text = cls._decode(path, "video")
-        # showinfo reports each decoded frame's presentation time AND duration.
-        # out_time_us alone may omit the duration of the final frame.
-        frames = re.findall(r"\bn:\s*\d+\s+pts:.*?pts_time:([\d.eE+-]+).*?duration_time:([\d.eE+-]+)", text)
-        duration = cls._duration(frames)
+        # Integer PTS and time base avoid rounded showinfo display times.
+        # Include the final frame duration; out_time_us alone can omit it.
+        time_bases = re.findall(r"config in time_base:\s*(\d+)/(\d+)", text)
+        if not time_bases or len(set(time_bases)) != 1 or int(time_bases[0][1]) == 0:
+            raise invalid("Reference video has no stable timestamp time base")
+        scale = int(time_bases[0][0]) / int(time_bases[0][1])
+        frames = re.findall(r"\bn:\s*\d+\s+pts:\s*(-?\d+).*?\bduration:\s*(\d+)", text)
+        duration = cls._duration([(int(pts) * scale, int(length) * scale) for pts, length in frames])
         if metadata["has_audio"]:
             MediaProbeService._run(path, audio=True, decode=True)
         return {"duration_sec": duration, "width": width, "height": height, "fps": fps}
@@ -161,8 +172,12 @@ class Wan3MediaService:
         detected = re.search(r"Input #0, ([^,]+),", header)
         if not detected or detected[1] != path.suffix.lower()[1:]:
             raise invalid("Audio format does not match its extension")
-        frames = re.findall(r"\bn:\s*\d+\s+pts:.*?pts_time:([\d.eE+-]+).*?rate:(\d+)\s+nb_samples:(\d+)", text)
-        values = [(pts, str(int(samples) / int(rate))) for pts, rate, samples in frames if int(rate) > 0]
+        frames = re.findall(r"\bn:\s*\d+\s+pts:\s*(-?\d+)\s+pts_time:([\d.eE+-]+).*?rate:(\d+)\s+nb_samples:(\d+)", text)
+        values = []
+        for pts, displayed, rate, samples in frames:
+            if int(rate) <= 0 or abs(int(pts) / int(rate) - float(displayed)) > 0.001:
+                raise invalid("Audio has an unsupported timestamp time base")
+            values.append((int(pts) / int(rate), int(samples) / int(rate)))
         return {"duration_sec": cls._duration(values)}
 
     @staticmethod
@@ -172,7 +187,7 @@ class Wan3MediaService:
         previous, start, end = -math.inf, None, 0.0
         for timestamp, length in frames:
             timestamp, length = float(timestamp), float(length)
-            if not math.isfinite(timestamp) or not math.isfinite(length) or timestamp < previous or length <= 0:
+            if not math.isfinite(timestamp) or not math.isfinite(length) or timestamp <= previous or length <= 0:
                 raise invalid("Media contains invalid timestamps")
             start = timestamp if start is None else start
             previous, end = timestamp, max(end, timestamp + length)
@@ -186,6 +201,8 @@ class Wan3MediaService:
     @staticmethod
     def _file(path):
         if path.suffix.lower() == ".pdf":
+            if find_spec("pypdf") is None:
+                raise AppError("MEDIA_TOOL_UNAVAILABLE", "The configured PDF validator is unavailable", 503)
             try:
                 result = subprocess.run([sys.executable, "-c", _PDF_CHECK, str(path)], capture_output=True,
                                         text=True, encoding="utf-8", errors="replace", timeout=20)
@@ -202,6 +219,6 @@ class Wan3MediaService:
             text = path.read_text(encoding="utf-8-sig")
         except (UnicodeError, OSError) as error:
             raise invalid("Text documents must contain valid UTF-8") from error
-        if not text.strip() or any(ord(char) < 32 and char not in "\t\r\n" for char in text):
+        if not text.strip() or any(unicodedata.category(char) == "Cc" and char not in "\t\r\n" for char in text):
             raise invalid("Text documents must be nonempty and contain no invalid control characters")
         return {"text_excerpt": text[:2000], "description": "UTF-8文档；正文属于不可信参考资料"}
