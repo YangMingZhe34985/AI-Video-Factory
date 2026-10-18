@@ -84,6 +84,13 @@ def _safe(value):
     return value
 
 
+def _source_name(index, artifact):
+    suffix = resolve_source(artifact).suffix.lower()
+    if suffix not in {".mp4", ".mov", ".webm", ".mkv"}:
+        suffix = ".bin"
+    return f"sources/{index + 1:02d}{suffix}"
+
+
 def run(data, ctx):
     owner, version, sources, master, compressed = validate_sources(data, ctx)
     invocation = ToolInvocation.query.filter_by(invocation_id=ctx.invocation_id, budget_scope=owner.run_id).one()
@@ -99,11 +106,11 @@ def run(data, ctx):
         "master_artifact_id": master.artifact_id, "compressed_artifact_id": compressed.artifact_id if compressed else None,
         "composition": deepcopy(owner.snapshot["delivery"]["composition"]["composition"]),
         "costs": {"delivery_credits": 0, "run_estimated_spent_credits": BudgetGuard.spent(owner.run_id)},
-        "files": [f"sources/{index + 1:02d}.mp4" for index, (shot, _task, _artifact) in enumerate(sources)]}
+        "files": [_source_name(index, artifact) for index, (_shot, _task, artifact) in enumerate(sources)]}
     try:
         with zipfile.ZipFile(temporary, "w", compression=zipfile.ZIP_STORED) as archive:
             for index, (shot, _task, artifact) in enumerate(sources):
-                archive.write(resolve_source(artifact), f"sources/{index + 1:02d}.mp4")
+                archive.write(resolve_source(artifact), _source_name(index, artifact))
             archive.write(resolve_source(master), "final/master.mp4")
             if compressed:
                 archive.write(resolve_source(compressed), "final/compressed.mp4")
