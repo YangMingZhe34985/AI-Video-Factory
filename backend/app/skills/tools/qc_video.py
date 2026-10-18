@@ -89,4 +89,3 @@ def run(data, ctx):
 SPEC = ToolSpec(name="qc_video", description="Verify approved shots and final video structure without model calls.",
     input_model=QcVideoInput, output_model=QcVideoOutput, handler=run, permission=WRITE,
     allowed_roles=frozenset({PRODUCTION, SYSTEM}), requires_approval=True, timeout_sec=1200, max_retries=0)
-

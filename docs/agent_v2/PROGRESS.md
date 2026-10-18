@@ -397,3 +397,36 @@ C-Gate 评审结论：通过。
 需要用户决定：无新增。生产看板美化待用户安排。
 
 
+## 2026-10-18 · Codex · E1–E4 完成
+
+状态：功能与本轮 Mock 验收完成，合入本地 `feat/agent-v2`；E-Gate 与界面美化留 Claude，不进入 F。
+分支与提交：`agent-v2/E1`、`E2`、`E3`、`E4` 均保留。整合代码 `ac2f264`；包含 Claude D-Gate `034ff35 / 0ec8c99`，未改写其生产状态修复。此后仅本条文档、看板与 QC 文件末尾空行整理。没有推送远程或创建 PR。
+
+完成内容：
+- E1（`9f71bbe / 7af8d0e / 66f8007`）：Agent Job 冻结输出策略，默认不额外压缩；明确要求才允许压缩。故事片源镜头始终保留，压缩只在最终另产副本。线程与共用 MQ 下载使用同一策略；经典 Job 仍遵循原全局配置。Registry 注册 compose_video、probe_media、qc_video、package_story，共 20 个 Skill。
+- E2（`e675828 / 3688929`）：使用批准的原片，拒绝缺失原件时回退压缩代理；按源工件顺序与 SHA-256 冻结授权。充分一致的编码参数/流布局才 stream-copy，否则按首镜头规格保比例补边、高质量重编码，音频补静音并对齐视频时长；不将重编码称为无损。显式压缩副本与主片独立保存，临时文件原子落盘，源文件不覆盖。
+- E3（`9f186df / 44c2756 / 1032209`）：确定性 Editor 经 Registry 完成探测、拼接、结构质检和素材包，全部完成才 success。逐源/主片/压缩副本完整解码，按批准镜头时长而非最初目标检查总时长，画幅与帧率独立取批准源规格。ZIP 保留原镜头容器后缀与字节，包含主片、可选副本、计划/故事/QC/估算费用；不导出密钥、绝对路径或外部下载地址。
+- E4（`365886a / 084afef / e45ac36`）：成片播放器、鉴权主片/压缩副本/素材包下载、阶段与失败展示、免费恢复。视频按需获取鉴权 blob，并清理取消请求和 object URL；只接受匹配工件 ID 的本地接口地址。保留旧下游镜头的连贯性风险在交付区再次提示（承接 Claude 最新交接），不增加审核门槛，不改变其组件样式。
+
+授权与恢复：
+- 新审核 B 在交付开关开启时接续 Editor；历史 videos_approved 需显式 start_delivery。关闭开关保持原终点，内部 Skill 同样校验 Story v2 与交付开关。
+- 服务端 delivery_version、批准版本、源摘要、完整输入及 Run 归属在执行和幂等重放时均校验；公共请求不能伪造 Editor 上下文。主片/ZIP 非空损坏也会隐藏下载并允许恢复，不靠“文件存在”冒充成功。
+- 崩溃恢复复用持久工具回执；retry 意图冻结 target_attempt，收据落库前崩溃不重复加次数。仅 ZIP 缺失时复用有效主片和副本。恢复只执行本地步骤，不新增模型生成；源片缺失或摘要变化时停止，需要恢复批准的原字节。
+- E 章契约与 D-023/D-024 记录了上述边界；没有新增数据库迁移。零 credits 仅指没有新增模型费用，仍有本地 CPU/磁盘成本。
+
+验证：
+- **完整后端回归：991 passed, 38 warnings in 1592.80s（26分32秒）**，冻结代码 `16e2c60`，退出码 0；相比 D 基线 920 项新增 71 项。覆盖经典 DAG/API、MQ、Simple、remix、A–D 与本轮交付。38 条警告仍来自测试用短 JWT 密钥（API smoke 34、预算审核 4）。
+- 全量运行期间 Claude 合入 D-Gate。另在合并代码 `6d0bf04`（16e2c60 + 0ec8c99）跑全部 `test_production*.py` 及交付图、恢复、公共边界：**148 passed in 376.01s**，含 Claude 新增的拒绝提交回归。两组有重叠，不相加冒充总用例数；未重复跑第二轮全量。最终后端与该集成版本一致，仅删除一个 EOF 多余空行。
+- 最终前端 `e45ac36`：**40 passed**，`npm run build` 通过。无新增依赖；独立工作树通过忽略的 node_modules Junction 复用本机现有依赖。
+- 本地有效 MP4/WebM 覆盖同规格 copy、异规格规范化、画面顺序、混合音频及长音轨对齐、压缩副本、错时长/画幅/空文件/损坏/源漂移、归档字节保留；Mock 哨兵只精确识别后生成带示意标识的有效视频，不将任意坏视频当 Mock。
+- 真实浏览器 Mock 联调：临时 SQLite/存储，阻断外网 HTTP，鉴权开启。120 秒需求“请压缩”自然解析 compress_output=true；4×30秒源镜头完成审核 B，主片实际 **119.84秒 / 320×180 / 25fps** 可播放；主片、压缩副本、ZIP 均实际点击下载。最终 `16e2c60` 上丢失 ZIP 后恢复，主片/副本保持原件；ZIP CRC 正常、18 项 QC 通过，下载视频与包内字节一致。
+- 120秒 Run `agent_eb972b5fef5e4560` 始终 4 次 animate_shot、8 条 ApiTask、135 演示 credits；交付/重试没有增加模型次数或费用。另一个 Run 覆盖非空损坏主片恢复与模拟持久 QC 失败的界面停止，始终 4 次视频、8 条 ApiTask、30 演示 credits。匿名主片预览及三类下载均 401。历史 videos_approved 的显式开始入口也已验证。
+- 联调边界如实保留：首轮临时脚本晚于 Config 导入才设置 FFmpeg，触发 MEDIA_TOOL_UNAVAILABLE；改用 config_overrides 后恢复，这是测试启动配置问题。“请提供压缩视频副本”未被 Mock 的固定关键词解析器识别，该 Run 仅用于历史入口测试；压缩端到端证据来自新的“请压缩”120秒 Run。注入持久 QC=false 的浏览器操作是界面故障模拟，不代表真实编码质检证据。
+- 亮色/暗色 CSS 与组件 360px 宽度通过，内部无溢出。**400px 整页仍被既有全局侧栏裁切**，留 Claude 的美化范围，不声称整页移动端验收通过。StoryboardEditor、storyboard-messages、ProductionBoard、AGENTS.md、CLAUDE.md 没有本轮修改。
+- 临时 5078 / 5198 服务与本轮浏览器页已关闭，无监听。审计保留在 `C:/Users/MingZheYang/AppData/Local/Temp/cinecrew-e4-ui-20261018/`：`acceptance-summary.json`、`final-audit.json`、`media-validation.json`、`cleanup.json`、`smoke.db` 与下载样本。无真实 .env 修改、MySQL/Redis 部署验证、付费调用或真实库迁移。
+- 开发在独立工作树完成；Claude 的 D-Gate 代码与完整交接已保留。其主目录切回 feat 后仅在已跟踪文件干净时快进集成；原未跟踪 `AI_Video_Factory_Technical_Notes_CN.md` 保留。最终差异检查通过。
+
+给 Claude / 下一步：
+- E-Gate 可评审 D-023/D-024、源摘要授权、结构 QC、原片/主片/压缩副本语义、恢复与公开接口边界；全链路证据可复用。原 D-Gate 的预算提示、列表性能与全局侧栏事项保持原记录，未扩展处理。
+- 隔离 Mock 联调需同时开启 `AGENT_STORY_V2_ENABLED=true`、`AGENT_STORY_PRODUCTION_ENABLED=true`、`AGENT_STORY_DELIVERY_ENABLED=true`，配合 `MODEL_ADAPTER_MODE=mock`、临时 SQLite/存储和可用 FFmpeg（`FFMPEG_BINARY` 或 PATH；必须在应用配置导入前设置，或用 config_overrides）。这三个新链路开关默认仍关闭，真实 .env 未自动启用。历史视频审核完成的 Run 使用 start_delivery。
+- 真实模型画质、角色一致性、首尾帧质量、真实费用及高分辨率长片的负载未评测；结构 QC 不能替代视觉评审。F 与任何付费测试等待新的用户指令。本轮没有新增必须由用户决定的事项。

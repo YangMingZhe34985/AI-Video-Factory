@@ -73,10 +73,10 @@
 契约：CONTRACTS E章。E1–E4由Codex完成，E-Gate及界面美化留Claude；本轮仅Mock。
 | ID | 任务 | 负责 | 依赖 | 状态 |
 |---|---|---|---|---|
-| E1 | Agent默认不压缩、统一下载策略与兼容 | Codex | D0–D5 | 进行中 |
-| E2 | compose_video、主片/显式压缩副本 | Codex | E1 | 进行中 |
-| E3 | probe/QC、Editor恢复与素材包 | Codex | E2 | 进行中 |
-| E4 | 成片播放器、鉴权下载、交付状态与恢复 | Codex（功能） | E3 | 进行中 |
+| E1 | Agent默认不压缩、统一下载策略与兼容 | Codex | D0–D5 | 完成（9f71bbe、7af8d0e、66f8007；全量991项通过） |
+| E2 | compose_video、主片/显式压缩副本 | Codex | E1 | 完成（e675828、3688929；有效媒体与恢复验收） |
+| E3 | probe/QC、Editor恢复与素材包 | Codex | E2 | 完成（9f186df、44c2756、1032209；D-Gate集成148项通过） |
+| E4 | 成片播放器、鉴权下载、交付状态与恢复 | Codex（功能） | E3 | 完成（365886a、084afef、e45ac36；40项前端回归、构建与Mock联调） |
 | E-Gate | 阶段评审 | Claude | E1–E4 | 待开始 |
 
 ## Phase F
