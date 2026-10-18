@@ -42,16 +42,30 @@ class CreateRun(BaseModel):
         return self
 
 
+class CharacterEdit(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    character_id: str = Field(min_length=1, max_length=40)
+    lock_description: str | None = Field(default=None, min_length=1, max_length=600)
+    generate_prompt: str | None = Field(default=None, min_length=1, max_length=2000)
+
+
 class RunAction(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    action: Literal["approve", "reject", "deliver", "resume", "revise", "answer"]
+    action: Literal["approve", "reject", "deliver", "resume", "revise", "answer",
+                    "approve_characters", "regenerate", "regenerate_stale", "edit_plan", "approve_storyboard"]
     plan: dict | None = None
     shot: RemixShotSpec | None = None
     request_key: str | None = Field(default=None, min_length=1, max_length=128)
     card_id: str | None = Field(default=None, min_length=1, max_length=80)
     answers: list[Answer] = Field(default_factory=list, max_length=3)
     use_defaults: bool = False
+    edits: list[CharacterEdit] = Field(default_factory=list, max_length=8)
+    target_type: Literal["character", "keyframe", "end_frame"] | None = None
+    target_id: str | None = Field(default=None, min_length=1, max_length=80)
+    prompt: str | None = Field(default=None, min_length=1, max_length=8000)
+    base_version: int | None = Field(default=None, ge=1, strict=True)
+    plan_version: int | None = Field(default=None, ge=1, strict=True)
 
     @model_validator(mode="after")
     def _revision_input(self):
@@ -61,8 +75,21 @@ class RunAction(BaseModel):
             raise ValueError("answers and use_defaults are only valid for answer")
         if (self.action == "revise") != (self.shot is not None):
             raise ValueError("Only revise requires a shot")
-        if (self.action == "revise") != bool(self.request_key):
-            raise ValueError("Only revise requires a request_key")
+        if (self.action in {"revise", "regenerate", "regenerate_stale", "edit_plan"}) != bool(self.request_key):
+            raise ValueError("This action requires a request_key only for edits or regeneration")
+        if self.action != "approve_characters" and self.edits:
+            raise ValueError("Only approve_characters accepts edits")
+        if self.action == "regenerate":
+            if not self.target_type or not self.target_id:
+                raise ValueError("Regeneration needs a target")
+        elif self.target_type is not None or self.target_id is not None or self.prompt is not None:
+            raise ValueError("Only regenerate accepts target fields")
+        if (self.action == "edit_plan") != (self.base_version is not None):
+            raise ValueError("Only edit_plan requires base_version")
+        if self.action == "edit_plan" and self.plan is None:
+            raise ValueError("edit_plan requires a plan")
+        if (self.action == "approve_storyboard") != (self.plan_version is not None):
+            raise ValueError("Only approve_storyboard requires plan_version")
         return self
 
 
