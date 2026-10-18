@@ -1,6 +1,7 @@
 """Phase C previews use only Mock image Jobs, durable receipts and isolated data."""
 
 from copy import deepcopy
+from dataclasses import replace
 import time
 
 import pytest
@@ -189,19 +190,21 @@ def test_one_submission_failure_keeps_other_previews_successful(app_ctx, monkeyp
     row, version, registry = setup(characters=False)
     targets = previews.targets_for(version)
     previews.prepare_previews(row, version)
-    actual = registry.invoke
-    def invoke(name, data, ctx):
-        task = db.session.get(AgentShotTask, ctx.preview_task_id) if ctx.preview_task_id else None
-        if name == "generate_image" and task.target_id == "s02":
-            raise AppError("MOCK_SUBMIT_FAILURE", "Injected local failure", 503)
-        return actual(name, data, ctx)
-    monkeypatch.setattr(registry, "invoke", invoke)
+    original = registry.get("generate_image")
+    def fail_one(data, ctx):
+        task = db.session.get(AgentShotTask, ctx.preview_task_id)
+        if task.target_id == "s02":
+            raise AppError("MOCK_SUBMIT_FAILURE", "Injected local failure after ledger admission", 503)
+        return original.handler(data, ctx)
+    monkeypatch.setitem(registry._specs, "generate_image", replace(original, handler=fail_one))
     previews.launch_previews(row, version, targets, registry)
     assert finish(row, version, registry) == {"complete": True, "failed": True}
     view = previews.preview_view(row, version)
     assert [view["keyframes"][key]["status"] for key in ("s01", "s02", "s03")] == ["success", "failed", "success"]
     previews.launch_previews(row, version, targets, registry)
-    assert ToolInvocation.query.filter_by(tool_name="generate_image").count() == 2
+    assert ToolInvocation.query.filter_by(tool_name="generate_image").count() == 3
+    assert ToolInvocation.query.filter_by(tool_name="generate_image", status="failed").count() == 1
+    assert BudgetGuard.spent(row.run_id) == 7
 
 
 @pytest.mark.config(AGENT_MODE_ENABLED=True, AGENT_STORY_V2_ENABLED=True, API_AUTH_REQUIRED=True,
@@ -231,6 +234,14 @@ def test_preview_urls_job_routes_lists_and_packages_are_owner_protected(app_ctx,
     url = f"/api/artifacts/{package_artifact.artifact_id}/download"
     assert client.get(url, headers=other).status_code == 404
     assert client.get(url, headers=own).status_code == 200
+    for source in ({"initial_artifacts": {"first_frame_image": artifact_id}},
+                   {"source_video_path": artifact.file_path}):
+        result = client.post("/api/jobs", headers=other, json={"template_id": "agent_workspace", **source})
+        assert result.status_code == 404
+    result = client.post("/api/skills/generate_image/invoke", headers=other, json={
+        "role": "production", "approved": True, "budget_scope": "unrelated", "budget_limit": 100,
+        "input": {"mode": "i2i", "prompt": "copy", "reference_artifact_ids": [artifact_id]}})
+    assert result.status_code == 404
     assert not client.get("/api/artifacts", headers=other).json["data"]["artifacts"]
     assert client.get("/api/artifacts", headers=own).json["data"]["artifacts"]
     classic = h.make_job(paths=())
