@@ -112,3 +112,6 @@
 |W3|Skill/共享MQ、冻结授权、费用和恢复|Codex|W0 W1 W2|完成（全量基线及受影响233项复测，见PROGRESS）|
 |W4|附件与新配方审核功能、Mock浏览器验收|Codex（功能）|W0 W2|完成（63项前端测试、构建及审核主流程；原生文件控件限制见PROGRESS）|
 |W-Gate|集成审计及界面美化|Claude|W1–W4|待开始|
+
+
+2026-10-18 分支交付：用户授权将 feat/agent-v2 快进合入 GitHub main，并同步两分支。本轮只更新交接文档；MT-Gate / W-Gate 仍待 Claude 审计与美化，未开始 Phase F 或付费评测。
