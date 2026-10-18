@@ -843,6 +843,8 @@ ToolContext 追加 shot_task_id:int|null，仅由服务器设置，公共 Skill 
 - 提帧使用本地媒体服务；Mock 可仅对固定 Mock 视频哨兵提供有效 PNG 替身，但必须另用有效 MP4 验证真实 FFmpeg 首/尾帧行为，不把该替身当成真实视频质量验证。
 - Job 启动前写 agent_story_production={run_id,plan_version,shot_id,task_id}；生产/提帧工件的预览、下载、引用、复制均受 Run 归属保护。无该标记的经典 Job 保持原权限行为。
 - 冻结的审核选型同样适用于预算报价、Job 重启恢复、MQ 提交；不能只放宽整个 budget_scope。
+- 公共 Skill / Job 重跑入口不能替代生产动作授权（D-022）：生产 Job 派发与恢复需要服务端内部许可，绑定 Job 与执行参数；请求体不能提供该许可。未授权重交返回 UNSAFE_RETRY(409)，经典无标记 Job 不受影响。
+- 私有 Job 的提示词不再同步到公共模板；公共提示词/作业列表及显式 Job 提示词按归属保护。agent_workspace 和含私有 Job 的模板禁止公开打包/下载和无 Job 范围的提示词聚合，包含历史 ZIP 与历史同步提示词；其他经典模板包保持原行为（D-022）。
 
 ## D.4 失败分类与修复
 
