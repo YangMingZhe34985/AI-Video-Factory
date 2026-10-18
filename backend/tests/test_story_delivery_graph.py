@@ -161,3 +161,23 @@ def test_structural_qc_failure_stops_before_packaging(app_ctx, client, inline_jo
     assert act(client, run_id, "retry_delivery", plan_version=version, request_key="retry").status_code == 202
     assert finish(run_id).status == "success"
     assert paid(run_id) == before
+
+
+def test_delivery_flag_pauses_active_editor_until_explicit_retry(app_ctx, client, inline_jobs):
+    run_id, version = clips(app_ctx, client)
+    assert act(client, run_id, "approve_videos", plan_version=version, request_key="clips").status_code == 202
+    row = advance(run_id, registry())
+    assert row.status == "editing" and row.snapshot["delivery"]["stage"] == "composing"
+    before = paid(run_id)
+    tools_before = ToolInvocation.query.count()
+    app_ctx.config["AGENT_STORY_DELIVERY_ENABLED"] = False
+    row = advance(run_id, registry())
+    assert row.status == "delivery_attention" and row.error["code"] == "DELIVERY_DISABLED"
+    assert ToolInvocation.query.count() == tools_before and paid(run_id) == before
+    assert act(client, run_id, "retry_delivery", plan_version=version, request_key="retry").status_code == 409
+    app_ctx.config["AGENT_STORY_DELIVERY_ENABLED"] = True
+    assert advance(run_id, registry()).status == "delivery_attention"
+    assert ToolInvocation.query.count() == tools_before
+    assert act(client, run_id, "retry_delivery", plan_version=version, request_key="retry").status_code == 202
+    assert finish(run_id).status == "success"
+    assert paid(run_id) == before

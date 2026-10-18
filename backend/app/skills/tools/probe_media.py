@@ -1,6 +1,5 @@
 """Inspect an approved delivery artifact without exposing storage paths."""
 from pydantic import BaseModel, ConfigDict, Field
-from app.api import AppError
 from app.agent.delivery_policy import approved_sources, require_delivery_authorization, resolve_delivery_artifact, resolve_source
 from app.services.media_probe_service import MediaProbeService
 from app.skills.permissions import PRODUCTION, SYSTEM, WRITE

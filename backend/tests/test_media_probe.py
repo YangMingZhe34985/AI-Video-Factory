@@ -47,6 +47,7 @@ def test_long_audio_does_not_extend_video_duration(app):
         assert header["duration_sec"] == pytest.approx(2.4, abs=.1)
         assert decoded["duration_sec"] == pytest.approx(1.2, abs=.11)
         assert decoded["audio"]["sample_rate"] == 48000
+        assert decoded["audio"]["profile"] == "LC"
         assert decoded["audio"]["channels"] == 1
         assert decoded["has_audio"] and decoded["duration_source"] == "decoded_video"
 
@@ -94,3 +95,15 @@ def test_missing_copy_metadata_disables_stream_copy():
 Stream mapping:
 """)
     assert not result["copy_compatible_metadata"]
+
+
+@pytest.mark.parametrize("profile,eligible", [("LC", True), ("HE-AAC", False), (None, False)])
+def test_audio_copy_requires_explicit_aac_lc_profile(profile, eligible):
+    tag = f" ({profile})" if profile else ""
+    result = MediaProbeService._metadata(f"""Input #0, mov, from 'local':
+  Duration: 00:00:01.20, bitrate: 0 kb/s
+  Stream #0:0: Video: h264 (High), yuv420p, 128x96 [SAR 1:1 DAR 4:3], 10 fps, 10 tbr, 10240 tbn
+  Stream #0:1: Audio: aac{tag}, 48000 Hz, mono, fltp
+Stream mapping:
+""")
+    assert result["copy_compatible_metadata"] is eligible
