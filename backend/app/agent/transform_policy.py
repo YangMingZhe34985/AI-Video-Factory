@@ -26,7 +26,7 @@ def approve(run, plan):
         raise AppError("UNSAFE_RETRY", "An approved transform cannot be replaced by another paid attempt", 409)
     checked = validate_transform_plan(plan, (run.snapshot or {})["request_spec"], run=run, require_quote=True)
     receipt = {"approved": True, "plan_hash": checked["plan_hash"], "quote_id": checked["quote_id"],
-               "plan": deepcopy(checked), "invocation_key": invocation_key(run.run_id, checked["plan_hash"])}
+               "plan": deepcopy(checked), "request_spec": deepcopy(run.snapshot["request_spec"]), "invocation_key": invocation_key(run.run_id, checked["plan_hash"])}
     run.snapshot = {**(run.snapshot or {}), "transform": receipt}
     db.session.commit()
     return receipt

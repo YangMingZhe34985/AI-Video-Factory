@@ -1256,3 +1256,17 @@ The original process-local queue remains available when MQ is disabled. The opti
 Agent 的分析/媒体 Job 和经典工作流共用持久化执行层。启用前执行 `flask --app run.py db upgrade`，设置 `MQ_ENABLED=true`，启动 Redis 7 与 `flask --app run.py mq-worker`。生产使用 Compose 的 `mq` profile，分开 scheduler、submit、poll、download 角色。
 
 代码与生产配置默认保持关闭；[根目录 `.env.example`](../.env.example) 面向本地联调，已启用 MQ/Agent 并强制 Mock。已进入 MQ 的 Job 在关闭入口后仍由 MQ 排空。`flask --app run.py mq-status` 查看积压和提交未知状态。部署、人工对账、测试及回滚步骤见 [共用执行队列说明](../docs/architecture/mq_implementation.md)。
+
+
+## Wan3 Agent 原生变换（W0–W4）
+
+`video_transform` 配方支持多模态参考、编辑与延长，详见 [W 契约](../docs/agent_v2/CONTRACTS.md) 与 [使用说明](../README_zh.md#agent-模式)。仍使用旧百炼 `/services/aigc/video-generation/video-synthesis` 和 `/tasks/{task_id}`，不引入 workspace-id。
+
+- 新附件：`kind=audio`（WAV/MP3）、`kind=file`（TXT/MD/PDF）。文本需求始终必填；网页 URL 只从原始需求接收，并经 `capture_reference_page` 生成私有正文快照。
+- `POST /api/agent/runs/<run_id>/transform-quote` 接收 `{ "plan": ... }`，`data` 返回完整权威计划；仅限本人 `awaiting_approval` Run，不创建 Job / ToolInvocation / Outbox。
+- 原审核接口接收 `{ "action": "approve", "plan": <完整报价计划> }`，`quote_id` 在 plan 内。API 和 Graph 均验证，执行前 Registry / NodeRunner / MQ 再核验。不能仅凭公开 `approved: true` 调用新 Skill。
+- `transform_video` 的工具输入仅为 `{ "plan_hash": "..." }`，实际媒体、型号、参数和费用来自服务端审批回执；内部 Job 使用 `agent_transform` 私有标记，复用 R2V 两节点与 MQ。禁止经典 rerun 绕过审批或未知提交后重发。
+- 费用为 `(实际输入视频秒数 + 最终输出秒数) × 当前分辨率每秒 credits`；示例 credits 不是官方账单。视频延长返回整段，不是仅新增部分，不额外拼接原片。
+- `TRANSFORM_QUOTE_EXPIRED` / `TRANSFORM_INPUT_CHANGED` 为 409；无效草稿可修改后重新报价。已接受的服务商任务保留原 ID 轮询 / 下载，当前价格或启用状态变化不触发再次生成。
+
+本次无数据库结构变更，迁移 head 仍为 `20261018_002`；需安装更新后的 requirements（含固定版 pypdf），再检查已注册模型能力。只完成隔离 Mock / Stub 测试，未进行付费调用。

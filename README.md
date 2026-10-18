@@ -8,22 +8,28 @@ CineCrew (formerly AI Video Factory) is an AI video creation platform. Use Agent
 
 | Mode | Best for | Your controls |
 | --- | --- | --- |
-| Agent Studio | Describe an image or video in one sentence, optionally with image/video attachments | Request text, attachments, budget cap, answers to the Agent's questions, plan approval and shot edits |
+| Agent Studio | Describe an image or video in one sentence, optionally with image/video/audio/document attachments | Request text, attachments, budget cap, answers to the Agent's questions, plan approval and shot edits |
 | Classic workflow | Node debugging, source-video pipelines and batch tests | DAG branches, prompt versions, models, parameters and partial reruns |
 
 ### Agent Studio
 
-Write what you want (required) and attach reference photos or videos. The Intake Agent reads the text and attachments and decides the task type, asking multiple-choice questions only when an ambiguity would materially change the result. The Director picks models and writes prompts; nothing is generated or billed until you approve the plan.
+Write a required text request and optionally attach images, videos, audio or documents. Put webpage URLs in the request text. The Agent selects the recipe, duration and models, and asks multiple-choice questions when a material decision is uncertain.
 
-Task types chosen by the Agent: **photo edit** (image-to-image from your photo), **new image** (text-to-image), **single clip** (first frame → image-to-video), **multi-shot short** (split into shots by model duration limits, then storyboard approval; Phase C upgrades this to script and character design) and **video remix** (below). Put model preferences in the request text, e.g. “use the wan2.7 family”; if they cannot be met the Agent asks instead of switching models silently.
+- **Image edit / creation:** understand → plan → approve → deliver images.
+- **Single clip:** plan a first frame and motion → approve → generate.
+- **Multi-shot story:** script and characters → storyboard and previews → review → dependent or parallel shot production → quality checks and assembled delivery. Enable `AGENT_STORY_V2_ENABLED`, `AGENT_STORY_PRODUCTION_ENABLED` and `AGENT_STORY_DELIVERY_ENABLED` together for this newer path; the example configuration leaves these rollout flags off. The legacy path delivers shot packages.
+- **Segment-based remix:** keep local cuts, regenerate selected shots and package the shot assets. Source ranges and generated duration remain separate; this older remix path does not assemble a final film automatically.
+- **Wan3 reference / edit / extend:** validate complete input media → review one native transform plan and per-second quote → explicitly approve → deliver the original generated video. This path does not depend on the story rollout flags.
 
-**Source-video remix:** upload → describe edits → analyze → approve which segments to keep/regenerate → review and revise individual shots → package. Kept segments are cut locally with FFmpeg. Regenerated segments can use a source frame or a newly generated frame.
+A model family in the text is a hard constraint. With no preference, the server's corresponding node default applies. If it lacks the requested capability, the Agent asks before changing it. Editing the plan cannot bypass an explicit family constraint.
 
-A source time range identifies material in the original video; generated duration is a separate model parameter. Invalid draft plans can be edited before approval. Remix shot revisions preserve other shots. Successful results remain available after partial failure. Delivery consists of shot assets and prompts in ZIP packages; automatic final-film assembly is not included.
+The new transform review shows source length, total input-video seconds, final output length, extension length and resolution-specific rates. **A 5-second source extended by 2 seconds produces 7 seconds; its estimate bills 5 + 7 = 12 seconds.** Every edit requires a fresh authoritative quote. Changed source bytes, expired quotes or invalid plans block submission. Automatic approval thresholds never bypass this review.
 
-Without a model preference, the server's default video models apply. An explicit family or model restricts generation to registered, enabled models with the required capability. Unsupported combinations are rejected. Review concrete models and parameters in the plan before approval.
+Wan3 inputs: up to 10 images, 5 MP4/MOV videos (each 1–15 seconds, total ≤15 seconds), 5 WAV/MP3 audio files (each 1–15 seconds, total ≤15 seconds), and one UTF-8 TXT/MD or unencrypted PDF (1–50 pages). A webpage is captured as a private text snapshot and shares that one-document slot. Audio is not transcribed; PDF inspection verifies structure/pages rather than claiming full semantic understanding. Total input-video plus final output duration must be ≤30 seconds. No automatic clipping, splitting or concatenation is used to evade these limits.
 
-Budgets are estimated credits, not provider invoices. Analysis and planning happen before media-generation approval and may already incur costs in real mode. Start with Mock.
+Approval freezes the ordered media hashes, model, parameters and price. Skills, Jobs and the shared MQ verify these bindings before submission. Unknown submit outcomes are not automatically resubmitted; existing provider task IDs support polling/download recovery. Outputs are not additionally compressed unless explicitly requested.
+
+Credits are demonstration estimates, not provider invoices. In real mode, understanding, research, planning and story previews can incur costs before media-production approval. This release has only Mock/Stub validation; actual provider availability, image quality and bills remain unverified.
 
 ### Classic workflow
 
@@ -100,7 +106,7 @@ python -m flask --app run.py db upgrade
 python -m flask --app run.py db current
 ```
 
-Expected revision: `20261017_001 (head)`. For a new database, run `python -m flask --app run.py init-db` to seed defaults. It can also seed missing defaults in an existing database; it does not replace migration. Do not skip migrations with `db stamp`.
+Expected revision: `20261018_002 (head)`. For a new database, run `python -m flask --app run.py init-db` to seed defaults. It can also seed missing defaults in an existing database; it does not replace migration. Do not skip migrations with `db stamp`.
 
 ### 5. Run API and workers
 
@@ -139,6 +145,14 @@ API health: `http://127.0.0.1:5000/api/health`. Inspect queue state from an acti
 python -m flask --app run.py mq-status
 ```
 
+## Model catalog and task center
+
+The catalog includes `qwen-image-3.0`, `qwen-image-3.0-pro`, `wan3.0-video`, `wan3.0-video-prime` and Bailian `deepseek-v4.1-flash`. Adding models does not change server defaults. Known factory Wan3 capabilities upgrade additively while preserving operator prices and Agent selection; customized mode profiles require explicit operator review.
+
+Image/video calls keep the existing `DASHSCOPE_API_BASE_URL` endpoints, with no workspace ID. DeepSeek on Bailian uses `DASHSCOPE_API_KEY` and `DASHSCOPE_OPENAI_BASE_URL`. Wan3 first/last-frame mode remains an optional candidate behind `AGENT_ENABLE_KEYFRAME_BRIDGE`; Prime denotes speed, not a verified quality advantage. See the [detailed catalog](README_zh.md#模型目录更新2026-10).
+
+**Task Center** is a read-only view of your Agent runs and shared classic jobs: submission queues, provider generation, downloads, waiting reasons and unknown outcomes. It does not reorder/retry jobs or infer worker health or exact queue positions. Open the original work page to act. See [contracts and handoff](docs/agent_v2/CONTRACTS.md).
+
 ## Real models
 
 Set the required `DASHSCOPE_API_KEY` / `DEEPSEEK_API_KEY` and `MODEL_ADAPTER_MODE=real` in the root `.env`, then restart the API and all workers. Ensure models are enabled in the registry, create a new session, and review the plan and costs before approval.
@@ -176,13 +190,8 @@ python -m pip install -r backend/requirements-dev.txt
 python -m pytest backend/tests -q
 ```
 
-Tests isolate SQLite/storage, force Mock and block provider HTTP. Source-video tests need FFmpeg. Frontend validation: `npm run build` in `frontend-vue/`.
+Tests isolate SQLite/storage, force Mock and block provider HTTP. Source-video tests need FFmpeg. Frontend validation: `npm test` and `npm run build` in `frontend-vue/`. Reinstall backend requirements when upgrading; document validation adds pinned `pypdf==6.21.1`.
 
 Further reading: [Agent creation](docs/architecture/phase2_langgraph_mvp.md), [source-video remix](docs/architecture/phase3_video_remix.md), [stability evaluation](docs/architecture/phase4_stability_evaluation.md), [MQ operations and rollback](docs/architecture/mq_implementation.md), [backend API](backend/README.md), [production deployment](DEPLOYMENT.md).
 
 Production uses its own `.env.production` injected into containers; keep it separate from local `.env`. Licensed under [MIT](LICENSE).
-
-
-2026-10 新模型目录、旧百炼 URL、已接入模式与限制见 [模型目录说明](README_zh.md#模型目录更新2026-10)。新增目录不会切换默认模型，当前仅完成 Mock 验证。
-
-Agent / 经典工作流的共享队列阶段、等待原因与只读边界见 [任务中心说明](README_zh.md#任务中心)。

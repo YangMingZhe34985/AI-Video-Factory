@@ -85,6 +85,15 @@ class AgentWorker:
                     return
                 if kind in {"tasks", "analysis", "previews", "production_tasks", "delivery_tasks"}:
                     value = Command(resume={"action": "poll"})
+                elif (version == 2 and kind == "approval" and command and command.get("action") == "resume"
+                      and ((snapshot.values.get("request_spec") or {}).get("recipe_hint") == "video_transform")
+                      and (row.snapshot or {}).get("transform", {}).get("approved")):
+                    from app.agent.transform_policy import _receipt
+                    approved = _receipt(row)
+                    # The durable approval committed before a lost graph checkpoint.
+                    # Consume that same receipt; this is not a fresh approval.
+                    value = Command(resume={"action": "approve", "plan": approved["plan"],
+                                            "command_id": command.get("command_id")})
                 elif command and command["action"] in {"approval": {"approve", "reject"}, "delivery": {"deliver", "revise"},
                                                        "clarify": {"answer"},
                                                        "delivery_review": {"retry_delivery"},
@@ -131,6 +140,9 @@ class AgentWorker:
                      "production", "production_action_receipts", "transform", "production_repairs",
                      "delivery", "delivery_action_receipts")
                      if key in (row.snapshot or {})}
+        transform = preserved.get("transform") or {}
+        if transform.get("approved") and transform.get("request_spec"):
+            preserved["request_spec"] = transform["request_spec"]
         return {**dict(values), **preserved}
 
     @staticmethod
