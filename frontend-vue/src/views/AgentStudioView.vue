@@ -125,7 +125,7 @@
               :previews="previews" :estimates="storyEstimates" :issues="storyIssues" :spec="requestSpec || {}"
               :models="models" :status="selected.status" :disabled="busy || Boolean(selected.command)"
               :demo="mode === 'mock'" :duration-tolerance-ratio="storyConfig.durationToleranceRatio"
-              :keyframe-bridge-enabled="storyConfig.keyframeBridgeEnabled"
+              :keyframe-bridge-enabled="storyConfig.keyframeBridgeEnabled" :max-shots="storyConfig.maxShots"
               @action="storyAction" @refresh="select(selected.run_id)"
             />
 
@@ -184,6 +184,7 @@ import StoryboardEditor from '@/components/agent/StoryboardEditor.vue'
 import AuthedImage from '@/components/agent/AuthedImage.vue'
 import AuthedVideo from '@/components/agent/AuthedVideo.vue'
 import messages from '@/components/agent/messages'
+import { normalizeStoryRules } from '@/components/agent/storyboard'
 import { actOnAgentRun, actOnStoryboard, answerAgentCard, createAgentRun, getAgentRun, listAgentRuns, listModels, reviseAgentShot } from '@/api/agent'
 
 const { t, locale } = useI18n({ useScope: 'local', messages })
@@ -192,13 +193,13 @@ const router = useRouter()
 
 const enabled = ref(null), mode = ref('auto'), runs = ref([]), selected = ref(null), draft = ref(null)
 const busy = ref(false), error = ref(''), models = ref([]), paramsInvalid = ref(false), composer = ref(null)
-const storyConfig = ref({ durationToleranceRatio: 0.1, keyframeBridgeEnabled: false })
 let timer, disposed = false, selectionVersion = 0
 let requestKey = null, requestPayload = null, revisionKey = null, revisionPayload = null
 let storyKey = null, storyPayload = null
 
 // v2 fields (CONTRACTS A.10) with fallbacks to the run snapshot / v1 request.
 const pick = (run, key) => run?.[key] ?? run?.snapshot?.[key] ?? null
+const storyConfig = computed(() => normalizeStoryRules(pick(selected.value, 'story_rules') || {}))
 const isV2 = computed(() => (selected.value?.schema_version ?? selected.value?.request?.schema_version) === 2)
 const requestSpec = computed(() => pick(selected.value, 'request_spec'))
 const researchDossier = computed(() => pick(selected.value, 'research_dossier'))
@@ -360,10 +361,6 @@ onMounted(async () => {
     const data = (await response.json()).data
     enabled.value = Boolean(data.agent_mode)
     mode.value = data.mode
-    storyConfig.value = {
-      durationToleranceRatio: Number.isFinite(data.story_duration_tolerance_ratio) ? data.story_duration_tolerance_ratio : 0.1,
-      keyframeBridgeEnabled: Boolean(data.keyframe_bridge_enabled),
-    }
     if (enabled.value && !disposed) {
       listModels().then((value) => { models.value = value.models || [] }).catch(() => {})
       if (route.query.run) await select(route.query.run)

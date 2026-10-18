@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { clone, editedPlan, eligibleModels, incompleteTargets, localPlanCheck, priceFor, staleTargets, targetCost, timeline, videoCost } from '../src/components/agent/storyboard.js'
+import { clone, editedPlan, eligibleModels, incompleteTargets, localPlanCheck, normalizeStoryRules, priceFor, staleTargets, targetCost, timeline, videoCost } from '../src/components/agent/storyboard.js'
 
 const models = [
   { model_id: 'wan2.7-image', task_type: 'text_to_image', enabled: true, capabilities: { agent_selectable: true, modes: ['t2i', 'i2i'], reference_images: { max: 3 }, pricing: { unit: 'image', credits_per_unit: 2 } } },
@@ -95,4 +95,19 @@ const makePlan = () => ({ recipe: 'story_video', target_duration_sec: 120, scene
   const result = localPlanCheck(makePlan(), story, catalog, spec, { remainingBudget: 100 })
   assert(result.issues.some((issue) => issue.code === 'MODEL_CAPABILITY_MISMATCH'))
   assert(result.issues.some((issue) => issue.code === 'BUDGET_EXCEEDED'))
+ })
+
+ test('server story rules override client defaults including zero tolerance', () => {
+  assert.deepEqual(normalizeStoryRules(), { durationToleranceRatio: 0.1, maxShots: 30, keyframeBridgeEnabled: false })
+  const rules = normalizeStoryRules({ duration_tolerance_ratio: 0, max_shots: 4, keyframe_bridge_enabled: true })
+  assert.deepEqual(rules, { durationToleranceRatio: 0, maxShots: 4, keyframeBridgeEnabled: true })
+  assert(localPlanCheck(makePlan(), story, models, spec, rules).issues.some((issue) => issue.code === 'INVALID_PRODUCTION_PLAN'))
+  assert.equal(normalizeStoryRules({ duration_tolerance_ratio: -1, max_shots: 0, keyframe_bridge_enabled: 'false' }).durationToleranceRatio, 0.1)
+ })
+ test('stale batch honors server target quotes only when they match the current model', () => {
+  const plan = makePlan()
+  const previews = { keyframes: { s01: { status: 'stale', model_id: 'wan2.7-image', estimated_cost: 3 }, s02: { status: 'stale', model_id: 'old-image', estimated_cost: 90 } } }
+  assert.equal(targetCost(staleTargets(plan, previews), models, previews), 5)
+  previews.keyframes.s01.estimated_cost = 0
+  assert.equal(targetCost(staleTargets(plan, previews), models, previews), 2)
  })
