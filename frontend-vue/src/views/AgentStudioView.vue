@@ -123,7 +123,7 @@
               v-if="isStoryPlan" :key="`story-${selected.run_id}`"
               :run-id="selected.run_id" :plan="plan" :story="story || {}" :plan-version="planVersion"
               :previews="previews" :estimates="storyEstimates" :issues="storyIssues" :spec="requestSpec || {}"
-              :models="models" :status="selected.status" :disabled="busy || Boolean(selected.command)"
+              :models="models" :status="storyboardStatus" :disabled="busy || Boolean(selected.command)"
               :demo="mode === 'mock'" :duration-tolerance-ratio="storyConfig.durationToleranceRatio"
               :keyframe-bridge-enabled="storyConfig.keyframeBridgeEnabled" :max-shots="storyConfig.maxShots"
               @action="storyAction" @refresh="select(selected.run_id)"
@@ -225,6 +225,7 @@ const storyEstimates = computed(() => pick(selected.value, 'estimates') || {})
 const storyIssues = computed(() => pick(selected.value, 'plan_issues') || [])
 const production = computed(() => pick(selected.value, 'production'))
 const productionStatuses = ['storyboard_approved', 'producing', 'production_attention', 'awaiting_video_review', 'videos_approved']
+const storyboardStatus = computed(() => productionStatuses.includes(selected.value?.status) ? 'storyboard_approved' : selected.value?.status)
 const isRemix = computed(() => selected.value?.request?.mode === 'remix' || requestSpec.value?.recipe_hint === 'remix')
 // v1 stores the remix source on the request; v2 has it as the remix_source attachment.
 const sourceVideo = computed(() => {

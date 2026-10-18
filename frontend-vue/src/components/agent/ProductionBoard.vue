@@ -22,7 +22,7 @@
       <p class="text-xs text-slate-500">{{ t('startNote') }}</p>
     </div>
     <div v-if="status === 'awaiting_video_review'" class="mt-4 flex flex-wrap items-center gap-3">
-      <button type="button" class="primary-btn" :disabled="locked || counts.success !== counts.total || !counts.total" @click="openApprove">{{ t('approveAll') }}</button>
+      <button type="button" class="primary-btn" :disabled="locked || !production.enabled || counts.success !== counts.total || !counts.total" @click="openApprove">{{ t('approveAll') }}</button>
       <p class="text-xs text-slate-500">{{ t('deliveryNote') }}</p>
     </div>
     <p v-if="status === 'production_attention'" class="notice mt-4">{{ t('attentionNote') }}</p>
@@ -65,7 +65,7 @@
         <template v-else-if="confirmation.kind === 'approve'">
           <p class="mt-4 text-sm">{{ t('approveBody', { version: planVersion, n: counts.total }) }}</p>
           <p v-if="warnings.length" class="notice mt-3">{{ t('approveWarning') }}</p>
-          <button type="button" class="primary-btn mt-4" :disabled="locked || status !== 'awaiting_video_review'" @click="submitApprove">{{ t('confirmVideos') }}</button>
+          <button type="button" class="primary-btn mt-4" :disabled="locked || !production.enabled || status !== 'awaiting_video_review'" @click="submitApprove">{{ t('confirmVideos') }}</button>
         </template>
         <template v-else-if="confirmation.kind === 'review_plan'">
           <p class="mt-4 text-sm">{{ t('reviewPlanNote') }}</p>
@@ -116,9 +116,9 @@ let quoteEpoch = 0
 const rows = computed(() => productionRows(props.plan, props.production))
 const counts = computed(() => productionCounts(rows.value))
 const estimates = computed(() => props.production.estimates || {})
-const locked = computed(() => props.disabled || !props.production.enabled)
+const locked = computed(() => props.disabled)
 const reviewable = computed(() => reviewStatuses.has(props.status))
-const canReviewPlan = computed(() => props.status === 'production_attention' && rows.value.some((shot) => shot.error?.recovery_action === 'replan'))
+const canReviewPlan = computed(() => props.production.enabled && props.status === 'production_attention' && rows.value.some((shot) => shot.error?.recovery_action === 'replan'))
 const phaseLabel = computed(() => te(`phase.${props.status}`) ? t(`phase.${props.status}`) : t('productionPending'))
 const warnings = computed(() => [...new Set([...(props.production.warnings || []).map(warningText), ...(props.production.kept_downstream?.length ? [t('keptWarning', { shots: props.production.kept_downstream.join(', ') })] : [])])])
 const remainingBudget = computed(() => finiteCredits(estimates.value.remaining_budget) ?? (finiteCredits(props.budgetLimit) != null && finiteCredits(estimates.value.spent_credits) != null ? Math.max(0, props.budgetLimit - estimates.value.spent_credits) : null))
@@ -176,7 +176,7 @@ function submit(action, payload) {
   emit('action', { action, payload, onSuccess: (result) => { actionEstimate.value = result.action_estimated_credits ?? null; dialog.value?.close(); resetDialog() }, onError: (message) => { error.value = message; modalError.value = message; quote.value = null } })
 }
 function submitStart() { if (validStart.value) submit('start_production', { plan_version: props.planVersion, repair_budget_credits: repairBudget.value }) }
-function submitApprove() { if (props.status === 'awaiting_video_review') submit('approve_videos', { plan_version: props.planVersion }) }
+function submitApprove() { if (props.production.enabled && props.status === 'awaiting_video_review') submit('approve_videos', { plan_version: props.planVersion }) }
 function submitShot() {
   if (!confirmable.value) return
   try { const request = buildShotAction(quote.value, quoteContext.value, scope.value, confirmation.value.operation); submit(request.action, request.payload) }
