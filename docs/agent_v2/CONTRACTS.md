@@ -1098,9 +1098,9 @@ approve仍用原action结构{action:approve,plan:完整TransformPlan}；quote_id
 
 ## W.4 执行与恢复边界
 
-新transform_video Skill唯一生成输入={plan_hash:str}，执行明细从本Run批准快照取，不让公共请求重新带一套media。角色PRODUCTION/SYSTEM、需审批、额外server-only ToolContext.transform_hash，必须精确匹配Run已批准plan_hash和固定invocation key；公共Skill的approved=true不能替代它。Registry在预算/成功重放前都验证Run归属、完整输入、素材摘要与授权，跨Run/不同输入重用key拒绝。
+新transform_video Skill唯一生成输入={plan_hash:str}，执行明细从本Run批准快照取，不让公共请求重新带一套media。角色PRODUCTION/SYSTEM、需审批、额外server-only ToolContext.transform_hash，必须精确匹配Run已批准plan_hash和固定invocation key；公共Skill的approved=true不能替代它。Registry在预算/重放前均验证Run归属、完整输入、固定key及Job与审批回执的一致性；新提交还必须验证素材摘要和最新报价。已有provider_task_id的回放只恢复同一任务查询/下载，不要求当前价格/模型启用状态/原素材仍可生成，不能借此再次POST。跨Run/不同输入重用key拒绝（D-027）。
 
-agent/transform_policy.py提供approve(run,plan)同步写snapshot.transform批准回执（不能只依赖随后checkpoint）；W2图在审核成功后调用；worker合并快照保留此回执。新私有标记job.config.agent_transform={run_id,plan_hash,...}，不冒充Story task。
+agent/transform_policy.py提供approve(run,plan)同步写snapshot.transform批准回执（不能只依赖随后checkpoint）；W2图在审核成功后调用；回执同时冻结已确认的request_spec；worker合并快照保留此回执。审批落库与checkpoint之间崩溃时，resume仅消费同一回执，不重新申请额度或授权。新私有标记job.config.agent_transform={run_id,plan_hash,...}，不冒充Story task。
 新transform_execution.nodes(registry)供W2图接线：transform_production、transform_collect、transform_wait、transform_delivery；after_collect(state)返回wait|delivery|end。单个生成结果沿用Run.results[{kind:video,artifact_id,preview_url,download_url}]，只暴露鉴权本地工件。
 
 复用submit_r2v_flash/poll_r2v_flash及原MQ/下载；有agent_transform标记时读取冻结typed media，无随机参考图回退。NodeRunner提交前与MQ实际POST前都核对模型/参数/报价/源摘要/真实时长；价格上升或模型/源变化停止，不能悄悄扩大已批准预算。非MQ/MQ同一成本与许可；实际wire payload沿用旧URL。

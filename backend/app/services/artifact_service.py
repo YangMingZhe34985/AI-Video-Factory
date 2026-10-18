@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from sqlalchemy import or_, select
+from sqlalchemy import and_, or_, select
 
 from app.api import AppError
 from app.extensions import db
@@ -132,6 +132,11 @@ class ArtifactService:
                 preview_scope = Job.config[marker]["run_id"].as_string()
                 query = query.filter(or_(preview_scope.is_(None), preview_scope.in_(
                     select(AgentRun.run_id).where(AgentRun.owner_id == agent_upload_owner))))
+
+            transform_scope = Job.config["agent_transform"]["run_id"].as_string()
+            query = query.filter(or_(Job.config["agent_transform"].as_string().is_(None), and_(
+                transform_scope.in_(select(AgentRun.run_id).where(AgentRun.owner_id == agent_upload_owner)),
+                Job.config["skill"]["budget_scope"].as_string() == transform_scope)))
 
         if series_id:
             query = query.filter(Template.series == series_id.strip())

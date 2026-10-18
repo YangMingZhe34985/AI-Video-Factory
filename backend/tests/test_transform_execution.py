@@ -112,13 +112,21 @@ def test_public_approval_boolean_and_alternate_paid_tools_cannot_bypass_receipt(
     assert ApiTask.query.count() == 0
 
 
-@pytest.mark.parametrize("change,code", [("price", "TRANSFORM_QUOTE_EXPIRED"), ("file", "TRANSFORM_INPUT_CHANGED")])
+@pytest.mark.parametrize("change,code", [("price", "TRANSFORM_QUOTE_EXPIRED"), ("file", "TRANSFORM_INPUT_CHANGED"),
+    ("adapter", "MODEL_CAPABILITY_MISMATCH"), ("provider", "MODEL_CAPABILITY_MISMATCH")])
 def test_change_after_approval_stops_before_ledger_or_job(app_ctx, tmp_path, change, code):
     run, plan, ctx = prepared(tmp_path)
     if change == "price":
         model = ModelService.get_model(plan["model_id"])
         caps = deepcopy(model.capabilities); caps["pricing"]["resolution_rates"]["480P"] = 9
         model.capabilities = caps; db.session.commit()
+    elif change in {"adapter", "provider"}:
+        model = ModelService.get_model(plan["model_id"])
+        if change == "adapter":
+            model.adapter_name = "dashscope_t2v"
+        else:
+            model.provider = "another-provider"
+        db.session.commit()
     else:
         artifact = Artifact.query.filter_by(artifact_id=plan["media"][0]["artifact_id"]).one()
         StorageService.resolve(artifact.file_path).write_bytes(b"replaced bytes")
@@ -129,7 +137,7 @@ def test_change_after_approval_stops_before_ledger_or_job(app_ctx, tmp_path, cha
     assert Job.query.count() == before and ToolInvocation.query.count() == 0
 
 
-@pytest.mark.parametrize("change", ["price", "prompt", "params", "queued_media"])
+@pytest.mark.parametrize("change", ["price", "prompt", "params", "queued_media", "adapter", "provider"])
 def test_mq_revalidates_frozen_payload_before_provider_submit(app_ctx, tmp_path, monkeypatch, change):
     from app.queue.dispatch import dispatch_once
     from app.queue.execution import process_event
@@ -144,6 +152,12 @@ def test_mq_revalidates_frozen_payload_before_provider_submit(app_ctx, tmp_path,
         model = ModelService.get_model(plan["model_id"])
         caps = deepcopy(model.capabilities); caps["pricing"]["resolution_rates"]["480P"] = 9
         model.capabilities = caps
+    elif change in {"adapter", "provider"}:
+        model = ModelService.get_model(plan["model_id"])
+        if change == "adapter":
+            model.adapter_name = "dashscope_t2v"
+        else:
+            model.provider = "another-provider"
     elif change == "prompt":
         from app.services.prompt_service import PromptService
         prompt = PromptService.get_active_for_template(job.template, "r2v_flash", job_id=job.id)
@@ -254,3 +268,49 @@ def test_legacy_r2v_classification_does_not_grant_transform_capabilities():
     legacy = SimpleNamespace(task_type="reference_to_video", capabilities={})
     assert ModelService.supports_mode(legacy, "r2v")
     assert not any(ModelService.supports_mode(legacy, mode) for mode in ("omni_reference", "video_edit", "video_extend"))
+
+
+def test_non_mq_recovery_polls_original_task_after_model_disabled(app_ctx, tmp_path, monkeypatch):
+    from app.agent.recovery import invoke_once
+    from app.services.workflow_service import WorkflowService
+    run, plan, ctx = prepared(tmp_path)
+    monkeypatch.setattr(JobRunService, "start", lambda *args, **kwargs: {})
+    result = invoke(plan, ctx)
+    job = Job.query.filter_by(job_id=result["output"]["job_id"]).one()
+    WorkflowService.run_node(job.job_id, "submit_r2v_flash")
+    task = ApiTask.query.filter_by(job_id=job.id).one()
+    assert task.provider_task_id
+    original_id = task.provider_task_id
+    job.status = "running"
+    model = ModelService.get_model(plan["model_id"])
+    model.enabled = False
+    caps = deepcopy(model.capabilities); caps["pricing"]["resolution_rates"]["480P"] = 1000
+    model.capabilities = caps
+    artifact = Artifact.query.filter_by(artifact_id=plan["media"][0]["artifact_id"]).one()
+    StorageService.resolve(artifact.file_path).write_bytes(b"source removed after paid submission")
+    db.session.commit()
+    monkeypatch.setattr(JobRunService, "start", lambda job_id, run_type, **kw: JobRunService.run_inline(job_id, run_type, **kw))
+    replay = invoke_once(get_registry(), "transform_video", {"plan_hash": plan["plan_hash"]}, ctx)
+    db.session.refresh(job)
+    assert replay["output"]["job_id"] == job.job_id
+    assert job.status == "success", job.error_summary
+    assert ApiTask.query.count() == 1 and ApiTask.query.one().provider_task_id == original_id
+    assert BudgetGuard.spent(run.run_id) == 6
+
+
+def test_artifact_list_filters_transform_outputs_and_mismatched_scope(app_ctx, h, client, tmp_path):
+    run, plan, ctx = prepared(tmp_path)
+    job = complete(h, invoke(plan, ctx)["output"]["job_id"], False)
+    artifact = Artifact.query.filter_by(job_id=job.id, artifact_type="r2v_flash_video").one()
+    assert client.get(f"/api/artifacts?job_id={job.job_id}").json["data"]["total"] > 0
+    run.owner_id = "someone-else"; db.session.commit()
+    for suffix in (f"?job_id={job.job_id}", "?artifact_type=video", ""):
+        response = client.get("/api/artifacts" + suffix)
+        assert response.status_code == 200
+        assert artifact.artifact_id not in str(response.json)
+        assert job.job_id not in str(response.json)
+    assert client.get(f"/api/artifacts/{artifact.artifact_id}/preview").status_code == 404
+    run.owner_id = "local"
+    config = deepcopy(job.config); config["skill"]["budget_scope"] = "wrong-run"; job.config = config
+    db.session.commit()
+    assert client.get(f"/api/artifacts?job_id={job.job_id}").json["data"]["total"] == 0
