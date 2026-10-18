@@ -69,6 +69,7 @@
     </div>
     <details v-if="draft.rationale || draft.assumptions?.length" class="mt-4 text-sm">
       <summary class="cursor-pointer text-slate-500">{{ t('rationale') }}</summary>
+      <p class="mt-2 text-xs text-slate-500">{{ t('initialRationaleHint') }}</p>
       <p class="mt-2 whitespace-pre-wrap">{{ draft.rationale }}</p>
       <ul v-if="draft.assumptions?.length" class="mt-2 list-disc space-y-1 pl-5" :aria-label="t('assumptions')"><li v-for="item in draft.assumptions" :key="item">{{ item }}</li></ul>
     </details>
