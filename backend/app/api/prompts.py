@@ -1,14 +1,42 @@
 from http import HTTPStatus
 
-from flask import Blueprint, request
+from flask import Blueprint, current_app, request
+from flask_jwt_extended import get_jwt_identity
 
-from app.api import api_success
+from app.api import AppError, api_success
+from app.agent.attachments import require_upload_job_owner
+from app.agent.private_views import protected_prompt_templates, visible_prompt_assets
+from app.services.job_service import JobService
 from app.schemas.prompt_schema import CreatePromptVersionSchema, EditPromptVersionSchema, RollbackPromptSchema
 from app.services.prompt_service import PromptService
 
 
 bp = Blueprint("prompts", __name__, url_prefix="/api/templates")
 global_bp = Blueprint("global_prompts", __name__, url_prefix="/api")
+
+
+def _owner():
+    return get_jwt_identity() if current_app.config.get("API_AUTH_REQUIRED", True) else "local"
+
+
+@bp.before_request
+@global_bp.before_request
+def _protect_private_prompts():
+    if request.method == "OPTIONS":
+        return
+    args = request.view_args or {}
+    body = request.get_json(silent=True) or {}
+    body = body if isinstance(body, dict) else {}
+    job_ids = {str(value) for value in (args.get("job_id"), request.args.get("job_id"), body.get("job_id")) if value}
+    for job_id in job_ids:
+        require_upload_job_owner(JobService.get_job(job_id), _owner())
+    effective_job = args.get("job_id") or (request.args.get("job_id") if request.method == "GET" else body.get("job_id"))
+    if request.endpoint == "prompts.seed_factory_prompts":
+        effective_job = None
+    if args.get("template_id"):
+        template = PromptService.get_template(args["template_id"])
+        if template.template_id in protected_prompt_templates() and not effective_job:
+            raise AppError("PROMPT_NOT_FOUND", "Prompt not found", 404)
 
 
 @global_bp.get("/prompts")
@@ -28,6 +56,7 @@ def list_global_prompts():
         scope=request.args.get("scope"),
         limit=parsed_limit,
     )
+    assets = visible_prompt_assets(assets, _owner())
     return api_success({"prompts": assets, "total": len(assets)})
 
 
@@ -150,6 +179,7 @@ def list_prompts_with_filter(template_id: str):
     assets = PromptService.list_visible_assets(
         template_id, job_id=job_id, prompt_type=prompt_type, prompt_key=prompt_key
     )
+    assets = visible_prompt_assets(assets, _owner())
     return api_success({"prompts": assets, "total": len(assets)})
 
 
@@ -157,14 +187,14 @@ def list_prompts_with_filter(template_id: str):
 def list_job_prompts(template_id: str, job_id: str):
     """List all prompt assets for a job."""
     assets = PromptService.list_by_job(template_id, job_id)
-    return api_success({"prompts": assets})
+    return api_success({"prompts": visible_prompt_assets(assets, _owner())})
 
 
 @bp.get("/<template_id>/jobs/<job_id>/prompts/<prompt_type>")
 def list_job_prompts_by_type(template_id: str, job_id: str, prompt_type: str):
     """List all prompt assets of a type for a job."""
     assets = PromptService.list_assets_by_type(template_id, job_id, prompt_type)
-    return api_success({"prompts": assets})
+    return api_success({"prompts": visible_prompt_assets(assets, _owner())})
 
 
 @bp.get("/<template_id>/jobs/<job_id>/prompts/<prompt_type>/<prompt_key>/versions")

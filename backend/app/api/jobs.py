@@ -90,7 +90,8 @@ def create_job():
 
 @bp.get("")
 def list_jobs():
-    return api_success(JobService.list_jobs(request.args.to_dict()))
+    return api_success(JobService.list_jobs(request.args.to_dict(), owner_id=
+        get_jwt_identity() if current_app.config.get("API_AUTH_REQUIRED", True) else "local"))
 
 
 @bp.get("/<job_id>")
