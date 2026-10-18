@@ -78,7 +78,7 @@
                 <div v-if="attachments.length" class="mt-3 flex flex-wrap gap-2">
                   <span v-for="item in attachments" :key="item.attachment_id" class="block h-16 w-16 overflow-hidden rounded-lg ring-1 ring-slate-200 dark:ring-slate-700" :title="item.file_name">
                     <AuthedImage v-if="item.kind === 'image'" :src="item.preview_url" :alt="item.file_name" class="h-full w-full object-cover" />
-                    <span v-else class="flex h-full w-full items-center justify-center bg-slate-800 text-white"><PhFilmStrip :size="20" /></span>
+                    <span v-else class="flex h-full w-full items-center justify-center bg-slate-800 text-white"><PhFilmStrip v-if="item.kind === 'video'" :size="20" /><PhWaveform v-else-if="item.kind === 'audio'" :size="20" /><PhFileText v-else :size="20" /></span>
                   </span>
                 </div>
               </div>
@@ -112,11 +112,18 @@
             </section>
 
             <SimplePlanEditor
-              v-if="draft && !draft.shots && !isStoryPlan"
+              v-if="draft && !draft.shots && !isStoryPlan && !isTransform"
               :key="`simple-${selected.run_id}-${selected.status}`"
               :plan="draft" :models="models" :attachments="attachments"
               :editable="selected.status === 'awaiting_approval' && !selected.command" :disabled="actionDisabled"
               @approve="act('approve', $event)" @reject="act('reject')"
+            />
+
+            <TransformPlanEditor
+              v-if="isTransform && draft" :key="`transform-${selected.run_id}-${selected.status}`"
+              :run-id="selected.run_id" :plan="draft" :models="models" :spec="requestSpec || {}" :attachments="attachments"
+              :editable="selected.status === 'awaiting_approval' && !selected.command" :disabled="actionDisabled"
+              @approve="act('approve', $event.plan, $event.onError)" @reject="act('reject')"
             />
 
             <StoryboardEditor
@@ -154,7 +161,9 @@
               </div>
             </template>
 
-            <section v-if="results.length && !isStoryPlan" class="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900">
+            <TransformResults v-if="isTransform && results.length" :key="`transform-results-${selected.run_id}`" :results="results" :mock="mode === 'mock'" />
+
+            <section v-if="results.length && !isStoryPlan && !isTransform" class="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900">
               <h3 class="text-sm font-semibold text-slate-900 dark:text-slate-100">{{ t('results') }}</h3>
               <div class="mt-3 grid gap-3 sm:grid-cols-2">
                 <figure v-for="item in results" :key="item.artifact_id" class="overflow-hidden rounded-xl border border-slate-200 dark:border-slate-700">
@@ -183,7 +192,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
-import { PhFilmStrip, PhPlus, PhUser } from '@phosphor-icons/vue'
+import { PhFileText, PhFilmStrip, PhPlus, PhUser, PhWaveform } from '@phosphor-icons/vue'
 import DefaultLayout from '@/layouts/DefaultLayout.vue'
 import AgentComposer from '@/components/agent/AgentComposer.vue'
 import RunStepper from '@/components/agent/RunStepper.vue'
@@ -191,6 +200,8 @@ import UnderstandingCard from '@/components/agent/UnderstandingCard.vue'
 import ResearchCard from '@/components/agent/ResearchCard.vue'
 import ClarificationCard from '@/components/agent/ClarificationCard.vue'
 import SimplePlanEditor from '@/components/agent/SimplePlanEditor.vue'
+import TransformPlanEditor from '@/components/agent/TransformPlanEditor.vue'
+import TransformResults from '@/components/agent/TransformResults.vue'
 import ShotPlanEditor from '@/components/agent/ShotPlanEditor.vue'
 import StoryboardEditor from '@/components/agent/StoryboardEditor.vue'
 import ProductionBoard from '@/components/agent/ProductionBoard.vue'
@@ -224,6 +235,7 @@ const results = computed(() => pick(selected.value, 'results') || [])
 const clarifications = computed(() => selected.value?.snapshot?.clarifications || [])
 const assumptions = computed(() => selected.value?.snapshot?.assumptions || [])
 const plan = computed(() => pick(selected.value, 'plan'))
+const isTransform = computed(() => plan.value?.recipe === 'video_transform' || requestSpec.value?.recipe_hint === 'video_transform')
 const story = computed(() => pick(selected.value, 'story'))
 const planVersion = computed(() => pick(selected.value, 'plan_version') ?? plan.value?.plan_version)
 const isStoryPlan = computed(() => plan.value?.recipe === 'story_video' && Number.isInteger(planVersion.value) && Array.isArray(plan.value?.scenes))
@@ -325,11 +337,11 @@ async function create(payload) {
     await refresh()
   } catch (err) { error.value = message(err) } finally { busy.value = false }
 }
-async function act(action, planValue) {
+async function act(action, planValue, onError) {
   busy.value = true
   error.value = ''
   try { applyRun(await actOnAgentRun(selected.value.run_id, action, action === 'approve' ? planValue : undefined)); await refresh() }
-  catch (err) { error.value = message(err) } finally { busy.value = false }
+  catch (err) { error.value = message(err); onError?.(err) } finally { busy.value = false }
 }
 async function answer({ answers, useDefaults }) {
   busy.value = true
