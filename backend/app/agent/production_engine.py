@@ -124,16 +124,33 @@ def _finish_repairs(run, task):
             record_repair(run, original, status="completed" if task.status == "success" else "failed")
 
 
+def _execution_in_flight(job):
+    """A terminal Job can still belong to the execution preceding recovery."""
+    from app.models import ApiTask, JobDispatch
+    from app.services.job_queue_service import JobQueueService
+    from app.services.job_run_service import JobRunService
+    if JobRunService.is_running_in_thread(job.job_id) or JobQueueService._is_known(job.job_id):
+        return True
+    if JobDispatch.query.filter_by(job_id=job.id).filter(JobDispatch.status.in_({"ready", "running"})).first():
+        return True
+    return ApiTask.query.filter_by(job_id=job.id).filter(ApiTask.operation_key.is_not(None),
+        ApiTask.queue_phase.in_({"submit", "submit_active", "poll", "poll_active", "download", "download_active"})).first() is not None
+
+
 def _poll(run, version, registry):
     from app.agent.production_repair import classify_job_failure
     for task in latest_tasks(run, version).values():
         if task.status != "running" or not task.job_id:
             continue
         job = Job.query.filter_by(job_id=task.job_id).one()
+        if _execution_in_flight(job):
+            continue
         try:
             recover_job(job, run.run_id)
             report = registry.invoke("get_task_status", {"job_id": task.job_id}, _context(run, task, polling=True))["output"]
-            if not report["terminal"] and not report["overdue"]:
+            # recover_job may have started a new reader after the first check.
+            # Do not finalize from a snapshot while its executor is still active.
+            if _execution_in_flight(job) or (not report["terminal"] and not report["overdue"]):
                 continue
             # Query the artifact itself as well; status responses alone are not a
             # success receipt when a download vanished or never completed.
