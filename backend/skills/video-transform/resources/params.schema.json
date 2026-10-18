@@ -1,0 +1,144 @@
+{
+  "$defs": {
+    "MediaReference": {
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "enum": [
+            "reference_image",
+            "reference_video",
+            "reference_audio",
+            "file"
+          ],
+          "title": "Type",
+          "type": "string"
+        },
+        "artifact_id": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Artifact Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "artifact_id"
+      ],
+      "title": "MediaReference",
+      "type": "object"
+    },
+    "TransformDraft": {
+      "additionalProperties": false,
+      "properties": {
+        "recipe": {
+          "const": "video_transform",
+          "default": "video_transform",
+          "title": "Recipe",
+          "type": "string"
+        },
+        "operation": {
+          "enum": [
+            "reference",
+            "edit",
+            "extend"
+          ],
+          "title": "Operation",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "model_id": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Model Id",
+          "type": "string"
+        },
+        "prompt": {
+          "maxLength": 8000,
+          "minLength": 1,
+          "title": "Prompt",
+          "type": "string"
+        },
+        "params": {
+          "additionalProperties": true,
+          "title": "Params",
+          "type": "object"
+        },
+        "media": {
+          "items": {
+            "$ref": "#/$defs/MediaReference"
+          },
+          "maxItems": 20,
+          "minItems": 1,
+          "title": "Media",
+          "type": "array"
+        },
+        "source_artifact_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Artifact Id"
+        },
+        "assumptions": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 10,
+          "title": "Assumptions",
+          "type": "array"
+        },
+        "rationale": {
+          "maxLength": 1000,
+          "minLength": 1,
+          "title": "Rationale",
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation",
+        "title",
+        "model_id",
+        "prompt",
+        "media",
+        "rationale"
+      ],
+      "title": "TransformDraft",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "plan": {
+      "$ref": "#/$defs/TransformDraft"
+    },
+    "goal": {
+      "anyOf": [
+        {
+          "maxLength": 2000,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Goal"
+    }
+  },
+  "required": [
+    "plan"
+  ],
+  "title": "Params",
+  "type": "object"
+}

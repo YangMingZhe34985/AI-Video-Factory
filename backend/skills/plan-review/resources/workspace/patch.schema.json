@@ -1,0 +1,407 @@
+{
+  "$defs": {
+    "ArtifactEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_id": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Artifact Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifact_id"
+      ],
+      "title": "ArtifactEvidence",
+      "type": "object"
+    },
+    "BlueprintOrigin": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "version": {
+          "minimum": 1,
+          "title": "Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "name",
+        "version"
+      ],
+      "title": "BlueprintOrigin",
+      "type": "object"
+    },
+    "InsertNode": {
+      "additionalProperties": false,
+      "properties": {
+        "op": {
+          "const": "insert_node",
+          "title": "Op",
+          "type": "string"
+        },
+        "node": {
+          "$ref": "#/$defs/PlanDraftNode"
+        },
+        "before": {
+          "anyOf": [
+            {
+              "pattern": "^[a-z0-9_]{1,40}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Before"
+        }
+      },
+      "required": [
+        "op",
+        "node"
+      ],
+      "title": "InsertNode",
+      "type": "object"
+    },
+    "PlanDraftNode": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "pattern": "^[a-z0-9_]{1,40}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "tool": {
+          "pattern": "^[a-z][a-z0-9_]{0,79}$",
+          "title": "Tool",
+          "type": "string"
+        },
+        "inputs": {
+          "additionalProperties": true,
+          "title": "Inputs",
+          "type": "object"
+        },
+        "model_id": {
+          "anyOf": [
+            {
+              "maxLength": 120,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model Id"
+        },
+        "params": {
+          "additionalProperties": true,
+          "title": "Params",
+          "type": "object"
+        },
+        "stage": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Stage"
+        },
+        "depends_on": {
+          "items": {
+            "pattern": "^[a-z0-9_]{1,40}$",
+            "type": "string"
+          },
+          "maxItems": 200,
+          "title": "Depends On",
+          "type": "array"
+        },
+        "gate": {
+          "anyOf": [
+            {
+              "const": "preview",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Gate"
+        },
+        "origin": {
+          "$ref": "#/$defs/PlanOrigin"
+        },
+        "rationale": {
+          "maxLength": 300,
+          "title": "Rationale",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "tool",
+        "origin",
+        "rationale"
+      ],
+      "title": "PlanDraftNode",
+      "type": "object"
+    },
+    "PlanOrigin": {
+      "additionalProperties": false,
+      "properties": {
+        "agent": {
+          "enum": [
+            "producer",
+            "research",
+            "creative",
+            "director",
+            "prompt_smith",
+            "critic",
+            "repair"
+          ],
+          "title": "Agent",
+          "type": "string"
+        },
+        "skills": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 30,
+          "title": "Skills",
+          "type": "array"
+        },
+        "blueprint": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BlueprintOrigin"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "agent"
+      ],
+      "title": "PlanOrigin",
+      "type": "object"
+    },
+    "RemoveNode": {
+      "additionalProperties": false,
+      "properties": {
+        "op": {
+          "const": "remove_node",
+          "title": "Op",
+          "type": "string"
+        },
+        "node_id": {
+          "pattern": "^[a-z0-9_]{1,40}$",
+          "title": "Node Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "op",
+        "node_id"
+      ],
+      "title": "RemoveNode",
+      "type": "object"
+    },
+    "ReplaceNode": {
+      "additionalProperties": false,
+      "properties": {
+        "op": {
+          "const": "replace_node",
+          "title": "Op",
+          "type": "string"
+        },
+        "node_id": {
+          "pattern": "^[a-z0-9_]{1,40}$",
+          "title": "Node Id",
+          "type": "string"
+        },
+        "node": {
+          "$ref": "#/$defs/PlanDraftNode"
+        }
+      },
+      "required": [
+        "op",
+        "node_id",
+        "node"
+      ],
+      "title": "ReplaceNode",
+      "type": "object"
+    },
+    "TaskEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "task_id": {
+          "minimum": 1,
+          "title": "Task Id",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "task_id"
+      ],
+      "title": "TaskEvidence",
+      "type": "object"
+    },
+    "UpdateInputs": {
+      "additionalProperties": false,
+      "properties": {
+        "op": {
+          "const": "update_inputs",
+          "title": "Op",
+          "type": "string"
+        },
+        "node_id": {
+          "pattern": "^[a-z0-9_]{1,40}$",
+          "title": "Node Id",
+          "type": "string"
+        },
+        "inputs": {
+          "additionalProperties": true,
+          "title": "Inputs",
+          "type": "object"
+        }
+      },
+      "required": [
+        "op",
+        "node_id",
+        "inputs"
+      ],
+      "title": "UpdateInputs",
+      "type": "object"
+    },
+    "WorkspaceEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "workspace_ref": {
+          "$ref": "#/$defs/WorkspaceRef"
+        }
+      },
+      "required": [
+        "workspace_ref"
+      ],
+      "title": "WorkspaceEvidence",
+      "type": "object"
+    },
+    "WorkspaceRef": {
+      "additionalProperties": false,
+      "properties": {
+        "key": {
+          "pattern": "^[A-Za-z0-9_.-]{1,120}$",
+          "title": "Key",
+          "type": "string"
+        },
+        "version": {
+          "minimum": 1,
+          "title": "Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "key",
+        "version"
+      ],
+      "title": "WorkspaceRef",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "base_version": {
+      "minimum": 1,
+      "title": "Base Version",
+      "type": "integer"
+    },
+    "reason": {
+      "maxLength": 2000,
+      "minLength": 1,
+      "title": "Reason",
+      "type": "string"
+    },
+    "evidence_refs": {
+      "items": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/TaskEvidence"
+          },
+          {
+            "$ref": "#/$defs/ArtifactEvidence"
+          },
+          {
+            "$ref": "#/$defs/WorkspaceEvidence"
+          }
+        ]
+      },
+      "maxItems": 40,
+      "title": "Evidence Refs",
+      "type": "array"
+    },
+    "ops": {
+      "items": {
+        "discriminator": {
+          "mapping": {
+            "insert_node": "#/$defs/InsertNode",
+            "remove_node": "#/$defs/RemoveNode",
+            "replace_node": "#/$defs/ReplaceNode",
+            "update_inputs": "#/$defs/UpdateInputs"
+          },
+          "propertyName": "op"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/$defs/UpdateInputs"
+          },
+          {
+            "$ref": "#/$defs/ReplaceNode"
+          },
+          {
+            "$ref": "#/$defs/InsertNode"
+          },
+          {
+            "$ref": "#/$defs/RemoveNode"
+          }
+        ]
+      },
+      "maxItems": 50,
+      "minItems": 1,
+      "title": "Ops",
+      "type": "array"
+    },
+    "scope": {
+      "default": "only",
+      "enum": [
+        "only",
+        "cascade"
+      ],
+      "title": "Scope",
+      "type": "string"
+    }
+  },
+  "required": [
+    "base_version",
+    "reason",
+    "ops"
+  ],
+  "title": "PatchDraft",
+  "type": "object"
+}

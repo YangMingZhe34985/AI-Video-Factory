@@ -439,3 +439,23 @@ revise_plan 可用于 awaiting_plan_review / awaiting_result_review / awaiting_g
 公开 patches 返回状态、作者、原因、精简 diff、审阅结论、报价/是否自动批准及批准版本；不暴露私有哈希、原始模型消息或文件路径。reject_patch 只拒绝当前补丁，保留已完成产物及原失败状态。
 Run 另公开 action_pending、resume_count 与 repair_budget={limit,committed,remaining}（预授权占用，不重复计入账本花费）；节点公开 retained、来源版本与依赖。attention 接受新动作后暂转 understanding，动作箱保存 admitted_from_status，由 worker 消费，避免后台自发重试。
 patches.diff_preview 为逐操作 {op,node_id,before,after}：输入更新仅展示被改字段，替换/新增/删除展示对应 Plan 节点；使用同 Run 基准版本生成并脱敏，便于用户核对具体修改后再审批。
+
+## V.18 V6 角色策略与提示词范围（D-036）
+- 七个 Card 和正式提示词说明各自的输入/输出、何时委派、何时直接完成、工具失败/额度/不确定性的处理；角色输出仍使用 V.5 的 workspace/finish 格式。submit_plan、propose_patch、review_patch 的成功动作已原子完成对应委派，不需要额外 finish 回合。
+- Producer 独立完成简单图片或单镜头任务；Research 提供受工具回执约束的来源，Creative 提供 StoryPackage，Director 起草 PlanDraft 并安排真实依赖/模型/按秒估价，Prompt Smith 返回范围内提示词更新，Critic 返回只读审阅，Repair 仅处理服务端分配的局部补丁。首尾帧仍是待验证候选，默认不压缩。
+- delegate 输入新增 prompt_scope?:{plan_ref:WorkspaceRef,node_ids:NodeId[](1–200，唯一)}。agent=prompt_smith 时必填，其他角色禁止；plan_ref 必须同值包含在 context_refs、kind=plan_draft，node_ids 必须存在且为支持 prompt 的生成节点。创建子委派时服务端保存不可变范围，不能通过任务文字扩大。
+- Prompt Smith finish(kind=completed,updates) 每条为 {node_id,inputs_patch:{prompt:非空字符串}}；列表不为空、不重复、不越界，长度使用已有提示词上限。不接受 negative_prompt/model_id/params/时长/引用或任意其他字段。此结果只是一份受限建议，由父 Agent 应用到新 PlanDraft 并重新 check_plan/submit_plan；已批准计划仍必须走 V5 Patch。
+- 普通 delegate(agent=repair) 在没有服务端 active repair flow 时拒绝；确定性修复协调仍使用原 Registry.delegate、父配额与稳定收据。
+- 本轮验收仅 Mock/Stub：照片改造、单镜头、约 120 秒故事、原片改造四场景，验证真实运行时/工具回执及编译计划。脚本的正确选择不证明真实 LLM 能自主达到同等效果，Claude 的 Gate 与提示词审定保持独立。
+
+- 六个 Blueprint 指南增加可由 read_skill_resource 获取的 params.schema.json 与最小 examples.json；JSON Schema 与服务端 Params.model_json_schema 保持一致，示例素材标记为需替换的占位符。不能只把参数合同放在不会返回给 Agent 的 frontmatter；Schema 资源不授予执行权限。
+
+- 视频理解边界：当前 analyze_video 通过异步 Job 返回内容/提示词描述，不提供已验证的逐镜头时间码。原片改造可采用用户指定且经媒体时长校验的范围；不得把内容描述伪装为自动镜头切分证据。精确切点不确定时由 Producer 澄清。
+
+- Director 增加 get_task_status 只读工具用于取回异步预览；没有扩展任何生成权限。analyze_images 当前接受同 Run 上传/检索图，不接受生成图或预览图；生成关键帧由用户 gate 审核，不宣称已有自动视觉质量评估。
+
+- Repair 仍登记在内部七角色目录以供确定性协调，普通 list_agents 与初始可委派提示不列出 Repair；Card 的内部权限不等同于允许模型自行启动修复流程。
+
+- 规划额度上下文：新LLM step在请求前持久化一份服务端 quota snapshot，包含 delegation_limit、delegation_remaining、run_planning_limit、run_planning_spent、run_budget_limit、run_spent，均为调用前值（本轮LLM也会消耗配额）。快照只描述状态，不授予授权；同step重放必须使用原快照，已有旧账本而无快照时沿用旧消息，不新增上下文改变原请求摘要。模型应按实际子任务显式分配 planning_credits，并保留自身汇总/提交所需额度；不自动上调任何限额。
+- 上述兼容只保证新增quota上下文不改写原step。跨发布若函数Schema或工具权限已变化，仍遵守原严格摘要校验并安全停止，不自动重发付费回合，也不声称可无缝迁移所有在途旧委派。
+- 角色必须能读取实际写入合同：plan-review resources 暴露 brief/research_dossier/story/plan_draft/critic_review/patch 的模型 JSON Schema，以及十个 Plan 工具的 resolved input_schema、Plan io_types 命名输出和 authoring 字段放置说明。异步 Job 回执字段不等于 Plan 完成输出。角色按需读取，不把全部资源注入每轮，不开放生成函数；以实际编译/归属校验为准。资源漂移由回归阻止。capture_reference_page 只对原用户文本中 URL 创建正文工件，不能充当图片或任意研究网页截图。

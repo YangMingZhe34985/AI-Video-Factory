@@ -1,0 +1,394 @@
+{
+  "demo": true,
+  "warning": "演示数据。占位符不是有效模型/工件；秒数不代表能力上限。先读取 Schema 和实际工具结果，再替换全部占位符与参数；禁止将本例当作来源、报价或审批证据。",
+  "replace_before_use": {
+    "REPLACE_DEFAULT_IMAGE_MODEL_ID": "check_plan 解析后的服务器默认图像模型（按 t2i/i2i 分别确认）",
+    "REPLACE_ALLOWED_VIDEO_MODEL_ID": "满足原用户系列/禁用约束且符合当前模式的模型 ID"
+  },
+  "examples": [
+    {
+      "label": "同场景尾帧串行承接",
+      "params": {
+        "plan": {
+          "title": "演示：寻找星光",
+          "target_duration_sec": 10.0,
+          "scenes": [
+            {
+              "scene_id": "forest",
+              "location": "森林",
+              "time_of_day": "夜晚",
+              "summary": "寻找星光"
+            }
+          ],
+          "shots": [
+            {
+              "shot_id": "s01",
+              "scene_id": "forest",
+              "order": 1,
+              "beat_ids": [
+                "b1"
+              ],
+              "character_ids": [
+                "hero"
+              ],
+              "summary": "走入森林",
+              "framing": "中景",
+              "duration_sec": 5.0,
+              "transition_in": "start",
+              "first_frame": {
+                "method": "generate",
+                "image_mode": "i2i",
+                "model_id": "REPLACE_DEFAULT_IMAGE_MODEL_ID",
+                "prompt": "参考角色位于月光森林入口，蓝发白衣和圆形肩章保持一致"
+              },
+              "motion": {
+                "mode": "i2v",
+                "model_id": "REPLACE_ALLOWED_VIDEO_MODEL_ID",
+                "prompt": "主角缓慢走入森林，平稳跟拍",
+                "params": {
+                  "duration": 5
+                }
+              },
+              "rationale": "建立主角与场景"
+            },
+            {
+              "shot_id": "s02",
+              "scene_id": "forest",
+              "order": 2,
+              "beat_ids": [
+                "b1"
+              ],
+              "character_ids": [
+                "hero"
+              ],
+              "summary": "发现星光",
+              "framing": "近景",
+              "duration_sec": 5.0,
+              "transition_in": "tail_frame",
+              "first_frame": {
+                "method": "tail_frame"
+              },
+              "motion": {
+                "mode": "i2v",
+                "model_id": "REPLACE_ALLOWED_VIDEO_MODEL_ID",
+                "prompt": "主角转头望向树后的星光，镜头轻推",
+                "params": {
+                  "duration": 5
+                }
+              },
+              "rationale": "动作承接或有意切换景别"
+            }
+          ]
+        },
+        "story": {
+          "story": {
+            "logline": "小岚寻找星光",
+            "synopsis": "小岚走进森林并发现树后的星光。",
+            "acts": [
+              {
+                "act_id": "a1",
+                "title": "发现",
+                "summary": "寻找并发现星光"
+              }
+            ],
+            "beats": [
+              {
+                "beat_id": "b1",
+                "act_id": "a1",
+                "summary": "走进森林发现星光",
+                "duration_sec": 10,
+                "character_ids": [
+                  "hero"
+                ],
+                "location": "森林",
+                "emotion": "好奇"
+              }
+            ]
+          },
+          "characters": [
+            {
+              "character_id": "hero",
+              "name": "小岚",
+              "role": "主角",
+              "lock_description": "蓝发白衣，圆形肩章",
+              "personality": "好奇而坚定",
+              "reference": {
+                "source": "generate",
+                "artifact_ids": [],
+                "generate_prompt": "蓝发白衣主角的正面定妆，圆形肩章，干净背景"
+              }
+            }
+          ],
+          "style": {
+            "visual_style": "二维动画",
+            "palette": "蓝绿",
+            "lighting": "柔和月光",
+            "camera_language": "平稳跟拍",
+            "prompt_prefix": "统一二维动画风格"
+          }
+        },
+        "compress_output": false
+      }
+    },
+    {
+      "label": "独立首帧允许并行",
+      "params": {
+        "plan": {
+          "title": "演示：寻找星光",
+          "target_duration_sec": 10.0,
+          "scenes": [
+            {
+              "scene_id": "forest",
+              "location": "森林",
+              "time_of_day": "夜晚",
+              "summary": "寻找星光"
+            }
+          ],
+          "shots": [
+            {
+              "shot_id": "s01",
+              "scene_id": "forest",
+              "order": 1,
+              "beat_ids": [
+                "b1"
+              ],
+              "character_ids": [
+                "hero"
+              ],
+              "summary": "走入森林",
+              "framing": "中景",
+              "duration_sec": 5.0,
+              "transition_in": "start",
+              "first_frame": {
+                "method": "generate",
+                "image_mode": "i2i",
+                "model_id": "REPLACE_DEFAULT_IMAGE_MODEL_ID",
+                "prompt": "参考角色位于月光森林入口，蓝发白衣和圆形肩章保持一致"
+              },
+              "motion": {
+                "mode": "i2v",
+                "model_id": "REPLACE_ALLOWED_VIDEO_MODEL_ID",
+                "prompt": "主角缓慢走入森林，平稳跟拍",
+                "params": {
+                  "duration": 5
+                }
+              },
+              "rationale": "建立主角与场景"
+            },
+            {
+              "shot_id": "s02",
+              "scene_id": "forest",
+              "order": 2,
+              "beat_ids": [
+                "b1"
+              ],
+              "character_ids": [
+                "hero"
+              ],
+              "summary": "发现星光",
+              "framing": "近景",
+              "duration_sec": 5.0,
+              "transition_in": "hard_cut",
+              "first_frame": {
+                "method": "generate",
+                "image_mode": "i2i",
+                "model_id": "REPLACE_DEFAULT_IMAGE_MODEL_ID",
+                "prompt": "参考角色位于月光森林入口，蓝发白衣和圆形肩章保持一致"
+              },
+              "motion": {
+                "mode": "i2v",
+                "model_id": "REPLACE_ALLOWED_VIDEO_MODEL_ID",
+                "prompt": "主角转头望向树后的星光，镜头轻推",
+                "params": {
+                  "duration": 5
+                }
+              },
+              "rationale": "动作承接或有意切换景别"
+            }
+          ]
+        },
+        "story": {
+          "story": {
+            "logline": "小岚寻找星光",
+            "synopsis": "小岚走进森林并发现树后的星光。",
+            "acts": [
+              {
+                "act_id": "a1",
+                "title": "发现",
+                "summary": "寻找并发现星光"
+              }
+            ],
+            "beats": [
+              {
+                "beat_id": "b1",
+                "act_id": "a1",
+                "summary": "走进森林发现星光",
+                "duration_sec": 10,
+                "character_ids": [
+                  "hero"
+                ],
+                "location": "森林",
+                "emotion": "好奇"
+              }
+            ]
+          },
+          "characters": [
+            {
+              "character_id": "hero",
+              "name": "小岚",
+              "role": "主角",
+              "lock_description": "蓝发白衣，圆形肩章",
+              "personality": "好奇而坚定",
+              "reference": {
+                "source": "generate",
+                "artifact_ids": [],
+                "generate_prompt": "蓝发白衣主角的正面定妆，圆形肩章，干净背景"
+              }
+            }
+          ],
+          "style": {
+            "visual_style": "二维动画",
+            "palette": "蓝绿",
+            "lighting": "柔和月光",
+            "camera_language": "平稳跟拍",
+            "prompt_prefix": "统一二维动画风格"
+          }
+        },
+        "compress_output": false
+      }
+    },
+    {
+      "label": "受能力和开关限制的首尾帧候选，画质未验收",
+      "params": {
+        "plan": {
+          "title": "演示：寻找星光",
+          "target_duration_sec": 10.0,
+          "scenes": [
+            {
+              "scene_id": "forest",
+              "location": "森林",
+              "time_of_day": "夜晚",
+              "summary": "寻找星光"
+            }
+          ],
+          "shots": [
+            {
+              "shot_id": "s01",
+              "scene_id": "forest",
+              "order": 1,
+              "beat_ids": [
+                "b1"
+              ],
+              "character_ids": [
+                "hero"
+              ],
+              "summary": "走入森林",
+              "framing": "中景",
+              "duration_sec": 5.0,
+              "transition_in": "start",
+              "first_frame": {
+                "method": "generate",
+                "image_mode": "i2i",
+                "model_id": "REPLACE_DEFAULT_IMAGE_MODEL_ID",
+                "prompt": "参考角色位于月光森林入口，蓝发白衣和圆形肩章保持一致"
+              },
+              "motion": {
+                "mode": "i2v",
+                "model_id": "REPLACE_ALLOWED_VIDEO_MODEL_ID",
+                "prompt": "主角缓慢走入森林，平稳跟拍",
+                "params": {
+                  "duration": 5
+                }
+              },
+              "rationale": "建立主角与场景"
+            },
+            {
+              "shot_id": "s02",
+              "scene_id": "forest",
+              "order": 2,
+              "beat_ids": [
+                "b1"
+              ],
+              "character_ids": [
+                "hero"
+              ],
+              "summary": "发现星光",
+              "framing": "近景",
+              "duration_sec": 5.0,
+              "transition_in": "keyframe_bridge",
+              "first_frame": {
+                "method": "generate",
+                "image_mode": "i2i",
+                "model_id": "REPLACE_DEFAULT_IMAGE_MODEL_ID",
+                "prompt": "参考角色位于月光森林入口，蓝发白衣和圆形肩章保持一致"
+              },
+              "motion": {
+                "mode": "first_last_frame",
+                "model_id": "REPLACE_ALLOWED_VIDEO_MODEL_ID",
+                "prompt": "主角转头望向树后的星光，镜头轻推",
+                "params": {
+                  "duration": 5
+                }
+              },
+              "rationale": "动作承接或有意切换景别",
+              "end_frame": {
+                "method": "generate",
+                "image_mode": "i2i",
+                "model_id": "REPLACE_DEFAULT_IMAGE_MODEL_ID",
+                "prompt": "同一角色回望明亮星光的结束构图"
+              }
+            }
+          ]
+        },
+        "story": {
+          "story": {
+            "logline": "小岚寻找星光",
+            "synopsis": "小岚走进森林并发现树后的星光。",
+            "acts": [
+              {
+                "act_id": "a1",
+                "title": "发现",
+                "summary": "寻找并发现星光"
+              }
+            ],
+            "beats": [
+              {
+                "beat_id": "b1",
+                "act_id": "a1",
+                "summary": "走进森林发现星光",
+                "duration_sec": 10,
+                "character_ids": [
+                  "hero"
+                ],
+                "location": "森林",
+                "emotion": "好奇"
+              }
+            ]
+          },
+          "characters": [
+            {
+              "character_id": "hero",
+              "name": "小岚",
+              "role": "主角",
+              "lock_description": "蓝发白衣，圆形肩章",
+              "personality": "好奇而坚定",
+              "reference": {
+                "source": "generate",
+                "artifact_ids": [],
+                "generate_prompt": "蓝发白衣主角的正面定妆，圆形肩章，干净背景"
+              }
+            }
+          ],
+          "style": {
+            "visual_style": "二维动画",
+            "palette": "蓝绿",
+            "lighting": "柔和月光",
+            "camera_language": "平稳跟拍",
+            "prompt_prefix": "统一二维动画风格"
+          }
+        },
+        "compress_output": false
+      }
+    }
+  ]
+}

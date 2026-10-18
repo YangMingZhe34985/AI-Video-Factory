@@ -1,0 +1,261 @@
+{
+  "$defs": {
+    "BlueprintOrigin": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "version": {
+          "minimum": 1,
+          "title": "Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "name",
+        "version"
+      ],
+      "title": "BlueprintOrigin",
+      "type": "object"
+    },
+    "PlanDeliverable": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "image",
+            "video",
+            "package"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "node_id": {
+          "pattern": "^[a-z0-9_]{1,40}$",
+          "title": "Node Id",
+          "type": "string"
+        },
+        "output": {
+          "pattern": "^[A-Za-z0-9_]{1,80}$",
+          "title": "Output",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "node_id",
+        "output"
+      ],
+      "title": "PlanDeliverable",
+      "type": "object"
+    },
+    "PlanDraftNode": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "pattern": "^[a-z0-9_]{1,40}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "tool": {
+          "pattern": "^[a-z][a-z0-9_]{0,79}$",
+          "title": "Tool",
+          "type": "string"
+        },
+        "inputs": {
+          "additionalProperties": true,
+          "title": "Inputs",
+          "type": "object"
+        },
+        "model_id": {
+          "anyOf": [
+            {
+              "maxLength": 120,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model Id"
+        },
+        "params": {
+          "additionalProperties": true,
+          "title": "Params",
+          "type": "object"
+        },
+        "stage": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Stage"
+        },
+        "depends_on": {
+          "items": {
+            "pattern": "^[a-z0-9_]{1,40}$",
+            "type": "string"
+          },
+          "maxItems": 200,
+          "title": "Depends On",
+          "type": "array"
+        },
+        "gate": {
+          "anyOf": [
+            {
+              "const": "preview",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Gate"
+        },
+        "origin": {
+          "$ref": "#/$defs/PlanOrigin"
+        },
+        "rationale": {
+          "maxLength": 300,
+          "title": "Rationale",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "tool",
+        "origin",
+        "rationale"
+      ],
+      "title": "PlanDraftNode",
+      "type": "object"
+    },
+    "PlanOrigin": {
+      "additionalProperties": false,
+      "properties": {
+        "agent": {
+          "enum": [
+            "producer",
+            "research",
+            "creative",
+            "director",
+            "prompt_smith",
+            "critic",
+            "repair"
+          ],
+          "title": "Agent",
+          "type": "string"
+        },
+        "skills": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 30,
+          "title": "Skills",
+          "type": "array"
+        },
+        "blueprint": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BlueprintOrigin"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "agent"
+      ],
+      "title": "PlanOrigin",
+      "type": "object"
+    },
+    "PlanStage": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "pattern": "^[A-Za-z0-9_-]{1,80}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "label": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Label",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "label"
+      ],
+      "title": "PlanStage",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "V.8 authoring shape only; V4 supplies compile/dry-run/approval checks.",
+  "properties": {
+    "title": {
+      "maxLength": 200,
+      "minLength": 1,
+      "title": "Title",
+      "type": "string"
+    },
+    "goal": {
+      "maxLength": 2000,
+      "minLength": 1,
+      "title": "Goal",
+      "type": "string"
+    },
+    "deliverables": {
+      "items": {
+        "$ref": "#/$defs/PlanDeliverable"
+      },
+      "maxItems": 200,
+      "minItems": 1,
+      "title": "Deliverables",
+      "type": "array"
+    },
+    "nodes": {
+      "items": {
+        "$ref": "#/$defs/PlanDraftNode"
+      },
+      "maxItems": 200,
+      "minItems": 1,
+      "title": "Nodes",
+      "type": "array"
+    },
+    "stages": {
+      "items": {
+        "$ref": "#/$defs/PlanStage"
+      },
+      "maxItems": 200,
+      "title": "Stages",
+      "type": "array"
+    }
+  },
+  "required": [
+    "title",
+    "goal",
+    "deliverables",
+    "nodes"
+  ],
+  "title": "PlanDraft",
+  "type": "object"
+}

@@ -1,8 +1,9 @@
 {
   "name": "prompt_smith",
-  "description": "根据明确的镜头意图起草提示词输入补丁，不修改预算与权限。",
+  "description": "仅润色委派计划范围内已有节点的提示词字段，不修改模型、参数、引用、结构或权限。",
   "accepts": {
-    "plan": "PlanDraft"
+    "plan": "PlanDraft",
+    "prompt_scope": "FrozenPromptScope"
   },
   "returns": "PromptUpdates",
   "model_role": "prompt_smith",

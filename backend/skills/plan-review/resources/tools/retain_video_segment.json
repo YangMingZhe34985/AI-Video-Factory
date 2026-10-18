@@ -1,0 +1,71 @@
+{
+  "tool": "retain_video_segment",
+  "resolved_input_schema": {
+    "additionalProperties": false,
+    "properties": {
+      "video_artifact_id": {
+        "maxLength": 100,
+        "minLength": 1,
+        "title": "Video Artifact Id",
+        "type": "string"
+      },
+      "source_start_sec": {
+        "minimum": 0,
+        "title": "Source Start Sec",
+        "type": "number"
+      },
+      "source_end_sec": {
+        "exclusiveMinimum": 0,
+        "title": "Source End Sec",
+        "type": "number"
+      }
+    },
+    "required": [
+      "video_artifact_id",
+      "source_start_sec",
+      "source_end_sec"
+    ],
+    "title": "RetainInput",
+    "type": "object"
+  },
+  "io_types": {
+    "inputs": {
+      "video_artifact_id": "video"
+    },
+    "outputs": {
+      "artifact_id": "video"
+    }
+  },
+  "authoring": {
+    "purpose": "只读作者合同，不是可由 Agent 直接调用的函数，也不是审批许可。",
+    "resolved_schema_notice": "resolved_input_schema 描述引用解析及服务端注入后的工具载荷；编写 PlanNode.inputs 时必须遵守字段放置规则。",
+    "plan_node_fields": [],
+    "server_injected_fields": [],
+    "forbidden_input_fields": [
+      "model_id",
+      "params",
+      "template_id",
+      "plan_version"
+    ],
+    "model_selection": "生成节点 model_id/params 写在 PlanNode 顶层；无指定模型可置 model_id=null，由 check_plan 解析默认。非生成节点 model_id=null、params={}。",
+    "references": {
+      "existing_media": {
+        "artifact": "REPLACE_OWNED_ARTIFACT_ID"
+      },
+      "upstream_output": {
+        "ref": "node.output"
+      },
+      "rules": [
+        "artifact/ref 对象只能有该单个键。真实 ID 必须属于当前 Run；node.output 必须是对应 io_types.outputs 的命名输出。",
+        "仅在工具声明且编译器支持的输入位置使用类型匹配的引用。媒体位置接受工件或上游媒体；json 位置还须符合对应 Schema/特殊映射，不代表任意引用均可接受。prompt、params 和未声明位置不能夹带引用。",
+        "数组字段可用单媒体引用组成数组，或整个字段引用同类型数组输出；数组元素不能引用数组输出，解析器不做 flatten。",
+        "示例 ID 只是形状占位，必须替换；引用本身不证明素材存在、质量或批准。"
+      ]
+    },
+    "completion_outputs": "io_types.outputs 是 Plan 节点完成后的命名输出；异步 Job 的 job_id/status/prompts 等回执不能作为 Plan 媒体引用。",
+    "notes": [
+      "source_start_sec/source_end_sec 是原片时间范围，必须位于真实源视频内；不是模型生成 duration。",
+      "本地裁切无模型生成费，输出 artifact_id 为保留片段视频。"
+    ]
+  }
+}

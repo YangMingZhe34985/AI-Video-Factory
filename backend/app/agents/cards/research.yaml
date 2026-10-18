@@ -1,10 +1,10 @@
 {
   "name": "research",
-  "description": "检索并核验资料、读取多模态参考，形成带来源的研究结果。",
+  "description": "有界检索并核验事实与视觉参考，区分推荐和已确认候选，返回带来源的研究资料。",
   "accepts": {
     "brief": "RequirementBrief"
   },
-  "returns": "Dossier",
+  "returns": "ResearchDossier",
   "model_role": "research",
   "tools": [
     "list_skills",

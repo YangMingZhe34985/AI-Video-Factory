@@ -1,0 +1,56 @@
+{
+  "demo": true,
+  "warning": "演示数据。占位符不是有效模型/工件；秒数不代表能力上限。先读取 Schema 和实际工具结果，再替换全部占位符与参数；禁止将本例当作来源、报价或审批证据。",
+  "replace_before_use": {
+    "REPLACE_DEFAULT_IMAGE_MODEL_ID": "check_plan 解析后的服务器默认图像模型（按 t2i/i2i 分别确认）",
+    "REPLACE_ALLOWED_VIDEO_MODEL_ID": "满足原用户系列/禁用约束且符合当前模式的模型 ID",
+    "REPLACE_OWNED_IMAGE_ARTIFACT_ID": "当前 Run 的真实图片工件 ID"
+  },
+  "examples": [
+    {
+      "label": "已有首帧直接生视频",
+      "params": {
+        "plan": {
+          "recipe": "single_clip",
+          "title": "演示创作",
+          "rationale": "根据实际需求决定路线，不直接执行示例",
+          "video": {
+            "model_id": "REPLACE_ALLOWED_VIDEO_MODEL_ID",
+            "prompt": "主体缓慢向前行走，稳定镜头",
+            "params": {
+              "duration": 5
+            },
+            "first_frame": "user_attachment",
+            "first_frame_attachment_id": "REPLACE_OWNED_IMAGE_ARTIFACT_ID"
+          }
+        }
+      }
+    },
+    {
+      "label": "先生成一张首帧再生视频",
+      "params": {
+        "plan": {
+          "recipe": "single_clip",
+          "title": "演示创作",
+          "rationale": "根据实际需求决定路线，不直接执行示例",
+          "image": {
+            "mode": "t2i",
+            "model_id": "REPLACE_DEFAULT_IMAGE_MODEL_ID",
+            "prompt": "保持主体身份，柔光下的干净构图",
+            "reference_attachment_ids": [],
+            "params": {},
+            "n": 1
+          },
+          "video": {
+            "model_id": "REPLACE_ALLOWED_VIDEO_MODEL_ID",
+            "prompt": "主体缓慢向前行走，稳定镜头",
+            "params": {
+              "duration": 5
+            },
+            "first_frame": "generated_image"
+          }
+        }
+      }
+    }
+  ]
+}

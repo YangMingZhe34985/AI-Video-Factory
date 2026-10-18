@@ -314,6 +314,7 @@ C-Gate 评审结论：通过。
 需要用户决定：无新增。
 
 
+
 ## 2026-10-18 · Codex · Phase D 集成验收中
 状态：D0 完成；D1–D5 功能已接通，仍在补边界和验收，不作为完成交付。
 协作：已合入 Claude 的 C-Gate / 分镜板美化 da14962；保持主目录原有未跟踪笔记，不改变其界面样式。独立工作树 agent-v2/D1 集成，D5 使用独立 5078 / 5198 Mock 服务联调。
@@ -731,3 +732,33 @@ V4 提交 4051247 已快进合入本地 feat/agent-v2，未推送。当前从该
 1. 本地合并V5后从集成分支创建agent-v3/V6，先落D-036/V.18，再迁入已在TEMP准备的角色策略/范围约束/离线场景草案并验证。TEMP草稿未参与V5应用测试。
 2. 按用户授权继续V6–V7；Claude仍负责关键Skill、Producer/Director策略审定、各Gate与美化。本轮脚本测试不代表真实LLM自主规划、视觉质量、MySQL并发迁移或服务商真实价格已验收。
 需要用户决定：无新增。
+
+## 2026-10-19 · Codex · V6 开始
+V5 提交 f19dbd4 已快进合入本地 feat/agent-v2，未推送；已从该基线创建 agent-v3/V6。D-036 / V.18 先定义正式策略、Prompt Smith 范围和现有多模态能力边界。随后迁入临时草稿并做定向及完整回归；当前不代表V6或Gate验收。用户本轮不调用LLM的限制优先于D-030的历史授权，所有测试仍为Mock/Stub。
+
+## 2026-10-19 · Codex · V6 合同可见性补充检查点
+状态：V6继续实现，未提交或合并。首轮2070项全量在运行中主动中止，不计作通过。只读审查发现真实Agent无法完整读取严格工作区Schema和生产节点命名输出，且Research把网页正文快照表述成视觉参考；ScriptedLLM预知字段不能证明真实模型可正确构造。已先补D-036/V.18，随后补只读Skill资源及回归，冻结后重跑完整测试。V7全部草稿仍仅在TEMP；无真实调用、无费用、不进入V8，Claude关键Skill未改。
+
+## 2026-10-19 · Codex · V6 正式角色策略与范围约束完成
+状态：Codex 实现与 Mock/Stub 回归完成；Producer/Director、关键 Skill/委派策略审定及 V-Gate1/2/3 仍由 Claude 负责。本条不代表真实 LLM 自主规划或生成质量已验收。
+分支：agent-v3/V6，基于 feat/agent-v2 @f19dbd4；验证后本地快进合入，不推送。保留用户未跟踪技术笔记、私人报告、真实.env、AGENTS.md/CLAUDE.md。
+
+完成内容：
+- D-036 / V.18 先行。七个 Card/提示词明确输入输出、简单任务直接规划、复杂任务按需委派、证据/额度/失败边界；Director增加只读get_task_status，普通目录隐藏仅由服务端分配的Repair。
+- Prompt Smith委派必须携带同Run不可变plan_ref和明确node_ids，服务端冻结草稿hash；只接受范围内非空prompt更新。模型、参数、时长、引用、结构和重复/越界节点均拒绝；父Agent写新草稿重新编译，已批准计划仍走Patch。委派本地恢复核验原输入/父子关系及冻结范围。
+- 每个新LLM step持久化六项调用前额度快照，重放用原快照，模型按剩余额度显式分配子任务并保留自身收尾额度；不改变服务端预算。旧账本消息保持，但跨版本工具Schema变化仍严格停止，不声称在途委派无缝迁移。
+- 更新九项非关键Skill及预算资源，六Blueprint提供真实params Schema/示例。plan-review新增六类工作区Schema、十个Plan工具的resolved input和命名输出、可编译示例；Agent按需读取，不开放生产工具权限。回归核对资源与实际Pydantic/ToolSpec一致。
+- 明确能力缺口：analyze_video仅返回异步内容描述，未提供精确镜头切点；analyze_images只理解上传/研究图，生成预览由用户gate审核；capture_reference_page是原请求URL的正文快照，不是网页截图。首尾帧效果仍待验证，默认不主动压缩。
+- 六个ScriptedLLM场景覆盖照片双图批量理解、单镜头默认/显式系列/时长、120秒八镜头协作、原片保留与局部重生成。均执行真实运行时/Registry/编译和dry-run，在计划审核停下，重放不增规划费/版本，无生成Job。
+
+验证：
+- 最终全量 **2098 passed，0 failed，0 skipped，111个测试文件**。四组隔离进程的node id与最终collect-only清单逐项匹配：缺失/额外/重复均0。证据：%TEMP%/cinecrew-v6-final-results.xml；原始cinecrew-v6-final2-0/1/2/3.xml，清单cinecrew-v6-collected-final2.txt。
+- 首轮2070项全量因合同可见性审查主动中止，未计通过。新增资源后联合153项通过，再冻结代码重跑上述2098项；定向与全量重叠，不累加。
+- 前端仓库本阶段未改，沿用已验证的64项/构建基线；V7临时副本65项新helper、构建、18组Mock浏览器预检通过，但这些不冒充正式V7阶段验收。git diff --check通过。7条既有JUnit格式警告不影响结果。
+- 所有调用为Mock/Stub，隔离SQLite/存储、网络阻断、指定Conda Python与短TEMP路径；真实LLM/多模态/图片/视频调用0次，真实费用0，没有连接真实MySQL/Redis或修改用户环境。
+
+下一步：
+1. 本地合并后建agent-v3/V7，先落D-037/V.19，迁入已预检的功能界面并在正式源码重验；不进入V8。
+2. Claude重点审定：delegation-policy的简单任务直接完成与显式额度保留；long-form-video中Prompt Smith改按需并带prompt_scope；character-consistency不能将生成图理解描述成已有自动QC；intent-analysis应使用RequirementBrief而非v2 RequestSpec。四个关键Skill本轮保持未改。
+3. Claude检查Producer/Director及三个Gate。600秒墙钟上限仍包含排队/人工等待，恢复不重置；真实自主规划质量、实际单价/媒体效果、MySQL迁移并发均待验收。AGENT_V3_ENABLED继续默认false。
+需要用户决定：无新增；按本轮要求继续V7，禁止真实LLM/付费测试。

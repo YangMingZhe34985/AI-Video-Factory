@@ -1,0 +1,465 @@
+{
+  "$defs": {
+    "Candidate": {
+      "additionalProperties": false,
+      "properties": {
+        "candidate_id": {
+          "maxLength": 40,
+          "minLength": 1,
+          "title": "Candidate Id",
+          "type": "string"
+        },
+        "reference_id": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Reference Id",
+          "type": "string"
+        },
+        "source_id": {
+          "maxLength": 40,
+          "minLength": 1,
+          "title": "Source Id",
+          "type": "string"
+        },
+        "traits": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 12,
+          "title": "Traits",
+          "type": "array"
+        },
+        "popularity_hint": {
+          "anyOf": [
+            {
+              "enum": [
+                "high",
+                "medium",
+                "low"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Popularity Hint"
+        },
+        "why": {
+          "maxLength": 300,
+          "title": "Why",
+          "type": "string"
+        }
+      },
+      "required": [
+        "candidate_id",
+        "reference_id",
+        "source_id",
+        "why"
+      ],
+      "title": "Candidate",
+      "type": "object"
+    },
+    "KeyFact": {
+      "additionalProperties": false,
+      "properties": {
+        "fact": {
+          "maxLength": 300,
+          "minLength": 1,
+          "title": "Fact",
+          "type": "string"
+        },
+        "source_ids": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 40,
+          "minItems": 1,
+          "title": "Source Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "fact",
+        "source_ids"
+      ],
+      "title": "KeyFact",
+      "type": "object"
+    },
+    "Option": {
+      "additionalProperties": false,
+      "properties": {
+        "option_id": {
+          "maxLength": 40,
+          "minLength": 1,
+          "title": "Option Id",
+          "type": "string"
+        },
+        "label": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Label",
+          "type": "string"
+        },
+        "detail": {
+          "anyOf": [
+            {
+              "maxLength": 300,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Detail"
+        },
+        "image_artifact_id": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Image Artifact Id"
+        }
+      },
+      "required": [
+        "option_id",
+        "label"
+      ],
+      "title": "Option",
+      "type": "object"
+    },
+    "Question": {
+      "additionalProperties": false,
+      "properties": {
+        "question_id": {
+          "maxLength": 40,
+          "minLength": 1,
+          "title": "Question Id",
+          "type": "string"
+        },
+        "text": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        },
+        "why": {
+          "maxLength": 300,
+          "minLength": 1,
+          "title": "Why",
+          "type": "string"
+        },
+        "options": {
+          "items": {
+            "$ref": "#/$defs/Option"
+          },
+          "maxItems": 4,
+          "minItems": 2,
+          "title": "Options",
+          "type": "array"
+        },
+        "recommended_option_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Recommended Option Id"
+        },
+        "allow_free_text": {
+          "default": false,
+          "title": "Allow Free Text",
+          "type": "boolean"
+        },
+        "blocking": {
+          "default": true,
+          "title": "Blocking",
+          "type": "boolean"
+        },
+        "default_option_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Default Option Id"
+        }
+      },
+      "required": [
+        "question_id",
+        "text",
+        "why",
+        "options"
+      ],
+      "title": "Question",
+      "type": "object"
+    },
+    "ResearchStats": {
+      "additionalProperties": false,
+      "properties": {
+        "web_searches": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Web Searches",
+          "type": "integer"
+        },
+        "image_searches": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Image Searches",
+          "type": "integer"
+        },
+        "pages_fetched": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Pages Fetched",
+          "type": "integer"
+        },
+        "references_downloaded": {
+          "default": 0,
+          "minimum": 0,
+          "title": "References Downloaded",
+          "type": "integer"
+        }
+      },
+      "title": "ResearchStats",
+      "type": "object"
+    },
+    "Source": {
+      "additionalProperties": false,
+      "properties": {
+        "source_id": {
+          "maxLength": 40,
+          "minLength": 1,
+          "title": "Source Id",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "web",
+            "image"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "url": {
+          "title": "Url",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 300,
+          "title": "Title",
+          "type": "string"
+        },
+        "site": {
+          "title": "Site",
+          "type": "string"
+        },
+        "published_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Published At"
+        },
+        "retrieved_at": {
+          "title": "Retrieved At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_id",
+        "kind",
+        "url",
+        "title",
+        "site",
+        "retrieved_at"
+      ],
+      "title": "Source",
+      "type": "object"
+    },
+    "Topic": {
+      "additionalProperties": false,
+      "properties": {
+        "topic_id": {
+          "maxLength": 40,
+          "minLength": 1,
+          "title": "Topic Id",
+          "type": "string"
+        },
+        "query": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Query",
+          "type": "string"
+        },
+        "summary": {
+          "maxLength": 1500,
+          "minLength": 1,
+          "title": "Summary",
+          "type": "string"
+        },
+        "key_facts": {
+          "items": {
+            "$ref": "#/$defs/KeyFact"
+          },
+          "maxItems": 10,
+          "title": "Key Facts",
+          "type": "array"
+        },
+        "confidence": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Confidence",
+          "type": "number"
+        }
+      },
+      "required": [
+        "topic_id",
+        "query",
+        "summary",
+        "confidence"
+      ],
+      "title": "Topic",
+      "type": "object"
+    },
+    "VisualEntity": {
+      "additionalProperties": false,
+      "properties": {
+        "entity_id": {
+          "pattern": "^[A-Za-z0-9_-]{1,24}$",
+          "title": "Entity Id",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "description": {
+          "maxLength": 500,
+          "title": "Description",
+          "type": "string"
+        },
+        "candidates": {
+          "items": {
+            "$ref": "#/$defs/Candidate"
+          },
+          "maxItems": 4,
+          "title": "Candidates",
+          "type": "array"
+        },
+        "consensus_traits": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 12,
+          "title": "Consensus Traits",
+          "type": "array"
+        },
+        "recommended_candidate_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Recommended Candidate Id"
+        },
+        "selected_candidate_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Selected Candidate Id"
+        }
+      },
+      "required": [
+        "entity_id",
+        "name",
+        "description"
+      ],
+      "title": "VisualEntity",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "topics": {
+      "items": {
+        "$ref": "#/$defs/Topic"
+      },
+      "maxItems": 6,
+      "title": "Topics",
+      "type": "array"
+    },
+    "entities": {
+      "items": {
+        "$ref": "#/$defs/VisualEntity"
+      },
+      "maxItems": 8,
+      "title": "Entities",
+      "type": "array"
+    },
+    "sources": {
+      "items": {
+        "$ref": "#/$defs/Source"
+      },
+      "maxItems": 40,
+      "title": "Sources",
+      "type": "array"
+    },
+    "open_questions": {
+      "items": {
+        "$ref": "#/$defs/Question"
+      },
+      "maxItems": 3,
+      "title": "Open Questions",
+      "type": "array"
+    },
+    "warnings": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 10,
+      "title": "Warnings",
+      "type": "array"
+    },
+    "stats": {
+      "$ref": "#/$defs/ResearchStats"
+    }
+  },
+  "title": "ResearchDossier",
+  "type": "object"
+}

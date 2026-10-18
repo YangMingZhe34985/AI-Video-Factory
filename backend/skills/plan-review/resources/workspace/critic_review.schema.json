@@ -1,0 +1,67 @@
+{
+  "$defs": {
+    "CriticIssue": {
+      "additionalProperties": false,
+      "properties": {
+        "node_id": {
+          "anyOf": [
+            {
+              "pattern": "^[a-z0-9_]{1,40}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Node Id"
+        },
+        "severity": {
+          "enum": [
+            "info",
+            "warning",
+            "error"
+          ],
+          "title": "Severity",
+          "type": "string"
+        },
+        "message": {
+          "maxLength": 1000,
+          "minLength": 1,
+          "title": "Message",
+          "type": "string"
+        }
+      },
+      "required": [
+        "severity",
+        "message"
+      ],
+      "title": "CriticIssue",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "verdict": {
+      "enum": [
+        "pass",
+        "revise"
+      ],
+      "title": "Verdict",
+      "type": "string"
+    },
+    "issues": {
+      "items": {
+        "$ref": "#/$defs/CriticIssue"
+      },
+      "maxItems": 200,
+      "title": "Issues",
+      "type": "array"
+    }
+  },
+  "required": [
+    "verdict"
+  ],
+  "title": "CriticReview",
+  "type": "object"
+}

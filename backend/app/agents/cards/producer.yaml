@@ -1,6 +1,6 @@
 {
   "name": "producer",
-  "description": "理解文本与附件，协调任务，汇总结果；唯一直接面向用户的角色。",
+  "description": "理解文本与附件，简单任务直接规划，按需委派复杂任务；唯一对外提问并提交审核的角色。",
   "accepts": {
     "request": "UserRequest"
   },

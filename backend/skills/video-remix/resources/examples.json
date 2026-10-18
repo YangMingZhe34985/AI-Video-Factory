@@ -1,0 +1,43 @@
+{
+  "demo": true,
+  "warning": "演示数据。占位符不是有效模型/工件；秒数不代表能力上限。先读取 Schema 和实际工具结果，再替换全部占位符与参数；禁止将本例当作来源、报价或审批证据。",
+  "replace_before_use": {
+    "REPLACE_ALLOWED_VIDEO_MODEL_ID": "满足原用户系列/禁用约束且符合当前模式的模型 ID",
+    "REPLACE_OWNED_VIDEO_ARTIFACT_ID": "当前 Run 的真实视频工件 ID"
+  },
+  "examples": [
+    {
+      "label": "保留原片 3 秒，替换原片另一段为新生成 5 秒",
+      "params": {
+        "source_artifact_id": "REPLACE_OWNED_VIDEO_ARTIFACT_ID",
+        "compress_output": false,
+        "plan": {
+          "title": "演示局部改造",
+          "mode": "remix",
+          "shots": [
+            {
+              "shot_id": "keep_1",
+              "action": "keep",
+              "source_start": 0.0,
+              "source_end": 3.0,
+              "edit_reason": "保留开场"
+            },
+            {
+              "shot_id": "replace_2",
+              "action": "regenerate",
+              "source_start": 3.0,
+              "source_end": 6.0,
+              "edit_reason": "修改后半段动作",
+              "first_frame_mode": "source",
+              "i2v_prompt": "主体缓慢向前行走",
+              "video_model_id": "REPLACE_ALLOWED_VIDEO_MODEL_ID",
+              "video_params": {
+                "duration": 5
+              }
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

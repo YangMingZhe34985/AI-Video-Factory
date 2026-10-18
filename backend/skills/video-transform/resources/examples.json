@@ -1,0 +1,76 @@
+{
+  "demo": true,
+  "warning": "演示数据。占位符不是有效模型/工件；秒数不代表能力上限。先读取 Schema 和实际工具结果，再替换全部占位符与参数；禁止将本例当作来源、报价或审批证据。",
+  "replace_before_use": {
+    "REPLACE_ALLOWED_TRANSFORM_MODEL_ID": "满足原用户约束且支持当前原生变换模式的模型 ID",
+    "REPLACE_OWNED_IMAGE_ARTIFACT_ID": "当前 Run 的真实图片工件 ID",
+    "REPLACE_OWNED_VIDEO_ARTIFACT_ID": "当前 Run 的真实视频工件 ID"
+  },
+  "examples": [
+    {
+      "label": "reference：I+G 费用由服务器计算",
+      "params": {
+        "plan": {
+          "operation": "reference",
+          "title": "演示原生视频变换",
+          "model_id": "REPLACE_ALLOWED_TRANSFORM_MODEL_ID",
+          "prompt": "按原素材角色与风格延续场景",
+          "params": {
+            "duration": 10
+          },
+          "media": [
+            {
+              "type": "reference_image",
+              "artifact_id": "REPLACE_OWNED_IMAGE_ARTIFACT_ID"
+            }
+          ],
+          "rationale": "能力、输入与完整输出时长需服务器验证"
+        }
+      }
+    },
+    {
+      "label": "edit：I+G 费用由服务器计算",
+      "params": {
+        "plan": {
+          "operation": "edit",
+          "title": "演示原生视频变换",
+          "model_id": "REPLACE_ALLOWED_TRANSFORM_MODEL_ID",
+          "prompt": "按原素材角色与风格延续场景",
+          "params": {
+            "duration": 10
+          },
+          "media": [
+            {
+              "type": "reference_video",
+              "artifact_id": "REPLACE_OWNED_VIDEO_ARTIFACT_ID"
+            }
+          ],
+          "rationale": "能力、输入与完整输出时长需服务器验证",
+          "source_artifact_id": "REPLACE_OWNED_VIDEO_ARTIFACT_ID"
+        }
+      }
+    },
+    {
+      "label": "extend：I+G 费用由服务器计算",
+      "params": {
+        "plan": {
+          "operation": "extend",
+          "title": "演示原生视频变换",
+          "model_id": "REPLACE_ALLOWED_TRANSFORM_MODEL_ID",
+          "prompt": "按原素材角色与风格延续场景",
+          "params": {
+            "duration": 10
+          },
+          "media": [
+            {
+              "type": "reference_video",
+              "artifact_id": "REPLACE_OWNED_VIDEO_ARTIFACT_ID"
+            }
+          ],
+          "rationale": "能力、输入与完整输出时长需服务器验证",
+          "source_artifact_id": "REPLACE_OWNED_VIDEO_ARTIFACT_ID"
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,445 @@
+{
+  "$defs": {
+    "Act": {
+      "additionalProperties": false,
+      "properties": {
+        "act_id": {
+          "pattern": "^[A-Za-z0-9_-]{1,40}$",
+          "title": "Act Id",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 60,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "summary": {
+          "maxLength": 600,
+          "minLength": 1,
+          "title": "Summary",
+          "type": "string"
+        }
+      },
+      "required": [
+        "act_id",
+        "title",
+        "summary"
+      ],
+      "title": "Act",
+      "type": "object"
+    },
+    "Beat": {
+      "additionalProperties": false,
+      "properties": {
+        "beat_id": {
+          "pattern": "^[A-Za-z0-9_-]{1,40}$",
+          "title": "Beat Id",
+          "type": "string"
+        },
+        "act_id": {
+          "maxLength": 40,
+          "minLength": 1,
+          "title": "Act Id",
+          "type": "string"
+        },
+        "summary": {
+          "maxLength": 400,
+          "minLength": 1,
+          "title": "Summary",
+          "type": "string"
+        },
+        "duration_sec": {
+          "minimum": 1,
+          "title": "Duration Sec",
+          "type": "integer"
+        },
+        "character_ids": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 8,
+          "title": "Character Ids",
+          "type": "array"
+        },
+        "location": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Location",
+          "type": "string"
+        },
+        "emotion": {
+          "maxLength": 60,
+          "minLength": 1,
+          "title": "Emotion",
+          "type": "string"
+        }
+      },
+      "required": [
+        "beat_id",
+        "act_id",
+        "summary",
+        "duration_sec",
+        "location",
+        "emotion"
+      ],
+      "title": "Beat",
+      "type": "object"
+    },
+    "Character": {
+      "additionalProperties": false,
+      "properties": {
+        "character_id": {
+          "pattern": "^[A-Za-z0-9_-]{1,40}$",
+          "title": "Character Id",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "role": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Role",
+          "type": "string"
+        },
+        "lock_description": {
+          "maxLength": 600,
+          "minLength": 1,
+          "title": "Lock Description",
+          "type": "string"
+        },
+        "personality": {
+          "maxLength": 300,
+          "minLength": 1,
+          "title": "Personality",
+          "type": "string"
+        },
+        "reference": {
+          "$ref": "#/$defs/CharacterReference"
+        }
+      },
+      "required": [
+        "character_id",
+        "name",
+        "role",
+        "lock_description",
+        "personality",
+        "reference"
+      ],
+      "title": "Character",
+      "type": "object"
+    },
+    "CharacterReference": {
+      "additionalProperties": false,
+      "properties": {
+        "source": {
+          "enum": [
+            "research",
+            "attachment",
+            "generate"
+          ],
+          "title": "Source",
+          "type": "string"
+        },
+        "artifact_ids": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 3,
+          "title": "Artifact Ids",
+          "type": "array"
+        },
+        "research_entity_id": {
+          "anyOf": [
+            {
+              "maxLength": 40,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Research Entity Id"
+        },
+        "generate_prompt": {
+          "anyOf": [
+            {
+              "maxLength": 2000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Generate Prompt"
+        }
+      },
+      "required": [
+        "source"
+      ],
+      "title": "CharacterReference",
+      "type": "object"
+    },
+    "Option": {
+      "additionalProperties": false,
+      "properties": {
+        "option_id": {
+          "maxLength": 40,
+          "minLength": 1,
+          "title": "Option Id",
+          "type": "string"
+        },
+        "label": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Label",
+          "type": "string"
+        },
+        "detail": {
+          "anyOf": [
+            {
+              "maxLength": 300,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Detail"
+        },
+        "image_artifact_id": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Image Artifact Id"
+        }
+      },
+      "required": [
+        "option_id",
+        "label"
+      ],
+      "title": "Option",
+      "type": "object"
+    },
+    "Question": {
+      "additionalProperties": false,
+      "properties": {
+        "question_id": {
+          "maxLength": 40,
+          "minLength": 1,
+          "title": "Question Id",
+          "type": "string"
+        },
+        "text": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        },
+        "why": {
+          "maxLength": 300,
+          "minLength": 1,
+          "title": "Why",
+          "type": "string"
+        },
+        "options": {
+          "items": {
+            "$ref": "#/$defs/Option"
+          },
+          "maxItems": 4,
+          "minItems": 2,
+          "title": "Options",
+          "type": "array"
+        },
+        "recommended_option_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Recommended Option Id"
+        },
+        "allow_free_text": {
+          "default": false,
+          "title": "Allow Free Text",
+          "type": "boolean"
+        },
+        "blocking": {
+          "default": true,
+          "title": "Blocking",
+          "type": "boolean"
+        },
+        "default_option_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Default Option Id"
+        }
+      },
+      "required": [
+        "question_id",
+        "text",
+        "why",
+        "options"
+      ],
+      "title": "Question",
+      "type": "object"
+    },
+    "Story": {
+      "additionalProperties": false,
+      "properties": {
+        "logline": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Logline",
+          "type": "string"
+        },
+        "synopsis": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Synopsis",
+          "type": "string"
+        },
+        "acts": {
+          "items": {
+            "$ref": "#/$defs/Act"
+          },
+          "maxItems": 6,
+          "minItems": 1,
+          "title": "Acts",
+          "type": "array"
+        },
+        "beats": {
+          "items": {
+            "$ref": "#/$defs/Beat"
+          },
+          "maxItems": 40,
+          "minItems": 1,
+          "title": "Beats",
+          "type": "array"
+        }
+      },
+      "required": [
+        "logline",
+        "synopsis",
+        "acts",
+        "beats"
+      ],
+      "title": "Story",
+      "type": "object"
+    },
+    "StyleGuide": {
+      "additionalProperties": false,
+      "properties": {
+        "visual_style": {
+          "maxLength": 300,
+          "minLength": 1,
+          "title": "Visual Style",
+          "type": "string"
+        },
+        "palette": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Palette",
+          "type": "string"
+        },
+        "lighting": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Lighting",
+          "type": "string"
+        },
+        "camera_language": {
+          "maxLength": 300,
+          "minLength": 1,
+          "title": "Camera Language",
+          "type": "string"
+        },
+        "prompt_prefix": {
+          "maxLength": 400,
+          "minLength": 1,
+          "title": "Prompt Prefix",
+          "type": "string"
+        },
+        "negative_prompt": {
+          "anyOf": [
+            {
+              "maxLength": 500,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Negative Prompt"
+        }
+      },
+      "required": [
+        "visual_style",
+        "palette",
+        "lighting",
+        "camera_language",
+        "prompt_prefix"
+      ],
+      "title": "StyleGuide",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "story": {
+      "$ref": "#/$defs/Story"
+    },
+    "characters": {
+      "items": {
+        "$ref": "#/$defs/Character"
+      },
+      "maxItems": 8,
+      "title": "Characters",
+      "type": "array"
+    },
+    "style": {
+      "$ref": "#/$defs/StyleGuide"
+    },
+    "open_questions": {
+      "items": {
+        "$ref": "#/$defs/Question"
+      },
+      "maxItems": 3,
+      "title": "Open Questions",
+      "type": "array"
+    }
+  },
+  "required": [
+    "story",
+    "style"
+  ],
+  "title": "StoryPackage",
+  "type": "object"
+}

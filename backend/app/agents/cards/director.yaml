@@ -1,10 +1,11 @@
 {
   "name": "director",
-  "description": "拆解镜头和依赖，选择能力与衔接方式，起草可验证计划。",
+  "description": "制定镜头、连续性、模型与费用可核验的计划；仅在服务端分配的流程中起草或独立审阅 Patch。",
   "accepts": {
     "brief": "RequirementBrief",
     "story": "StoryPackage?",
-    "research": "Dossier?"
+    "research": "ResearchDossier?",
+    "patch_context": "ServerAssignedPatchContext?"
   },
   "returns": "PlanDraft",
   "model_role": "director",
@@ -24,6 +25,7 @@
     "check_plan",
     "instantiate_blueprint",
     "request_preview",
+    "get_task_status",
     "propose_patch",
     "review_patch"
   ],

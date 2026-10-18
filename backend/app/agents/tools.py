@@ -4,10 +4,11 @@ from copy import deepcopy
 from typing import Literal
 
 from flask import current_app
-from pydantic import BaseModel, ConfigDict, Field, RootModel, ValidationError, model_validator
+from pydantic import BaseModel, ConfigDict, Field, RootModel, ValidationError, model_serializer, model_validator
 
 from app.agent.clarify import AnswerSubmission, Question, max_rounds, resolve_answers
 from app.agents.schemas import WorkspaceRef, WorkspaceKey
+from app.agents.prompt_scope import PromptScope, PromptUpdate
 from app.api import AppError
 from app.extensions import db
 from app.models import AgentDelegation
@@ -50,6 +51,22 @@ class DelegateInput(Strict):
     context_refs: list[WorkspaceRef] = Field(default_factory=list, max_length=40)
     expected: str = Field(min_length=1, max_length=300)
     planning_credits: float | None = Field(default=None, gt=0, allow_inf_nan=False)
+    prompt_scope: PromptScope | None = None
+
+    @model_validator(mode="after")
+    def scoped_prompt_target(self):
+        if self.agent == "prompt_smith" and self.prompt_scope is None:
+            raise ValueError("Prompt Smith delegation requires prompt_scope")
+        if self.agent != "prompt_smith" and self.prompt_scope is not None:
+            raise ValueError("Only Prompt Smith accepts prompt_scope")
+        return self
+
+    @model_serializer(mode="wrap")
+    def preserve_legacy_receipts(self, handler):
+        value = handler(self)
+        if self.prompt_scope is None:
+            value.pop("prompt_scope", None)
+        return value
 
 
 class AskInput(Strict):
@@ -89,14 +106,9 @@ class FinishInput(Strict):
     patch_ref: WorkspaceRef | None = None
     rationale: str | None = Field(default=None, max_length=2000)
     diagnosis: str | None = Field(default=None, max_length=2000)
-    updates: list[dict] | None = Field(default=None, max_length=200)
+    updates: list[PromptUpdate] | None = Field(default=None, min_length=1, max_length=200)
     verdict: Literal["pass", "revise"] | None = None
     issues: list[dict] | None = Field(default=None, max_length=200)
-
-
-class PromptUpdate(Strict):
-    node_id: str = Field(pattern=r"^[a-z0-9_]{1,40}$")
-    inputs_patch: dict
 
 
 class ReviewIssue(Strict):
@@ -115,22 +127,27 @@ def _context(ctx):
 
 
 def _delegate(data, ctx):
-    from app.agent.plan_versions import _lock_run
+    from app.agent.plan_versions import _lock_run, inputs_hash
     from app.agents.budget import TERMINAL, allocate
     from app.agents.cards import get_catalog
     from app.agents.workspace import resolve_workspace_ref
+    from app.agents.prompt_scope import freeze_scope, validate_delegate_receipt
     run, parent = _context(ctx)
     from app.agents.repair_flow import active_flow
-    flow = active_flow(run)
-    if flow and (parent.agent != "producer" or ctx.idempotency_key not in {
-            f"{flow['flow_id']}:delegate:author", f"{flow['flow_id']}:delegate:review"}):
-        raise AppError("DELEGATION_FORBIDDEN", "Repair coordination uses server-assigned delegations only", 403)
     _lock_run(run)
     run, parent = _context(ctx)
     existing = AgentDelegation.query.filter_by(run_id=run.run_id, request_key=ctx.idempotency_key).first()
     if existing:
+        validate_delegate_receipt(data, parent, existing, ctx)
         return {"delegation_id": existing.id, "status": existing.status,
                 "output_ref": existing.output, "returned_reason": (existing.output or {}).get("reason")}
+    flow = active_flow(run)
+    assigned_author = bool(flow and parent.agent == "producer" and flow["stage"] == "author_pending"
+        and ctx.idempotency_key == f"{flow['flow_id']}:delegate:author" and data.agent == flow["author_role"])
+    assigned_review = bool(flow and parent.agent == "producer" and flow["stage"] == "review_pending"
+        and ctx.idempotency_key == f"{flow['flow_id']}:delegate:review" and data.agent == "director")
+    if (flow and not (assigned_author or assigned_review)) or (data.agent == "repair" and not assigned_author):
+        raise AppError("DELEGATION_FORBIDDEN", "Repair coordination uses server-assigned delegations only", 403)
     catalog = get_catalog()
     card = catalog.cards[parent.agent]
     if data.agent not in card.can_delegate_to:
@@ -142,10 +159,14 @@ def _delegate(data, ctx):
         raise AppError("DELEGATION_PARALLEL_LIMIT", "Too many live child delegations", 422)
     for ref in data.context_refs:
         resolve_workspace_ref(ref.model_dump(), ctx)
+    state = {"delegate_input_hash": inputs_hash(data.model_dump(mode="json"))}
+    if data.prompt_scope is not None:
+        state["prompt_scope"] = freeze_scope(data.prompt_scope,
+            [ref.model_dump(mode="json") for ref in data.context_refs], ctx)
     child = AgentDelegation(run_id=run.run_id, parent_id=parent.id, agent=data.agent,
         task=data.task, expected=data.expected, context_refs=[ref.model_dump() for ref in data.context_refs],
         depth=parent.depth + 1, credits_limit=allocate(parent, data.planning_credits, catalog.cards[data.agent]),
-        request_key=ctx.idempotency_key, status="pending", state={})
+        request_key=ctx.idempotency_key, status="pending", state=state)
     db.session.add(child)
     db.session.commit()
     return {"delegation_id": child.id, "status": child.status}
@@ -244,7 +265,8 @@ def _finish(data, ctx):
             if getattr(data, field) is not None:
                 resolve_workspace_ref(getattr(data, field).model_dump(), ctx, expected_kind=kind)
         if data.updates is not None:
-            output["updates"] = [PromptUpdate.model_validate(item).model_dump() for item in data.updates]
+            from app.agents.prompt_scope import validate_updates
+            output["updates"] = validate_updates(data.updates, delegation, ctx)
         if data.issues is not None:
             output["issues"] = [ReviewIssue.model_validate(item).model_dump() for item in data.issues]
     if submitted:
@@ -275,7 +297,8 @@ def _write(data, ctx):
 def register_agent_tools(registry):
     from app.agents.cards import get_catalog
     entries = [
-        ("list_agents", Empty, AgentListOutput, lambda _data, _ctx: get_catalog().describe(), "read"),
+        ("list_agents", Empty, AgentListOutput,
+            lambda _data, _ctx: [item for item in get_catalog().describe() if item["name"] != "repair"], "read"),
         ("read_workspace", ReadInput, ObjectOutput, _read, "read"),
         ("write_workspace", WriteInput, ObjectOutput, _write, "write"),
         ("delegate", DelegateInput, ObjectOutput, _delegate, "write"),

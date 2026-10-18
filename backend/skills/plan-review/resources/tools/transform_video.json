@@ -1,0 +1,154 @@
+{
+  "tool": "transform_video",
+  "resolved_input_schema": {
+    "$defs": {
+      "MediaReference": {
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "enum": [
+              "reference_image",
+              "reference_video",
+              "reference_audio",
+              "file"
+            ],
+            "title": "Type",
+            "type": "string"
+          },
+          "artifact_id": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Artifact Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "artifact_id"
+        ],
+        "title": "MediaReference",
+        "type": "object"
+      }
+    },
+    "additionalProperties": false,
+    "properties": {
+      "operation": {
+        "enum": [
+          "reference",
+          "edit",
+          "extend"
+        ],
+        "title": "Operation",
+        "type": "string"
+      },
+      "prompt": {
+        "maxLength": 5000,
+        "minLength": 1,
+        "title": "Prompt",
+        "type": "string"
+      },
+      "media": {
+        "items": {
+          "$ref": "#/$defs/MediaReference"
+        },
+        "maxItems": 20,
+        "minItems": 1,
+        "title": "Media",
+        "type": "array"
+      },
+      "source_artifact_id": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Source Artifact Id"
+      },
+      "model_id": {
+        "maxLength": 120,
+        "minLength": 1,
+        "title": "Model Id",
+        "type": "string"
+      },
+      "params": {
+        "additionalProperties": true,
+        "title": "Params",
+        "type": "object"
+      }
+    },
+    "required": [
+      "operation",
+      "prompt",
+      "media",
+      "model_id"
+    ],
+    "title": "TransformInput",
+    "type": "object"
+  },
+  "io_types": {
+    "inputs": {
+      "prompt": "text",
+      "media": "json",
+      "source_artifact_id": "video"
+    },
+    "outputs": {
+      "video": "video"
+    }
+  },
+  "authoring": {
+    "purpose": "只读作者合同，不是可由 Agent 直接调用的函数，也不是审批许可。",
+    "resolved_schema_notice": "resolved_input_schema 描述引用解析及服务端注入后的工具载荷；编写 PlanNode.inputs 时必须遵守字段放置规则。",
+    "plan_node_fields": [
+      "model_id",
+      "params"
+    ],
+    "server_injected_fields": [],
+    "forbidden_input_fields": [
+      "model_id",
+      "params",
+      "template_id",
+      "plan_version"
+    ],
+    "model_selection": "生成节点 model_id/params 写在 PlanNode 顶层；无指定模型可置 model_id=null，由 check_plan 解析默认。非生成节点 model_id=null、params={}。",
+    "references": {
+      "existing_media": {
+        "artifact": "REPLACE_OWNED_ARTIFACT_ID"
+      },
+      "upstream_output": {
+        "ref": "node.output"
+      },
+      "rules": [
+        "artifact/ref 对象只能有该单个键。真实 ID 必须属于当前 Run；node.output 必须是对应 io_types.outputs 的命名输出。",
+        "仅在工具声明且编译器支持的输入位置使用类型匹配的引用。媒体位置接受工件或上游媒体；json 位置还须符合对应 Schema/特殊映射，不代表任意引用均可接受。prompt、params 和未声明位置不能夹带引用。",
+        "数组字段可用单媒体引用组成数组，或整个字段引用同类型数组输出；数组元素不能引用数组输出，解析器不做 flatten。",
+        "示例 ID 只是形状占位，必须替换；引用本身不证明素材存在、质量或批准。"
+      ]
+    },
+    "completion_outputs": "io_types.outputs 是 Plan 节点完成后的命名输出；异步 Job 的 job_id/status/prompts 等回执不能作为 Plan 媒体引用。",
+    "notes": [
+      "media 是有序数组，每项只能有 type 和 artifact_id；虽然 io_types.media=json，编译器对 artifact_id 按下方类型映射进行特殊媒体引用检查。",
+      "operation=reference 不选主视频；edit/extend 的 source_artifact_id 必须与 media 中第一项 reference_video 指向同一源。",
+      "params.duration 是完整输出 G，延长时不是新增秒数；视频输入 I 由服务端实测，按 I+G 估价。不得提供 manifest 或自报输入时长。",
+      "文件/网页正文用 type=file，必须是已安全获取的同 Run 文档工件；不能直接传外部 URL。"
+    ],
+    "structured_media": {
+      "field": "media",
+      "element_keys": [
+        "type",
+        "artifact_id"
+      ],
+      "artifact_field": "artifact_id",
+      "type_mapping": {
+        "reference_image": "image",
+        "reference_video": "video",
+        "reference_audio": "audio",
+        "file": "document"
+      },
+      "source_artifact_id_type": "video"
+    }
+  }
+}

@@ -1,0 +1,66 @@
+{
+  "title": "演示：首帧到视频交付",
+  "goal": "演示命名输出和依赖结构；实际任务须重新编译、估价和审核",
+  "nodes": [
+    {
+      "id": "first",
+      "tool": "generate_image",
+      "inputs": {"mode": "t2i", "prompt": "演示画面：柔光下的猫咪，干净构图"},
+      "model_id": null,
+      "params": {"n": 1},
+      "stage": "creation",
+      "gate": "preview",
+      "origin": {"agent": "director", "skills": ["plan-review"]},
+      "rationale": "先确认首帧，后续视频依赖此图"
+    },
+    {
+      "id": "clip",
+      "tool": "animate_shot",
+      "inputs": {"first_frame_artifact_id": {"ref": "first.image"}, "prompt": "猫咪轻轻转头，稳定镜头"},
+      "model_id": null,
+      "params": {"duration": 5},
+      "stage": "creation",
+      "origin": {"agent": "director", "skills": ["plan-review"]},
+      "rationale": "五秒仅为演示，实际按需求和模型能力决定"
+    },
+    {
+      "id": "master",
+      "tool": "compose_video",
+      "inputs": {"video_artifact_ids": [{"ref": "clip.video"}], "compress_output": false},
+      "stage": "delivery",
+      "origin": {"agent": "director", "skills": ["plan-review"]},
+      "rationale": "按批准的片段顺序交付，不额外压缩"
+    },
+    {
+      "id": "probe",
+      "tool": "probe_media",
+      "inputs": {"artifact_id": {"ref": "master.artifact_id"}},
+      "stage": "delivery",
+      "origin": {"agent": "director", "skills": ["plan-review"]},
+      "rationale": "读取同一成片的媒体结构"
+    },
+    {
+      "id": "qc",
+      "tool": "qc_video",
+      "inputs": {"artifact_id": {"ref": "master.artifact_id"}, "video_artifact_ids": [{"ref": "clip.video"}]},
+      "depends_on": ["probe"],
+      "stage": "delivery",
+      "origin": {"agent": "director", "skills": ["plan-review"]},
+      "rationale": "检查批准片段与交付时长，不表示艺术质量验收"
+    },
+    {
+      "id": "package",
+      "tool": "package_story",
+      "inputs": {"artifact_id": {"ref": "master.artifact_id"}},
+      "depends_on": ["qc"],
+      "stage": "delivery",
+      "origin": {"agent": "director", "skills": ["plan-review"]},
+      "rationale": "同一成片质检通过后打包"
+    }
+  ],
+  "deliverables": [
+    {"kind": "video", "node_id": "master", "output": "artifact_id"},
+    {"kind": "package", "node_id": "package", "output": "artifact_id"}
+  ],
+  "stages": [{"id": "creation", "label": "示例创作"}, {"id": "delivery", "label": "示例交付"}]
+}

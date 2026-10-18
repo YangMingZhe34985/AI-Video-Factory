@@ -1,0 +1,273 @@
+{
+  "$defs": {
+    "PlanSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "title": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "mode": {
+          "default": "from_scratch",
+          "enum": [
+            "from_scratch",
+            "remix"
+          ],
+          "title": "Mode",
+          "type": "string"
+        },
+        "style_notes": {
+          "anyOf": [
+            {
+              "maxLength": 8000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Style Notes"
+        },
+        "shots": {
+          "items": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/RemixShotSpec"
+              },
+              {
+                "$ref": "#/$defs/ShotSpec"
+              }
+            ]
+          },
+          "maxItems": 20,
+          "minItems": 1,
+          "title": "Shots",
+          "type": "array"
+        }
+      },
+      "required": [
+        "title",
+        "shots"
+      ],
+      "title": "PlanSpec",
+      "type": "object"
+    },
+    "RemixShotSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "shot_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "title": "Shot Id",
+          "type": "string"
+        },
+        "first_frame_prompt": {
+          "default": "",
+          "maxLength": 8000,
+          "title": "First Frame Prompt",
+          "type": "string"
+        },
+        "i2v_prompt": {
+          "default": "",
+          "maxLength": 8000,
+          "title": "I2V Prompt",
+          "type": "string"
+        },
+        "image_model_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Image model selection belongs here, never in image_params.",
+          "title": "Image Model Id"
+        },
+        "video_model_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Video model selection belongs here, never in video_params.",
+          "title": "Video Model Id"
+        },
+        "image_params": {
+          "additionalProperties": true,
+          "description": "Image generation parameters only; no model_id.",
+          "title": "Image Params",
+          "type": "object"
+        },
+        "video_params": {
+          "additionalProperties": true,
+          "description": "Video generation parameters only; no model_id.",
+          "title": "Video Params",
+          "type": "object"
+        },
+        "action": {
+          "enum": [
+            "keep",
+            "regenerate"
+          ],
+          "title": "Action",
+          "type": "string"
+        },
+        "source_start": {
+          "description": "Start of original segment to preserve or replace; source first frame is extracted here.",
+          "minimum": 0,
+          "title": "Source Start",
+          "type": "number"
+        },
+        "source_end": {
+          "description": "End of original segment to preserve or replace. Generated output length is independently set by video_params.duration.",
+          "exclusiveMinimum": 0,
+          "title": "Source End",
+          "type": "number"
+        },
+        "edit_reason": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Edit Reason",
+          "type": "string"
+        },
+        "first_frame_mode": {
+          "default": "source",
+          "enum": [
+            "source",
+            "generate"
+          ],
+          "title": "First Frame Mode",
+          "type": "string"
+        }
+      },
+      "required": [
+        "shot_id",
+        "action",
+        "source_start",
+        "source_end",
+        "edit_reason"
+      ],
+      "title": "RemixShotSpec",
+      "type": "object"
+    },
+    "ShotSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "shot_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "title": "Shot Id",
+          "type": "string"
+        },
+        "first_frame_prompt": {
+          "description": "Static description of the opening frame: subject, pose, scene, lighting.",
+          "maxLength": 8000,
+          "minLength": 1,
+          "title": "First Frame Prompt",
+          "type": "string"
+        },
+        "i2v_prompt": {
+          "description": "Motion only: subject action, environment motion, camera movement.",
+          "maxLength": 8000,
+          "minLength": 1,
+          "title": "I2V Prompt",
+          "type": "string"
+        },
+        "image_model_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Image model selection belongs here, never in image_params.",
+          "title": "Image Model Id"
+        },
+        "video_model_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Video model selection belongs here, never in video_params.",
+          "title": "Video Model Id"
+        },
+        "image_params": {
+          "additionalProperties": true,
+          "description": "Image generation parameters only; no model_id.",
+          "title": "Image Params",
+          "type": "object"
+        },
+        "video_params": {
+          "additionalProperties": true,
+          "description": "Video generation parameters only; no model_id.",
+          "title": "Video Params",
+          "type": "object"
+        }
+      },
+      "required": [
+        "shot_id",
+        "first_frame_prompt",
+        "i2v_prompt"
+      ],
+      "title": "ShotSpec",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "plan": {
+      "$ref": "#/$defs/PlanSpec"
+    },
+    "source_artifact_id": {
+      "maxLength": 80,
+      "minLength": 1,
+      "title": "Source Artifact Id",
+      "type": "string"
+    },
+    "goal": {
+      "anyOf": [
+        {
+          "maxLength": 2000,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Goal"
+    },
+    "compress_output": {
+      "default": false,
+      "title": "Compress Output",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "plan",
+    "source_artifact_id"
+  ],
+  "title": "Params",
+  "type": "object"
+}

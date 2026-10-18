@@ -1,0 +1,497 @@
+{
+  "$defs": {
+    "AttachmentUse": {
+      "additionalProperties": false,
+      "properties": {
+        "attachment_id": {
+          "minLength": 1,
+          "title": "Attachment Id",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "image",
+            "video",
+            "audio",
+            "file"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "role": {
+          "enum": [
+            "identity_ref",
+            "style_ref",
+            "first_frame",
+            "remix_source",
+            "content_ref",
+            "unused",
+            "transform_source",
+            "audio_ref",
+            "document_ref"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "description": {
+          "maxLength": 1000,
+          "title": "Description",
+          "type": "string"
+        },
+        "reason": {
+          "maxLength": 300,
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "attachment_id",
+        "kind",
+        "role",
+        "description",
+        "reason"
+      ],
+      "title": "AttachmentUse",
+      "type": "object"
+    },
+    "Constraints": {
+      "additionalProperties": false,
+      "properties": {
+        "model_preferences": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Model Preferences",
+          "type": "array"
+        },
+        "model_exclusions": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Model Exclusions",
+          "type": "array"
+        },
+        "must_include": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Must Include",
+          "type": "array"
+        },
+        "must_avoid": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Must Avoid",
+          "type": "array"
+        },
+        "style": {
+          "anyOf": [
+            {
+              "maxLength": 500,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Style"
+        },
+        "language": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Language"
+        },
+        "compress_output": {
+          "default": false,
+          "title": "Compress Output",
+          "type": "boolean"
+        }
+      },
+      "title": "Constraints",
+      "type": "object"
+    },
+    "Option": {
+      "additionalProperties": false,
+      "properties": {
+        "option_id": {
+          "maxLength": 40,
+          "minLength": 1,
+          "title": "Option Id",
+          "type": "string"
+        },
+        "label": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Label",
+          "type": "string"
+        },
+        "detail": {
+          "anyOf": [
+            {
+              "maxLength": 300,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Detail"
+        },
+        "image_artifact_id": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Image Artifact Id"
+        }
+      },
+      "required": [
+        "option_id",
+        "label"
+      ],
+      "title": "Option",
+      "type": "object"
+    },
+    "Question": {
+      "additionalProperties": false,
+      "properties": {
+        "question_id": {
+          "maxLength": 40,
+          "minLength": 1,
+          "title": "Question Id",
+          "type": "string"
+        },
+        "text": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        },
+        "why": {
+          "maxLength": 300,
+          "minLength": 1,
+          "title": "Why",
+          "type": "string"
+        },
+        "options": {
+          "items": {
+            "$ref": "#/$defs/Option"
+          },
+          "maxItems": 4,
+          "minItems": 2,
+          "title": "Options",
+          "type": "array"
+        },
+        "recommended_option_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Recommended Option Id"
+        },
+        "allow_free_text": {
+          "default": false,
+          "title": "Allow Free Text",
+          "type": "boolean"
+        },
+        "blocking": {
+          "default": true,
+          "title": "Blocking",
+          "type": "boolean"
+        },
+        "default_option_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Default Option Id"
+        }
+      },
+      "required": [
+        "question_id",
+        "text",
+        "why",
+        "options"
+      ],
+      "title": "Question",
+      "type": "object"
+    },
+    "ResearchNeed": {
+      "additionalProperties": false,
+      "properties": {
+        "query": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Query",
+          "type": "string"
+        },
+        "reason": {
+          "maxLength": 300,
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "query",
+        "reason"
+      ],
+      "title": "ResearchNeed",
+      "type": "object"
+    },
+    "Subject": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "description": {
+          "maxLength": 1000,
+          "title": "Description",
+          "type": "string"
+        },
+        "source": {
+          "enum": [
+            "user_text",
+            "attachment",
+            "needs_research"
+          ],
+          "title": "Source",
+          "type": "string"
+        },
+        "attachment_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Attachment Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "name",
+        "description",
+        "source"
+      ],
+      "title": "Subject",
+      "type": "object"
+    },
+    "TransformIntent": {
+      "additionalProperties": false,
+      "properties": {
+        "operation": {
+          "enum": [
+            "reference",
+            "edit",
+            "extend"
+          ],
+          "title": "Operation",
+          "type": "string"
+        },
+        "source_attachment_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Attachment Id"
+        },
+        "additional_duration_sec": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 29,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Additional Duration Sec"
+        },
+        "reference_urls": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 1,
+          "title": "Reference Urls",
+          "type": "array"
+        }
+      },
+      "required": [
+        "operation"
+      ],
+      "title": "TransformIntent",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "RequestSpec fields independent of the v2 fixed recipe router.",
+  "properties": {
+    "deliverable": {
+      "enum": [
+        "image",
+        "video"
+      ],
+      "title": "Deliverable",
+      "type": "string"
+    },
+    "transform": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/TransformIntent"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "summary": {
+      "maxLength": 500,
+      "minLength": 1,
+      "title": "Summary",
+      "type": "string"
+    },
+    "target_duration_sec": {
+      "anyOf": [
+        {
+          "maximum": 600,
+          "minimum": 1,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Target Duration Sec"
+    },
+    "duration_tolerance_sec": {
+      "default": 10,
+      "maximum": 120,
+      "minimum": 0,
+      "title": "Duration Tolerance Sec",
+      "type": "integer"
+    },
+    "aspect_ratio": {
+      "anyOf": [
+        {
+          "enum": [
+            "16:9",
+            "9:16",
+            "1:1",
+            "4:3",
+            "3:4"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Aspect Ratio"
+    },
+    "output_count": {
+      "default": 1,
+      "maximum": 4,
+      "minimum": 1,
+      "title": "Output Count",
+      "type": "integer"
+    },
+    "subjects": {
+      "items": {
+        "$ref": "#/$defs/Subject"
+      },
+      "maxItems": 12,
+      "title": "Subjects",
+      "type": "array"
+    },
+    "attachments": {
+      "items": {
+        "$ref": "#/$defs/AttachmentUse"
+      },
+      "title": "Attachments",
+      "type": "array"
+    },
+    "constraints": {
+      "$ref": "#/$defs/Constraints"
+    },
+    "research_needs": {
+      "items": {
+        "$ref": "#/$defs/ResearchNeed"
+      },
+      "maxItems": 5,
+      "title": "Research Needs",
+      "type": "array"
+    },
+    "open_questions": {
+      "items": {
+        "$ref": "#/$defs/Question"
+      },
+      "maxItems": 3,
+      "title": "Open Questions",
+      "type": "array"
+    },
+    "confidence": {
+      "maximum": 1,
+      "minimum": 0,
+      "title": "Confidence",
+      "type": "number"
+    },
+    "intent_notes": {
+      "default": "",
+      "maxLength": 2000,
+      "title": "Intent Notes",
+      "type": "string"
+    },
+    "production_intent": {
+      "default": false,
+      "title": "Production Intent",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "deliverable",
+    "summary",
+    "confidence"
+  ],
+  "title": "RequirementBrief",
+  "type": "object"
+}

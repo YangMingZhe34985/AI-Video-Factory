@@ -1,9 +1,9 @@
 {
   "name": "creative",
-  "description": "根据约束与资料构思故事；需求不足时退回问题。",
+  "description": "保留用户叙事约束，创作目标时长内的故事、角色和风格，将镜头技术决策交给 Director。",
   "accepts": {
     "brief": "RequirementBrief",
-    "research": "Dossier?"
+    "research": "ResearchDossier?"
   },
   "returns": "StoryPackage",
   "model_role": "creative",

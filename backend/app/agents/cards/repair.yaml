@@ -1,9 +1,10 @@
 {
   "name": "repair",
-  "description": "诊断失败并起草局部修复建议；不执行生成或自行授权。",
+  "description": "仅在服务端失败流程内起草有证据的最小 Patch；未知提交不重发，不生成或自行授权。",
   "accepts": {
     "plan": "PlanDraft",
-    "failure": "FailureInfo"
+    "failure": "FailureInfo",
+    "repair_context": "ServerAssignedRepairContext"
   },
   "returns": "PatchDraft",
   "model_role": "repair",
