@@ -56,10 +56,17 @@ def _context(run, task, *, polling=False):
 
 def _inputs(run, version, shot, task=None):
     data = video_inputs(run, version, shot)
-    if data and task:
-        for receipt in (run.snapshot or {}).get("production_repairs", {}).values():
-            if receipt.get("replacement_task_id") == task.id and receipt.get("motion_prompt"):
-                data["prompt"] = receipt["motion_prompt"]
+    receipts = (run.snapshot or {}).get("production_repairs", {})
+    seen = set()
+    while data and task and task.id not in seen:
+        seen.add(task.id)
+        receipt = next((item for item in receipts.values() if item.get("replacement_task_id") == task.id), None)
+        if not receipt:
+            break
+        if receipt.get("motion_prompt"):
+            data["prompt"] = receipt["motion_prompt"]
+            break
+        task = db.session.get(AgentShotTask, receipt.get("failed_task_id"))
     return data
 
 
@@ -114,7 +121,16 @@ def _poll(run, version, registry):
             candidates = [item["artifact_id"] for item in report["artifacts"] if item["artifact_type"] == "i2v_video"]
             candidate = SimpleNamespace(status="success", artifact_ids=candidates, target_type="video", run_id=run.run_id)
             artifact = usable_artifact(candidate)
-            good = report["status"] == "success" and bool(artifact)
+            recovered = False
+            if artifact and report["status"] == "partial_success":
+                from app.models import ApiTask
+                api = db.session.get(ApiTask, artifact.api_task_id) if artifact.api_task_id else None
+                recovered = bool(api and api.job_id == job.id and api.provider_task_id
+                    and (api.response_payload or {}).get("status") == "success" and any(
+                        item.get("action") == "recover_read" and item.get("replacement_task_id") == task.id
+                        and item.get("status") == "running"
+                        for item in (run.snapshot or {}).get("production_repairs", {}).values()))
+            good = bool(artifact) and (report["status"] == "success" or recovered)
             failure = None if good else classify_job_failure(job)
             versions.update_task(run, task, status="success" if good else "failed",
                 artifact_ids=[artifact.artifact_id] if good else [], error=failure)
@@ -227,6 +243,17 @@ def tick_production(run, registry):
         if not data:
             continue
         if task is None:
+            # A reviewed plan change cannot turn an unresolved submission into
+            # a fresh paid shot. Preserve the durable failure across versions.
+            unknown = next((item for item in AgentShotTask.query.filter_by(
+                run_id=run.run_id, target_type="video", target_id=sid).order_by(AgentShotTask.id.desc())
+                if (item.error or {}).get("category") == "submit_unknown"), None)
+            if unknown:
+                task = versions.create_task(run, version.version, "video", sid, data,
+                                            estimated_cost=shot_cost(run, shot), reuse=False)
+                versions.update_task(run, task, status="failed", job_id=unknown.job_id,
+                                     invocation_id=unknown.invocation_id, error=unknown.error)
+                continue
             forced = sid in metadata.get("force_shot_ids", [])
             task = versions.create_task(run, version.version, "video", sid, data,
                                         estimated_cost=shot_cost(run, shot), reuse=not forced)
