@@ -74,8 +74,17 @@ def _changed(message="Approved reference media changed"):
     return AppError("TRANSFORM_INPUT_CHANGED", message, 409)
 
 
+def _manifest_index(manifest):
+    if any(not isinstance(item, dict) or not isinstance(item.get("artifact_id"), str)
+           or not isinstance(item.get("sha256"), str) for item in manifest):
+        raise _changed("Input manifest is malformed")
+    if len({item["artifact_id"] for item in manifest}) != len(manifest):
+        raise _changed("Input manifest repeats an artifact")
+    return {item["artifact_id"]: item for item in manifest}
+
+
 def _verify_manifest(original, current):
-    expected = {item.get("artifact_id"): item for item in original}
+    expected = _manifest_index(original)
     for item in current:
         if item["artifact_id"] in expected and expected[item["artifact_id"]] != item:
             raise _changed()
@@ -107,7 +116,7 @@ def validate_transform_plan(raw, spec, *, run, require_quote=False, check_budget
     baseline = ((run.snapshot or {}).get("plan") or {}).get("manifest") or []
     approved = (((run.snapshot or {}).get("transform") or {}).get("plan") or {}).get("manifest") or []
     for frozen in (baseline, approved, plan.manifest):
-        by_id = {item.get("artifact_id"): item for item in frozen}
+        by_id = _manifest_index(frozen)
         retained = [ref for ref in plan.media if ref.artifact_id in by_id]
         if retained:
             try:
