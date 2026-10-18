@@ -634,7 +634,7 @@ W-Gate 结论：通过。
 
 ## 2026-10-19 · Codex · V2 Skill 库与 V3 Agent 运行时
 状态：Codex 实现与 Mock/Stub 回归完成；关键 Skill 审定与 V-Gate1 仍由 Claude 负责。本轮不进入 V4–V8，不修改前端功能或美化。
-分支与提交：从 feat/agent-v2 @ea9da2c 分出 agent-v3/V2、agent-v3/V3。V2 @9f196f0 已本地集成到 V3；本条所在 V3 提交已通过验收，接下来合回本地 feat/agent-v2，暂不推送、不开 PR。
+分支与提交：从 feat/agent-v2 @ea9da2c 分出 agent-v3/V2、agent-v3/V3。V2 @9f196f0、V3 @79eab34 已快进合入本地 feat/agent-v2；本条的后续提交仅记录合并结果，不改已验收应用代码。未推送、未开 PR。
 
 完成内容：
 - V2：新增 20 项 Skill（15 个知识包与六个 Blueprint 指南，video-remix 共用目录）、启动时校验与缓存、list_skills/load_skill/read_skill_resource。使用受限 SafeLoader，拒绝重复键、别名、不安全标签、过深或过大文档、无效工具/builder/关联项；资源仅可读启动时固定快照，拒绝越界路径、隐藏文件、符号链接。关键四项 intent-analysis/delegation-policy/long-form-video/character-consistency 明确标为待 Claude 审定。Blueprint 指南不冒充尚未实现的 V4 builder。
