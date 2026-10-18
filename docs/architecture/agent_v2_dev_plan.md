@@ -126,15 +126,17 @@ docs/agent_v2/
 
 | ID | 任务 | 负责 | 规模 | 验收 |
 |---|---|---|---|---|
-| C0 | C 章契约：`Story`、`CharacterBible`、`ProductionPlan`（镜头、场景、衔接方式、依赖）、计划版本 | Claude | M | 写入 CONTRACTS |
-| C1 | Plan Check（纯代码）：总时长容差、单镜头不超过模型上限、依赖无环且指向前序、角色引用存在、参数合法、预算 | Claude | M | 每条规则都有正反用例 |
-| C2 | 数据表：`agent_plan_versions`、`agent_shot_tasks` + 迁移 | Codex | M | 迁移幂等；版本递增 |
-| C3 | Creative v2：剧本（分幕、节拍、时长）、角色设定、风格指南 | Codex（Claude 写系统提示词） | M | Mock 下 120 秒需求的节拍时长之和在容差内 |
-| C4 | Director v2：配方判定、按能力目录拆镜头、衔接方式（尾帧接续 / 独立首帧 / 首尾帧 / 硬切）、选型与理由、按秒成本 | Claude | L | 计划通过 C1；场景内连续动作为尾帧接续，跨场景可并行 |
-| C5 | Prompt Smith：逐镜头按模型写首帧与动作提示词，沿用 `factory_prompts` 方法论 | Codex | M | 每条提示词通过 Schema；修改单个镜头只重写该镜头 |
-| C6 | 审核 A 图节点：先生成角色参考图与关键帧（只花图片费用），用户可编辑计划、单张重生成，确认后才进入视频阶段 | Claude | L | 审核 A 通过前没有任何视频类 ToolInvocation |
-| C7 | 分镜审核板前端：时长条、角色卡、镜头时间线与衔接图标、编辑抽屉、实时费用、校验错误提示（参照网页版方案的交互） | Codex | L | 构建通过；修改时长/模型后费用实时更新；不合法计划不能提交 |
+| C0 | C 章契约：StoryPackage、ProductionPlan、计划版本与审核动作 | Claude | M | 写入 CONTRACTS |
+| C1 | Creative v2：剧本、角色、风格，引用校验与澄清 | Codex | M | 120 秒节拍在容差内；角色参考来源与归属合法 |
+| C2 | 数据表与版本服务：`agent_plan_versions`、`agent_shot_tasks`、迁移 | Codex | M | 迁移幂等；版本递增；旧版本与产物保留 |
+| C3 | Director v2：按能力拆镜头、衔接、选型与按秒估算 | Codex | L | 代码推导依赖；默认模型及用户约束有效 |
+| C4 | Prompt Smith 逐镜头 Skill + Plan Check（纯代码），一次自动修订 | Codex | L | 各规则正反用例；单镜头编辑只重写相关提示词 |
+| C5 | 角色与关键帧预览生产、轮询、stale 判定与局部重做 | Codex | L | 经 ToolRegistry；成功产物复用；失败不自动重花费用 |
+| C6 | 审核 A 图节点、动作、Run 视图、权限与恢复 | Codex | L | 两级审核；版本冲突与幂等；终点 `storyboard_approved`，无视频调用 |
+| C7 | 分镜板功能：时长条、角色卡、时间线、编辑抽屉、费用与重做确认 | Codex（功能；Claude 负责美化） | L | 构建通过；实时估算；无效计划不能确认；保护未保存编辑 |
 | C-Gate | 阶段评审 | Claude | S | — |
+
+本表已按 C0 定稿后的 CONTRACTS C 章与任务看板统一编号；依用户最新分工，C1–C7 功能由 Codex 完成，界面美化与阶段评审留给 Claude。Phase C 默认关闭新长片路由，视频生产在 Phase D 接入。
 
 ### Phase D 依赖调度与局部修复
 
