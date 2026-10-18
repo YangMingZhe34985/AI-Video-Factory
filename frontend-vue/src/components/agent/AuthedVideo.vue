@@ -14,9 +14,10 @@
 // Owner-protected videos (e.g. an uploaded remix source) need the Bearer
 // header, so they are fetched as a blob — only on request, since sources can
 // be large.
-import { onBeforeUnmount, ref } from 'vue'
+import { onBeforeUnmount, reactive, toRefs, watch } from 'vue'
 import { PhPlayCircle } from '@phosphor-icons/vue'
 import request from '@/api/request'
+import { createPreviewLoader } from './media-preview'
 
 defineOptions({ inheritAttrs: false })
 const props = defineProps({
@@ -25,21 +26,13 @@ const props = defineProps({
   loadingLabel: { type: String, default: 'Loading…' },
   errorLabel: { type: String, default: 'Preview unavailable' },
 })
-const url = ref('')
-const loading = ref(false)
-const failed = ref(false)
-
-async function load() {
-  loading.value = true
-  failed.value = false
-  try {
-    const blob = await request.get(props.src.replace(/^\/api/, ''), { responseType: 'blob', timeout: 300000 })
-    url.value = URL.createObjectURL(blob)
-  } catch {
-    failed.value = true
-  } finally {
-    loading.value = false
-  }
-}
-onBeforeUnmount(() => url.value && URL.revokeObjectURL(url.value))
+const state = reactive({ url: '', loading: false, failed: false })
+const { url, loading, failed } = toRefs(state)
+const preview = createPreviewLoader(
+  (src, signal) => request.get(src.replace(/^\/api/, ''), { responseType: 'blob', timeout: 300000, signal }),
+  (values) => Object.assign(state, values),
+)
+const load = () => preview.load(props.src)
+watch(() => props.src, () => preview.reset())
+onBeforeUnmount(() => preview.dispose())
 </script>
