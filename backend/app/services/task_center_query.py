@@ -36,6 +36,7 @@ def shared_workflow():
         Job.config["agent_upload_owner"].as_string().is_not(None),
         Job.config["agent_story_preview"].as_string().is_not(None),
         Job.config["agent_story_production"].as_string().is_not(None),
+        Job.config["agent_transform"].as_string().is_not(None),
         Job.config["skill"].as_string().is_not(None),
         exists(select(Template.id).where(Template.id == Job.template_id, Template.template_id == "agent_workspace")),
         exists(select(ToolInvocation.id).where(ToolInvocation.job_id == Job.id)),
@@ -52,6 +53,7 @@ def visible_job(owner):
     markers = [
         Job.config["agent_story_preview"]["run_id"].as_string(),
         Job.config["agent_story_production"]["run_id"].as_string(),
+        Job.config["agent_transform"]["run_id"].as_string(),
     ]
     marker_checks = []
     for marker in markers:

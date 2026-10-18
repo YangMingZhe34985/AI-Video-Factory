@@ -110,6 +110,10 @@ class NodeRunner:
         if job and effective_node_key:
             merged_params.update(((job.config or {}).get("node_model_params") or {}).get(effective_node_key) or {})
         merged_params.update(params or {})
+        if job and (job.config or {}).get("agent_transform"):
+            from app.agent.transform_policy import validate_before_submit
+            merged_params = dict((job.config.get("node_model_params") or {}).get(effective_node_key) or {})
+            validate_before_submit(job, model, inputs, merged_params, operation=effective_node_key)
         payload = self._build_adapter_payload(adapter, model, inputs, merged_params)
         self._release_db_connection()
         try:
@@ -195,6 +199,9 @@ class NodeRunner:
             return submit(self._node_run, job, model, adapter_name, payload,
                           {"inputs": inputs, "params": params, "operation": operation},
                           generation=getattr(adapter, "output_kind", None) in {"image", "video"})
+        if job and (job.config or {}).get("agent_transform"):
+            from app.agent.transform_policy import validate_before_submit
+            validate_before_submit(job, model, inputs, params, operation=operation, adapter_name=adapter_name)
         return adapter.submit(payload)
 
     def _build_adapter_payload(self, adapter, model, inputs, params):
@@ -1138,6 +1145,8 @@ class NodeRunner:
         }
 
     def _run_submit_r2v_flash(self, job: Job, node, node_run: JobNodeRun) -> dict:
+        if (job.config or {}).get("agent_transform"):
+            return self._run_submit_transform(job, node, node_run)
         prompt = self._prompt(job, "r2v_flash")
         references = (
             Artifact.query.filter_by(job_id=job.id, artifact_type="reference_image")
@@ -1190,6 +1199,22 @@ class NodeRunner:
             "reference_image_artifact_ids": [item.artifact_id for item in references],
             "adapter": adapter.__class__.__name__,
         }
+
+    def _run_submit_transform(self, job, node, node_run):
+        from app.agent.transform_policy import submission_inputs
+        inputs = submission_inputs(job)
+        prompt = self._prompt(job, "r2v_flash")
+        model = self._model_for(job, node, "r2v_flash", "DEFAULT_R2V_FLASH_MODEL")
+        adapter, payload, response = self._adapter_payload(model, inputs, job=job, node=node)
+        base = ["outputs", "r2v_flash", prompt.version]
+        self._write_json_artifact(job, node_run, base + ["request_payload.json"], payload,
+                                  "request_payload", "r2v_flash", model.model_id, prompt.version)
+        self._write_json_artifact(job, node_run, base + ["response.json"], response,
+                                  "api_response", "r2v_flash", model.model_id, prompt.version)
+        expected_path = f"jobs/{job.job_id}/outputs/r2v_flash/{prompt.version}/video_1.mp4"
+        task = self._create_api_task(job, node_run, "r2v_flash", model, payload, response, expected_path)
+        return {"api_task_ids": [task.api_task_id], "expected_artifact_paths": [expected_path],
+                "reference_source": "approved_transform", "adapter": adapter.__class__.__name__}
 
     def _sample_local_r2v_references(self, job: Job, node, node_run: JobNodeRun) -> list[Artifact]:
         image_pool = []

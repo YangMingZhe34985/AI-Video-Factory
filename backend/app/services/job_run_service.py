@@ -97,6 +97,8 @@ class JobRunService:
         job = JobService.get_job(job_id)
         from app.agent.production_policy import validate_dispatch
         validate_dispatch(job, run_type, node_key, force, restart)
+        from app.agent.transform_policy import validate_dispatch as validate_transform_dispatch
+        validate_transform_dispatch(job, run_type, node_key, force, restart)
         if run_type == "run_from":
             cls.validate_start_node(job, node_key or "")
         elif run_type == "run_node":
