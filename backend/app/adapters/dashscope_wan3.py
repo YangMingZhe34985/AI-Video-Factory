@@ -4,7 +4,6 @@ import base64
 import binascii
 import ipaddress
 import io
-import wave
 from urllib.parse import urlsplit
 
 from PIL import Image, UnidentifiedImageError
@@ -12,6 +11,7 @@ from PIL import Image, UnidentifiedImageError
 from app.adapters.dashscope_common import DashScopeGenerationAdapter
 from app.api import AppError
 from app.services.storage_service import MOCK_PNG_BYTES, StorageService
+from app.services.wan3_media_service import Wan3MediaService
 
 
 MODEL_IDS = frozenset({"wan3.0-video", "wan3.0-video-prime"})
@@ -70,10 +70,14 @@ class DashScopeWan3Adapter(DashScopeGenerationAdapter):
         if any(item["type"] in {"file", "link"} for item in media) and not parameters["prompt_extend"]:
             _invalid("Wan 3 file/link inputs require prompt_extend=true")
         # Validate all resources before any upload or billable submission.
-        audio_seconds = 0.0
+        seconds = {"reference_video": 0.0, "reference_audio": 0.0}
         for item in media:
-            audio_seconds += self._validate_resource(item)
-        if audio_seconds > 15:
+            duration = self._validate_resource(item)
+            if item["type"] in seconds:
+                seconds[item["type"]] += duration
+        if seconds["reference_video"] > 15 or seconds["reference_video"] + parameters["duration"] > 30:
+            _invalid("Wan 3 input video must total at most 15 seconds and input plus final output at most 30 seconds")
+        if seconds["reference_audio"] > 15:
             _invalid("Wan 3 reference audio total duration exceeds 15 seconds")
         output = {"prompt": prompt}
         if media:
@@ -128,9 +132,6 @@ class DashScopeWan3Adapter(DashScopeGenerationAdapter):
             _invalid("Wan 3 first/last frames cannot be mixed with reference media; a last frame requires a first frame")
         if counts["file"] and counts["link"]:
             _invalid("Wan 3 file and link are mutually exclusive")
-        if counts["reference_video"]:
-            _invalid("Wan 3 reference video, editing and extension require verified input-duration billing and are not enabled",
-                     "WAN3_MEDIA_UNSUPPORTED")
         return media
 
     @staticmethod
@@ -168,8 +169,7 @@ class DashScopeWan3Adapter(DashScopeGenerationAdapter):
         kind, value = item["type"], item["url"]
         remote = self.is_remote_resource(value)
         if kind == "link":
-            self._public_url(value, oss=False)
-            return 0.0
+            _invalid("Live page links are not accepted; capture an approved private TXT snapshot first", "WAN3_MEDIA_UNSUPPORTED")
         if kind in IMAGE_TYPES:
             if remote:
                 self._public_url(value)
@@ -177,27 +177,10 @@ class DashScopeWan3Adapter(DashScopeGenerationAdapter):
                 self._validate_image(value)
             return 0.0
         if remote or value.startswith("data:"):
-            _invalid("Wan 3 audio/file inputs currently require locally verified managed files", "WAN3_MEDIA_UNSUPPORTED")
-        if kind == "reference_audio":
-            path = self._local_file(value, 15 * 1024 * 1024)
-            if path.suffix.lower() != ".wav":
-                _invalid("Wan 3 local reference audio currently supports verified WAV only", "WAN3_MEDIA_UNSUPPORTED")
-            try:
-                with wave.open(str(path), "rb") as audio:
-                    frames, rate = audio.getnframes(), audio.getframerate()
-                    duration = frames / rate
-                    if not 1 <= duration <= 15 or audio.getcomptype() != "NONE":
-                        _invalid("Wan 3 reference audio duration must be 1 to 15 seconds")
-                    expected = frames * audio.getnchannels() * audio.getsampwidth()
-                    if len(audio.readframes(frames)) != expected:
-                        _invalid("Wan 3 reference audio is truncated")
-            except (wave.Error, EOFError, OSError, ZeroDivisionError):
-                _invalid("Wan 3 reference audio cannot be decoded")
-            return duration
-        path = self._local_file(value, 100 * 1024 * 1024)
-        if path.suffix.lower() not in {".txt", ".md"}:
-            _invalid("Wan 3 file input currently supports TXT/Markdown only; paged files are not enabled", "WAN3_MEDIA_UNSUPPORTED")
-        return 0.0
+            _invalid("Wan 3 video/audio/file inputs require locally verified managed files", "WAN3_MEDIA_UNSUPPORTED")
+        media_kind = {"reference_video": "video", "reference_audio": "audio", "file": "file"}[kind]
+        metadata = Wan3MediaService.inspect(value, media_kind)
+        return metadata["duration_sec"] or 0.0
 
     def _validate_image(self, value):
         if value.startswith("data:"):
