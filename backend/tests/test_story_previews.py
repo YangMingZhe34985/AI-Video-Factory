@@ -6,6 +6,7 @@ import time
 
 import pytest
 from flask_jwt_extended import create_access_token
+from sqlalchemy import update
 
 from app.agent import plan_versions as versions
 from app.agent import preview_production as previews
@@ -105,6 +106,50 @@ def test_launch_replay_and_reopened_session_do_not_repeat_image_charges(app_ctx)
     previews.launch_previews(row, version, targets, registry)
     assert ToolInvocation.query.count() == count == 4
     assert AgentShotTask.query.count() == 3
+
+
+@pytest.mark.parametrize("entry", ["poll", "launch_replay", "recover"])
+def test_finished_preview_is_not_recovered_from_a_stale_running_snapshot(app_ctx, monkeypatch, entry):
+    row, version, registry = setup(characters=False)
+    target = [("keyframe", "s01")]
+    starts = []
+
+    def start_inline(job_id, *args, **kwargs):
+        starts.append(job_id)
+        return JobRunService.run_inline(job_id, *args, **kwargs)
+
+    monkeypatch.setattr(JobRunService, "start", start_inline)
+    previews.prepare_previews(row, version, targets=target)
+    previews.launch_previews(row, version, target, registry)
+    task = versions.latest_task(row, version.version, *target[0])
+    job = Job.query.filter_by(job_id=task.job_id).one()
+    assert job.status == "success"
+    assert ApiTask.query.filter_by(job_id=job.id).count() == 1
+    job.status = "running"
+    db.session.commit()
+    completed = []
+
+    def finish_before_liveness_check(job_id):
+        if not completed:
+            # The worker commits completion after recovery loaded a running
+            # Job, but before it notices that the worker thread has exited.
+            with db.engine.begin() as connection:
+                connection.execute(update(Job).where(Job.id == job.id).values(status="success"))
+            completed.append(job_id)
+        return False
+
+    monkeypatch.setattr(JobRunService, "is_running_in_thread", finish_before_liveness_check)
+    if entry == "launch_replay":
+        previews.launch_previews(row, version, target, registry)
+    elif entry == "recover":
+        previews.recover_job(job, row.run_id)
+        assert not db.session().in_transaction()
+    assert previews.poll_previews(row, version, registry) == {"complete": True, "failed": False}
+    assert completed == starts == [job.job_id]
+    assert ApiTask.query.filter_by(job_id=job.id).count() == 1
+    assert Artifact.query.filter_by(job_id=job.id, artifact_type="first_frame_image").count() == 1
+    assert ToolInvocation.query.filter_by(tool_name="generate_image").count() == 1
+    assert BudgetGuard.spent(row.run_id) == 3
 
 
 def test_preview_job_is_private_before_background_worker_starts(app_ctx, monkeypatch):
