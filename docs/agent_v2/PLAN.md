@@ -52,7 +52,7 @@
 | C5 | 预览生产：角色定妆图与关键帧（经 ToolRegistry 的图片 Skill）、`previewing` 轮询、stale 判定（C.2、C.7） | Codex | C2 C4 | 完成（1e46510、f451dc4；集成全量 729 passed） |
 | C6 | 审核 A 动作、Run 视图字段、错误码、注入与恢复回归（C.8、C.9、C.13） | Codex | C5 | 完成（5ddb56b、636486e；集成全量 729 passed） |
 | C7 | 前端：分镜板（时长条、角色卡、镜头时间线、编辑抽屉、重做过期关键帧）（C.11） | Codex（功能；视觉美化由 Claude 负责） | C6（接口） | 完成（a855450、5b74903；15 项回归、构建与真实 Mock 联调通过） |
-| C-Gate | 阶段评审 | Claude | C1–C7 | 待开始 |
+| C-Gate | 阶段评审 | Claude | C1–C7 | 完成（730 项回归；分镜板视觉重做，见 PROGRESS） |
 
 ## Phase D 依赖调度与局部修复
 
