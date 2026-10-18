@@ -77,7 +77,7 @@
 | E2 | compose_video、主片/显式压缩副本 | Codex | E1 | 完成（e675828、3688929；有效媒体与恢复验收） |
 | E3 | probe/QC、Editor恢复与素材包 | Codex | E2 | 完成（9f186df、44c2756、1032209；D-Gate集成148项通过） |
 | E4 | 成片播放器、鉴权下载、交付状态与恢复 | Codex（功能） | E3 | 完成（365886a、084afef、e45ac36；40项前端回归、构建与Mock联调） |
-| E-Gate | 阶段评审 | Claude | E1–E4 | 待开始 |
+| E-Gate | 阶段评审 | Claude | E1–E4 | 完成（993 项回归；见 PROGRESS） |
 
 ## Phase F
 见开发计划第3节，F1–F3；本轮不进入F。
