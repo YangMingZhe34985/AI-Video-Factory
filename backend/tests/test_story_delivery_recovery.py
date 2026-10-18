@@ -144,3 +144,29 @@ def test_qc_target_geometry_comes_from_first_source_not_output_self_report(app_c
     assert delivery.tick(run, tools) == "delivery_attention"
     failed = {item["code"] for item in run.snapshot["delivery"]["qc"]["checks"] if not item["passed"]}
     assert {"OUTPUT_DIMENSIONS", "OUTPUT_FRAME_RATE"} <= failed
+
+
+def test_package_preserves_valid_webm_original_extension_and_bytes(app_ctx):
+    import json
+    import subprocess
+    import zipfile
+    from app.agent.delivery_policy import approved_sources
+    binary = configure_ffmpeg(app_ctx)
+    run, version, _unused = fixture()
+    source = approved_sources(run, version)[0][2]
+    path = StorageService.resolve(source.file_path).with_suffix(".webm")
+    subprocess.run([binary, "-nostdin", "-hide_banner", "-y", "-f", "lavfi", "-i",
+        "color=c=blue:s=128x96:r=10:d=5", "-c:v", "libvpx-vp9", "-deadline", "realtime", str(path)],
+        check=True, capture_output=True, timeout=30)
+    source.file_path = StorageService.relative_path(path)
+    source.file_name, source.mime_type, source.size = path.name, "video/webm", path.stat().st_size
+    original_bytes = path.read_bytes()
+    db.session.commit()
+    run.status = delivery.begin_delivery(run, version)
+    db.session.commit()
+    assert drive(run, registry()).status == "success", run.snapshot["delivery"]
+    with zipfile.ZipFile(body(run, "package")) as archive:
+        assert "sources/01.webm" in archive.namelist()
+        assert archive.read("sources/01.webm") == original_bytes
+        assert "sources/01.webm" in json.loads(archive.read("manifest.json"))["files"]
+    assert path.read_bytes() == original_bytes
