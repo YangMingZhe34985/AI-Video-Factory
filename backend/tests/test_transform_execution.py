@@ -1,8 +1,6 @@
 """W3: actual private Skills/Jobs/MQ with isolated Mock providers and real media."""
 from copy import deepcopy
 from io import BytesIO
-import os
-from pathlib import Path
 import subprocess
 import wave
 
@@ -21,6 +19,7 @@ from app.models import AgentRun, ApiTask, Artifact, Job, ToolInvocation
 from app.services.job_run_service import JobRunService
 from app.services.model_service import ModelService, WAN3_LEGACY_CAPABILITIES
 from app.services.storage_service import StorageService
+from app.services.video_compression_service import VideoCompressionService
 from app.skills import get_registry
 from app.skills.budget import BudgetGuard
 from app.skills.spec import ToolContext
@@ -36,7 +35,7 @@ def upload(data, name):
 
 def prepared(tmp_path, operation="reference", multimodal=False):
     path = tmp_path / "transform-source.mp4"
-    subprocess.run([os.environ["FFMPEG_BINARY"], "-y", "-v", "error", "-f", "lavfi", "-i",
+    subprocess.run([VideoCompressionService.resolve_ffmpeg(), "-y", "-v", "error", "-f", "lavfi", "-i",
         "color=c=blue:s=256x256:r=24:d=2", "-c:v", "libx264", "-pix_fmt", "yuv420p", str(path)],
         check=True, capture_output=True, timeout=30)
     source = upload(path.read_bytes(), "source.mp4")

@@ -25,7 +25,7 @@ A model family in the text is a hard constraint. With no preference, the server'
 
 The new transform review shows source length, total input-video seconds, final output length, extension length and resolution-specific rates. **A 5-second source extended by 2 seconds produces 7 seconds; its estimate bills 5 + 7 = 12 seconds.** Every edit requires a fresh authoritative quote. Changed source bytes, expired quotes or invalid plans block submission. Automatic approval thresholds never bypass this review.
 
-Wan3 inputs: up to 10 images, 5 MP4/MOV videos (each 1–15 seconds, total ≤15 seconds), 5 WAV/MP3 audio files (each 1–15 seconds, total ≤15 seconds), and one UTF-8 TXT/MD or unencrypted PDF (1–50 pages). A webpage is captured as a private text snapshot and shares that one-document slot. Audio is not transcribed; PDF inspection verifies structure/pages rather than claiming full semantic understanding. Total input-video plus final output duration must be ≤30 seconds. No automatic clipping, splitting or concatenation is used to evade these limits.
+Wan3 per-type limits (also subject to `AGENT_MAX_ATTACHMENTS`, default 8 uploads, and a hard total of 20 transform inputs including page snapshots): up to 10 images, 5 MP4/MOV videos (each 1–15 seconds, total ≤15 seconds), 5 WAV/MP3 audio files (each 1–15 seconds, total ≤15 seconds), and one UTF-8 TXT/MD or unencrypted PDF (1–50 pages). A webpage is captured as a private text snapshot and shares that one-document slot. Audio is not transcribed; PDF inspection verifies structure/pages rather than claiming full semantic understanding. Total input-video plus final output duration must be ≤30 seconds. No automatic clipping, splitting or concatenation is used to evade these limits. Embedded audio may be shorter than the picture, but audio extending significantly beyond it is rejected; only a small encoder-tail tolerance is allowed.
 
 Approval freezes the ordered media hashes, model, parameters and price. Skills, Jobs and the shared MQ verify these bindings before submission. Unknown submit outcomes are not automatically resubmitted; existing provider task IDs support polling/download recovery. Outputs are not additionally compressed unless explicitly requested.
 
@@ -190,7 +190,7 @@ python -m pip install -r backend/requirements-dev.txt
 python -m pytest backend/tests -q
 ```
 
-Tests isolate SQLite/storage, force Mock and block provider HTTP. Source-video tests need FFmpeg. Frontend validation: `npm test` and `npm run build` in `frontend-vue/`. Reinstall backend requirements when upgrading; document validation adds pinned `pypdf==6.21.1`.
+Tests isolate SQLite/storage, force Mock and block provider HTTP. Source-video tests need FFmpeg. Frontend validation: `node --test tests/*.test.js` and `npm run build` in `frontend-vue/`. Reinstall backend requirements when upgrading; document validation adds pinned `pypdf==6.21.1`.
 
 Further reading: [Agent creation](docs/architecture/phase2_langgraph_mvp.md), [source-video remix](docs/architecture/phase3_video_remix.md), [stability evaluation](docs/architecture/phase4_stability_evaluation.md), [MQ operations and rollback](docs/architecture/mq_implementation.md), [backend API](backend/README.md), [production deployment](DEPLOYMENT.md).
 

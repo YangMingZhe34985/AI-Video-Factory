@@ -188,12 +188,12 @@ DASHSCOPE_OPENAI_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
 
 Wan3 首尾帧仍由 `AGENT_ENABLE_KEYFRAME_BRIDGE` 控制，默认关闭；画质尚未付费验证。全模态参考、编辑和延长已接入独立 `video_transform` 配方，复用现有 R2V 提交 / 轮询节点、ToolRegistry 和共用 MQ；智能时长 `-1` 不开放。
 
-新配方的输入边界：
+新配方的输入边界（下列为 Wan3 单类型上限，仍受 `AGENT_MAX_ATTACHMENTS` 的上传总数限制，默认 8；变换素材硬上限 20，含网页快照）：
 
 - 图片最多 10 张；视频 MP4/MOV 最多 5 个，每个 1–15 秒、合计不超过 15 秒；音频 WAV/MP3 最多 5 个，每个 1–15 秒、合计不超过 15 秒。媒体会完整解码校验，文件扩展名不作为可信依据。
 - 文档支持 UTF-8 TXT/MD 和未加密 PDF（1–50 页），最多 1 份。Office/Apple 文档暂不支持。音频暂不做语音转写；PDF 仅校验结构与页数，不宣称 Agent 已读懂全文。
 - 最多 1 个原始需求中的网页 URL，经安全抓取保存为私有正文 TXT 快照，再作为文件引用；与上传文档共用 1 份额度。模型不直接访问实时网页，网页正文不能改变用户指令。
-- 输入视频总时长 + 最终输出时长 ≤ 30 秒。编辑 / 延长必须绑定原始上传的视频；不自动裁切、分段、拼接来绕过限制。上传旧二创素材仍沿用原规则，提交 Wan3 时另做严格校验。
+- 输入视频总时长 + 最终输出时长 ≤ 30 秒。编辑 / 延长必须绑定原始上传的视频；不自动裁切、分段、拼接来绕过限制。上传旧二创素材仍沿用原规则，提交 Wan3 时另做严格校验。内嵌音轨可以短于画面；明显长于画面则拒绝，仅允许少量编码尾部容差，不自动裁音轨。
 
 审核卡显示原片时长、全部输入视频时长、最终时长、追加时长和分辨率费率。例如原片 5 秒，再延长 2 秒：最终输出 7 秒，计费秒数为 **5 + 7 = 12 秒**，并非 2 秒或 7 秒。修改审核项会即时使旧报价失效，服务端返回新报价后才能确认。
 
@@ -245,7 +245,7 @@ python -m pip install -r backend/requirements-dev.txt
 python -m pytest backend/tests -q
 ```
 
-涉及原视频的测试需要 FFmpeg。测试使用独立 SQLite/storage、强制 Mock 并阻断供应商 HTTP。前端验证为在 `frontend-vue` 执行 `npm test` 和 `npm run build`。新文档校验依赖 `pypdf==6.21.1`，已列入后端 requirements；升级后先安装依赖。
+涉及原视频的测试需要 FFmpeg。测试使用独立 SQLite/storage、强制 Mock 并阻断供应商 HTTP。前端验证为在 `frontend-vue` 执行 `node --test tests/*.test.js` 和 `npm run build`。新文档校验依赖 `pypdf==6.21.1`，已列入后端 requirements；升级后先安装依赖。
 
 ## 进一步阅读
 
