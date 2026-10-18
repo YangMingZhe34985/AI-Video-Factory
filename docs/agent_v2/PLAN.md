@@ -45,12 +45,12 @@
 | ID | 任务 | 负责 | 依赖 | 状态 |
 |---|---|---|---|---|
 | C0 | C 章契约 | Claude | B-Gate | 完成 |
-| C1 | Creative v2：StoryPackage（剧本、角色、风格）、校验、澄清、角色参考来源（research / attachment / generate）（C.3） | Codex | C0 | 进行中 |
-| C2 | 数据表 `agent_plan_versions` / `agent_shot_tasks`、迁移与 SchemaService 兼容；计划版本服务（C.7） | Codex | C0 | 进行中 |
-| C3 | Director v2：ProductionPlan、衔接与 `depends_on` 推导、选型、费用估算（C.4、C.10） | Codex | C1 C2 | 待开始 |
-| C4 | Prompt Smith 逐镜头 Skill + Plan Check（含一次自动修订）（C.5、C.6） | Codex | C3 | 待开始 |
-| C5 | 预览生产：角色定妆图与关键帧（经 ToolRegistry 的图片 Skill）、`previewing` 轮询、stale 判定（C.2、C.7） | Codex | C2 C4 | 待开始 |
-| C6 | 审核 A 动作、Run 视图字段、错误码、注入与恢复回归（C.8、C.9、C.13） | Codex | C5 | 待开始 |
+| C1 | Creative v2：StoryPackage（剧本、角色、风格）、校验、澄清、角色参考来源（research / attachment / generate）（C.3） | Codex | C0 | 完成（2276aed；33 项新增回归） |
+| C2 | 数据表 `agent_plan_versions` / `agent_shot_tasks`、迁移与 SchemaService 兼容；计划版本服务（C.7） | Codex | C0 | 完成（3d66b89；24 项回归） |
+| C3 | Director v2：ProductionPlan、衔接与 `depends_on` 推导、选型、费用估算（C.4、C.10） | Codex | C1 C2 | 完成（edcc023；25 项相关回归） |
+| C4 | Prompt Smith 逐镜头 Skill + Plan Check（含一次自动修订）（C.5、C.6） | Codex | C3 | 完成（8292cb3；36 项新增回归） |
+| C5 | 预览生产：角色定妆图与关键帧（经 ToolRegistry 的图片 Skill）、`previewing` 轮询、stale 判定（C.2、C.7） | Codex | C2 C4 | 进行中 |
+| C6 | 审核 A 动作、Run 视图字段、错误码、注入与恢复回归（C.8、C.9、C.13） | Codex | C5 | 进行中 |
 | C7 | 前端：分镜板（时长条、角色卡、镜头时间线、编辑抽屉、重做过期关键帧）（C.11） | Codex（功能；视觉美化由 Claude 负责） | C6（接口） | 进行中（按 C0 契约预实现，等待 C6 联调） |
 | C-Gate | 阶段评审 | Claude | C1–C7 | 待开始 |
 
