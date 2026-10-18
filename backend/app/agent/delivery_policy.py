@@ -58,6 +58,10 @@ def require_delivery_authorization(ctx, plan_version=None):
     server_version = getattr(ctx, "delivery_version", None)
     if not isinstance(server_version, int) or isinstance(server_version, bool):
         raise AppError("TOOL_FORBIDDEN", "Delivery requires server-owned approval", 403)
+    cache_key = (ctx.budget_scope, server_version, plan_version)
+    cached = ctx._delivery_authorization
+    if cached and cached[0] == cache_key:
+        return cached[1], cached[2]
     run = require_run(ctx)
     version = versions.require_current_version(run, server_version)
     delivery = (run.snapshot or {}).get("delivery") or {}
@@ -73,6 +77,7 @@ def require_delivery_authorization(ctx, plan_version=None):
             or delivery.get("inputs_hash") != versions.inputs_hash(payload)
             or delivery.get("source_sha256") != source_hashes(sources)):
         raise AppError("PLAN_VERSION_CONFLICT", "Delivery sources or settings changed after approval", 409)
+    ctx._delivery_authorization = (cache_key, run, version)
     return run, version
 
 

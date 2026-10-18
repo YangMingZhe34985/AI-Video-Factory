@@ -31,6 +31,8 @@ class ToolContext:
     preview_task_id: int | None = None
     shot_task_id: int | None = None
     delivery_version: int | None = None
+    # Valid only inside one Registry invocation; never a caller-supplied permit.
+    _delivery_authorization: tuple | None = field(default=None, init=False, repr=False)
 
 
 @dataclass(frozen=True)
