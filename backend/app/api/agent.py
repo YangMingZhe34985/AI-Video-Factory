@@ -90,6 +90,8 @@ def serialize(row):
                       request_spec=snapshot.get("request_spec"), research_dossier=snapshot.get("research_dossier"), plan=snapshot.get("plan"),
                       pending_card=snapshot.get("pending_card") if row.status == "awaiting_input" else None,
                       results=snapshot.get("results", []))
+        from app.agent.story_actions import public_view
+        result.update(public_view(row))
         result["summary"] = {"steps_total": total,
                              "steps_success": sum(shot.get("status") == "success" for shot in shots),
                              "steps_failed": sum(shot.get("terminal", False) and shot.get("status") != "success" for shot in shots)}
@@ -166,6 +168,9 @@ def approved_plan(row, edited):
 def action(run_id):
     data = parse(RunAction)
     row = get_run(run_id)
+    from app.agent.story_actions import STORY_ACTIONS, REVIEW_STATUSES
+    if data.action in STORY_ACTIONS or (data.action == "reject" and row.status in REVIEW_STATUSES):
+        return story_action(row, data)
     command_id = f"revision:{data.request_key}" if data.action == "revise" else new_id("command")
     if data.action == "revise":
         receipts = [item for history in (row.snapshot or {}).get("shot_history", {}).values() for item in history]
@@ -215,3 +220,46 @@ def action(run_id):
         raise AppError("INVALID_AGENT_STATE", "Another request already changed this run", 409)
     db.session.commit()
     return api_success(serialize(row), 202)
+
+
+def story_action(row, data):
+    try:
+        return _admit_story_action(row, data)
+    except Exception:
+        db.session.rollback()
+        raise
+
+
+def _admit_story_action(row, data):
+    """Reserve one story command atomically, with durable request-key receipts."""
+    from copy import deepcopy
+    from app.agent.story_actions import receipt_payload, validate_command
+    from app.agent.plan_versions import _lock_run
+    from hashlib import sha256
+    row = _lock_run(row)
+    key = data.request_key
+    fingerprint = receipt_payload(data)
+    snapshot = deepcopy(row.snapshot or {})
+    receipts = snapshot.setdefault("story_action_receipts", {})
+    if key and key in receipts:
+        receipt = receipts[key]
+        if receipt["inputs_hash"] != fingerprint:
+            raise AppError("IDEMPOTENCY_KEY_CONFLICT", "操作标识已用于其他内容。", 409)
+        db.session.commit()
+        return api_success({**serialize(row), "action_estimated_credits": receipt.get("estimated_cost", 0)}, 202)
+    if row.command is not None:
+        raise AppError("INVALID_AGENT_STATE", "已有操作等待处理。", 409)
+    expected = row.status
+    command = data.model_dump(mode="json", exclude_none=True)
+    command["command_id"] = f"story:{sha256(key.encode()).hexdigest()}" if key else new_id("command")
+    estimate = validate_command(row, command)
+    if key:
+        receipts[key] = {"inputs_hash": fingerprint, "command_id": command["command_id"], "estimated_cost": estimate}
+    changed = AgentRun.query.filter_by(id=row.id, status=expected).filter(AgentRun.command.is_(None)).update(
+        {"command": command, "snapshot": snapshot}, synchronize_session=False)
+    if not changed:
+        db.session.rollback()
+        raise AppError("INVALID_AGENT_STATE", "另一个操作已更新此任务。", 409)
+    db.session.commit()
+    db.session.refresh(row)
+    return api_success({**serialize(row), "action_estimated_credits": estimate}, 202)

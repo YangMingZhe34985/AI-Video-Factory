@@ -22,6 +22,13 @@ def recover_job(job: Job, scope: str) -> None:
         return  # Shared MQ recovery owns these tasks, including submit_unknown.
     if JobRunService.is_running_in_thread(job.job_id) or JobQueueService._is_known(job.job_id):
         return
+    # Completion can commit after our original read and before the worker
+    # exits. A locking current read also bypasses MySQL repeatable-read snapshots
+    # and the identity map; a stale running Job must never restart paid nodes.
+    job = Job.query.filter_by(id=job.id).populate_existing().with_for_update().one()
+    if job.status not in {"created", "pending", "queued", "running"}:
+        db.session.commit()  # Release the row lock on this read-only exit.
+        return
     # A disabled model must block new submissions, but completed/in-flight
     # work still owns valid results that must remain visible and deliverable.
     validate_job_policy(job)

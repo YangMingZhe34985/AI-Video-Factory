@@ -49,7 +49,7 @@ class AgentWorker:
     def tick(self):
         db.session.expire_all()
         ids = [row.run_id for row in AgentRun.query.filter(
-            (AgentRun.status.in_(["queued", "understanding", "analyzing", "researching", "planning", "producing", "delivering"])) | AgentRun.command.is_not(None)
+            (AgentRun.status.in_(["queued", "understanding", "analyzing", "researching", "planning", "previewing", "producing", "delivering"])) | AgentRun.command.is_not(None)
         ).order_by(AgentRun.id).all()]
         for run_id in ids:
             self.advance(run_id)
@@ -83,10 +83,12 @@ class AgentWorker:
                     # the inbox is cleared. Its checkpoint receipt prevents rebilling.
                     self._save(row, snapshot.values, None)
                     return
-                if kind in {"tasks", "analysis"}:
+                if kind in {"tasks", "analysis", "previews"}:
                     value = Command(resume={"action": "poll"})
                 elif command and command["action"] in {"approval": {"approve", "reject"}, "delivery": {"deliver", "revise"},
-                                                       "clarify": {"answer"}}.get(kind, set()):
+                                                       "clarify": {"answer"},
+                                                       "characters": {"approve_characters", "regenerate", "reject"},
+                                                       "storyboard": {"edit_plan", "regenerate", "regenerate_stale", "approve_storyboard", "reject"}}.get(kind, set()):
                     value = Command(resume=command)
                 else:
                     self._save(row, snapshot.values, None)
@@ -105,18 +107,26 @@ class AgentWorker:
             current_app.logger.exception("Agent run failed: %s", run_id)
             row = AgentRun.query.filter_by(run_id=run_id).one()
             latest = graph.get_state(config) if graph is not None else None
-            row.snapshot = dict((latest.values if latest else None) or row.snapshot or {})
+            row.snapshot = self._merged_snapshot(row, (latest.values if latest else None) or row.snapshot or {})
             row.status = "needs_attention"
             row.error = {"code": getattr(error, "code", "AGENT_FAILED"), "message": str(error)}
             row.command = None
             db.session.commit()
 
     @staticmethod
+    def _merged_snapshot(row, values):
+        # These receipts commit with relational plan/task writes, independently
+        # of graph checkpoints; never drop them on a crash or an inbox retry.
+        preserved = {key: row.snapshot[key] for key in ("plan_operations", "story_action_receipts", "story_model_overrides")
+                     if key in (row.snapshot or {})}
+        return {**dict(values), **preserved}
+
+    @staticmethod
     def _save(row, values, error):
         # Refresh after graph tool calls on other sessions.
         db.session.refresh(row)
         previous_status = row.status
-        row.snapshot = dict(values)
+        row.snapshot = AgentWorker._merged_snapshot(row, values)
         row.status = values.get("status", "needs_attention")
         row.error = error
         row.command = None

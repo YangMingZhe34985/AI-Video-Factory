@@ -747,7 +747,7 @@ FrameSpec
 
 | action | 允许的状态 | 请求体 | 说明 |
 |---|---|---|---|
-| `approve_characters` | `awaiting_characters` | `{edits?: [{character_id, lock_description?, generate_prompt?}]}` | 有修改时生成新计划版本；然后进入关键帧预览 |
+| `approve_characters` | `awaiting_characters` | `{edits?: [{character_id, lock_description?, generate_prompt?}]}` | 有修改时生成新计划版本；定妆输入改变导致 stale 时先保持本审核并由用户显式重做，再次确认后进入关键帧预览（D-016） |
 | `regenerate` | `awaiting_characters`、`awaiting_storyboard` | `{target_type, target_id, prompt?, request_key}` | 重做一张角色图、关键帧或尾帧；先做预算检查；完成后回到同一审核状态 |
 | `regenerate_stale` | `awaiting_storyboard` | `{request_key}` | 一次重做所有 `stale` 的关键帧；响应中返回预计费用 |
 | `edit_plan` | `awaiting_storyboard` | `{plan, base_version, request_key}` | 校验后生成新版本；`base_version` 不是当前版本时返回 `409 PLAN_VERSION_CONFLICT`；受影响的提示词由 Prompt Smith 重写，关键帧标记 `stale` |
@@ -768,6 +768,8 @@ FrameSpec
 | `previews` | `{characters: {id: Preview}, keyframes: {shot_id: Preview}, end_frames: {shot_id: Preview}}`，`Preview = {status, artifact_id, preview_url, attempt, stale, error}` |
 
 预览图属于 Run 所有者，`preview_url` 需要鉴权（前端用 `AuthedImage`）。
+
+兼容性追加（D-015）：`estimates.preview_spent_credits` 为本 Run 图片生成账本的累计估算支出；`Preview` 可带 `model_id`、`estimated_cost` 用于重做报价；Run 可带 `story_rules = {duration_tolerance_ratio, max_shots, keyframe_bridge_enabled}`。`regenerate` / `regenerate_stale` 命令响应的 `data.action_estimated_credits` 是本次重做的预计图片费用，入队和执行时均校验剩余预算。
 
 ## C.10 费用
 

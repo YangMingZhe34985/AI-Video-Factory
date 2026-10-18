@@ -232,3 +232,51 @@ C0：CONTRACTS C 章定稿（C.1–C.13）；DECISIONS D-012–D-014；PLAN 展�
 - 预览图片生成必须经 ToolRegistry 的现有图片 Skill（幂等、预算、账本），不要直接调适配器。
 需要用户决定：无新增。各 Agent 模型、真实单价、检索服务商仍未定（不阻塞）。
 
+## 2026-10-18 · Codex · C1–C7 完成
+状态：完成，已合入本地 `feat/agent-v2`；C-Gate 与界面美化由 Claude 接手。
+分支与提交：C1 `2276aed`；C2 `3d66b89`；C3 `edcc023`；C4 `8292cb3` / `de2655d`；C5 `1e46510` / `f451dc4`；C6 `5ddb56b` / `9440d72` / `636486e`；C7 `a855450` / `91b018e` / `5b74903`。各任务均使用 `agent-v2/Cn` 分支，集成在 Codex 独立工作树完成，没有修改 Claude 工作树。
+完成内容：
+- C1–C4：Creative v2 产出剧本、节拍、角色与风格；Director 按能力目录拆镜头，代码推导衔接依赖、计算按秒视频费用；Prompt Smith 经 ToolRegistry 逐镜头写静态/动作提示词；Plan Check 校验时长、引用、能力、模型约束与预算，最多自动修订一次，仍无效则保留可编辑草稿。低预算、部分提示词成功与恢复均保留已有结果，不重新调用成功部分。
+- C2：计划版本不可变，预览任务按版本/目标/attempt 保存；操作收据绑定内容，同 key 不同内容冲突。新增迁移与 SchemaService 兼容；旧版本和旧产物保留。
+- C5：优先直接使用本 Run 已选研究参考图或附件，仅缺失时生成定妆图。所有图片提交/查询均经 ToolRegistry；输入哈希相同的成功图片复用，单张失败局部重做。角色参考变化只使相关关键帧过期，不自动级联重做。预览 Job 在后台启动前绑定 Run，列表、预览、下载、复制和生成引用均校验归属。
+- C6：接通角色审核 → 关键帧预览 → 分镜审核；worker 自动推进 previewing，两个审核状态仅由命令推进。edit_plan / regenerate / regenerate_stale / approve_characters / approve_storyboard 均做版本、归属、能力与预算校验，审批前再次校验视频费用与预览完整性。命令重放、checkpoint 恢复及已提交版本恢复不重复付费。最多 128 字符的请求 key 使用固定长度内部命令 ID。
+- C7：新增分镜板、时长对比、角色卡、衔接时间线、镜头编辑抽屉、图片已花/视频按秒预计/累计规划费用、局部重做报价与确认；受保护图片使用鉴权预览。并发版本更新保留未应用抽屉草稿，不覆盖用户修改；角色未保存修改与显式重做分开。只做功能及必要布局，未改全局美化。
+- D-015 补充审核视图的可选报价/支出/服务端规则字段；D-016 明确修改角色外观后先保存并标记定妆图过期，用户明确重做后才能继续，不隐式追加图片费用。开发计划的旧 C 阶段编号已同步 C0 契约与看板，C1–C7 均由 Codex 负责。
+集成修复：
+- 默认 i2i 模型只能接受一张参考图时，Mock Director 按角色交叉切镜头并保留总时长；真实提示词要求遵守相同能力约束，不能靠放宽目录绕过。中文“wan2.7系列视频模型 / 系列的视频生成模型”正确归一化，不再误触发选择题。
+- 重复 API 命令返回前释放事务锁；worker 合并快照保留版本与动作收据；重放已提交编辑时不因目录说明变化重写提示词。预览费用按可复用结果计算，避免已完成图片重复占用剩余预算。
+- 首轮全量发现后台线程完成与恢复检查之间的竞态：缓存 Job 仍为 running，可能误恢复已完成任务并再次提交图片。恢复逻辑现在在确认线程/队列未运行后使用锁定的数据库当前读刷新终态，完成分支及时释放锁；同时覆盖重复命令恢复入口。回归断言提交次数与账本不增长，不以延长等待或接受多余产物规避。
+测试：
+- 后端最终完整回归：**729 passed, 34 warnings in 676.02s**（验收代码 `636486e`，比 B-Gate 的 589 项基线新增 140 项）；包含此前 A/B、经典 DAG、MQ、Simple、remix 与本轮 C 相关用例。首轮为 721 passed / 2 failed，失败均为上述恢复竞态，已修复并加入确定性用例。34 条警告仍为既有 JWT 测试密钥长度告警。
+- C1 新增 33 项；C2 24 项；C3/Director-lite 初轮 25 项；C4 最终 37 项；C5 相关初轮 68 项；C6 两级审核与独立边界 19 项。中文模型系列后缀另有 46 项相关回归通过。恢复修复后 C5、Agent MVP、模型策略、remix、Simple 生成相关 113 项通过（126.62 秒）。
+- 前端 `node --test tests/storyboard.test.js`：15 passed；`npm run build` 通过；真实 Mock 浏览器联调使用独立端口 5067 / 5187、临时 SQLite/存储、开启鉴权、阻断模型外网访问。主 Run 完成 8 个版本：角色修改不加费 → 明确重做 → 关键帧 → 单镜头修改 → 并发草稿保护 → 2 张过期图片报价确认 → 分镜批准。主 Run 只有 7 次图片生成，0 视频提交；鉴权图片全部加载，业务流程无失败、无页级 JS 异常。
+- 修改后新建第二 Run 验证中文系列表达不再多余澄清，检查角色审核的新按钮后取消。临时服务和本次创建的浏览器页面均已关闭。测试库仅作本机审计保留在 `%TEMP%/cc-c7-browser-9fa77c023e/browser.db`，含两个测试 Run；不属于交付依赖。
+- 全部使用 Mock 与隔离 SQLite；没有付费调用、真实库迁移、真实 .env 修改、远程推送或 PR。用户原有未跟踪技术说明文件保留。合入后核对业务目录与验收工作树一致，`git diff --check` 通过。
+
+实际 Run 视图摘录（`agent_c1e79e01c03e482b`，演示模型/单价；省略提示词和部分必需字段，非完整请求体）：
+```json
+{
+  "status": "storyboard_approved",
+  "plan_version": 8,
+  "story": {"characters": [{"character_id": "c01", "name": "主要主体", "reference": {"source": "generate", "artifact_ids": ["art_d5a36afd2b404641"]}}]},
+  "plan": {
+    "plan_version": 8, "recipe": "story_video", "target_duration_sec": 120,
+    "shots": [
+      {"shot_id": "s01", "duration_sec": 25, "transition_in": "start", "depends_on": []},
+      {"shot_id": "s02", "duration_sec": 30, "transition_in": "independent", "depends_on": []},
+      {"shot_id": "s03", "duration_sec": 30, "transition_in": "independent", "depends_on": []},
+      {"shot_id": "s04", "duration_sec": 30, "transition_in": "tail_frame", "depends_on": ["s03"]}
+    ]
+  },
+  "previews": {"keyframes": {"s01": {"status": "success", "stale": false}, "s02": {"status": "success", "stale": false}, "s03": {"status": "success", "stale": false}}, "end_frames": {}},
+  "estimates": {"preview_credits": 4, "video_credits": 115, "total_credits": 119, "preview_spent_credits": 14, "spent_credits": 27},
+  "story_rules": {"duration_tolerance_ratio": 0.1, "max_shots": 30, "keyframe_bridge_enabled": false}
+}
+```
+此例总长 115 秒，目标 120 秒，在 10% 容差内；视频均为 wan2.7-i2v。preview_credits 是该版本检查时保存的图片估算，累计图片支出看 preview_spent_credits，累计规划与图片支出看 spent_credits。s04 等 Phase D 从 s03 提取尾帧，不存在待重做的预览图片任务。
+给 Claude / 下一步：
+- **C-Gate 与界面美化**：重点评审 Creative / Director / Prompt Smith 提示词、D-015/D-016、两级审核及局部重做的用户表达。C7 功能已与真实 API/worker 联调，不需再猜字段。移动端全局侧边栏问题仍按此前交接单独处理。
+- 默认 `AGENT_STORY_V2_ENABLED=false`，旧 story_video 过渡路由仍可用；隔离 Mock 联调需显式开启。Phase C 仅停在 `storyboard_approved`，没有视频生产和最终拼接。首尾帧开关仍默认关闭，真实质量未验证；用户要求的默认不压缩留在 E1。
+- **Phase D 必须承接审核选型**：审核页显式选择的模型记录在服务端 `story_model_overrides`，通过 `select_plan_model` 校验，仍遵守用户排除约束。D 的视频 Skill/job policy 必须消费已批准的逐镜头模型，不能沿用仅按原 RequestSpec 服务器默认值锁定的旧路径而回退或拒绝这次用户选择。
+- 角色图/关键帧受保护，继续使用 AuthedImage。尾帧依赖由 D 调度与提取；失败只处理受影响目标，额外费用必须明确展示。当前约束不保证真实角色视觉一致性，需后续经用户单独批准做质量评测。
+验证边界：未验证真实生成效果、真实服务商能力与价格、真实 MySQL/Redis 部署；已实现迁移仅在隔离 SQLite 回归。角色/价格/模型能力的 Mock 样例不代表真实质量承诺。没有新增必须由用户决定的事项。

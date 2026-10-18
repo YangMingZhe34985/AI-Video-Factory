@@ -13,14 +13,16 @@ from app.agent.model_selection import video_policy_for_request
 from app.agent.planning import SPECS
 from app.agent.recipes import complete_transition_draft, prepare_transition, validate_transition_plan
 from app.agent.simple_plan import approval_request_spec, validate_simple_plan
-from app.agent import research, simple_execution
+from app.agent import research, simple_execution, story_graph
+from app.agent.creative_v2 import creative_v2
+from app.agent.director_v2 import director_v2
 from app.api import AppError
 from app.extensions import db
 from app.models import AgentRun
 from app.skills import build_default_registry
 
 
-class AgentStateV2(AgentState, IntakeState, ClarifyState, research.ResearchState, total=False):
+class AgentStateV2(AgentState, IntakeState, ClarifyState, research.ResearchState, story_graph.StoryState, total=False):
     results: list[dict]
 
 
@@ -150,7 +152,17 @@ def build_graph(checkpointer, registry=None):
         ]
         return result
 
+    def creative_story(state):
+        return _queue(state, creative_v2(state, registry), "creative", "planning")
+
+    def direct_story(state):
+        result = director_v2(state, registry)
+        result.update(_publish_understanding({**state, **result}))
+        return _queue(state, result, "director", "planning")
+
     def route(state):
+        if state["request_spec"]["recipe_hint"] == "story_video" and current_app.config.get("AGENT_STORY_V2_ENABLED"):
+            return "story_v2_creative"
         return "simple_director" if state["request_spec"]["recipe_hint"] in {
             "image_edit", "image_create", "single_clip",
         } else "prepare_story"
@@ -160,6 +172,11 @@ def build_graph(checkpointer, registry=None):
         return {}
 
     nodes = {
+        **story_graph.nodes(registry),
+        "story_v2_creative": creative_story,
+        "story_v2_creative_clarify": clarify_gate,
+        "story_v2_director": direct_story,
+        "story_v2_director_clarify": clarify_gate,
         "analyze_attachments": lambda state: analyze_attachments(state, registry),
         "wait_analysis": wait_analysis,
         "intake": understand,
@@ -233,4 +250,20 @@ def build_graph(checkpointer, registry=None):
     builder.add_edge("story_wait", "story_collect")
     builder.add_conditional_edges("story_delivery_approval", lambda s: "story_production" if s["status"] == "producing" else "story_deliver")
     builder.add_edge("story_deliver", END)
+    builder.add_edge("story_v2_creative", "story_v2_creative_clarify")
+    builder.add_conditional_edges("story_v2_creative_clarify", lambda s: "story_v2_creative" if s.get("open_questions") else "story_v2_director")
+    builder.add_edge("story_v2_director", "story_v2_director_clarify")
+    builder.add_conditional_edges("story_v2_director_clarify", lambda s: "story_v2_director" if s.get("open_questions") else "story_v2_draft")
+    builder.add_edge("story_v2_draft", "story_v2_prompts")
+    builder.add_edge("story_v2_prompts", "story_v2_check")
+    builder.add_conditional_edges("story_v2_check", lambda s: "story_v2_review" if s["status"] == "awaiting_storyboard" else (
+        "story_v2_repair" if s.get("plan_issues") and not s.get("story_repair_attempted") else "story_v2_begin"))
+    builder.add_conditional_edges("story_v2_repair", lambda s: "story_v2_review" if s["status"] == "awaiting_storyboard" else "story_v2_draft")
+    builder.add_edge("story_v2_begin", "story_v2_launch")
+    builder.add_edge("story_v2_launch", "story_v2_collect")
+    builder.add_conditional_edges("story_v2_collect", lambda s: "story_v2_wait" if s["status"] == "previewing" else "story_v2_review")
+    builder.add_edge("story_v2_wait", "story_v2_collect")
+    builder.add_edge("story_v2_review", "story_v2_apply")
+    builder.add_conditional_edges("story_v2_apply", lambda s: END if s["status"] in {"cancelled", "storyboard_approved"} else (
+        "story_v2_prompts" if s.get("story_editing") else ("story_v2_launch" if s["status"] == "previewing" else "story_v2_review")))
     return builder.compile(checkpointer=checkpointer)

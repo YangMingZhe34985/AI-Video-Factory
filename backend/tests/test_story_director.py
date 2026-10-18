@@ -121,3 +121,16 @@ def test_invalid_shot_duration_rejected_by_schema(app_ctx, value):
     plan["shots"][0]["duration_sec"] = value
     with pytest.raises(ValidationError):
         ProductionPlan.model_validate(plan)
+
+
+@pytest.mark.parametrize("preference", ["wan2.7系列视频模型", "wan2.7系列的视频生成模型", "wan2.7 video model"])
+def test_compound_family_labels_preserve_explicit_model_constraints(app_ctx, preference):
+    state = story_state()
+    # English video is not a supported suffix; do not silently guess it away.
+    state["request_spec"]["constraints"]["model_preferences"] = [preference]
+    result = director_v2(state)
+    if "video" in preference:
+        assert result["open_questions"]
+    else:
+        assert not result["open_questions"]
+        assert all(shot["motion"]["model_id"] == "wan2.7-i2v" for shot in result["plan"]["shots"])

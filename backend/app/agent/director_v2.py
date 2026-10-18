@@ -60,14 +60,31 @@ def _mock_plan(data):
             scenes.append({"scene_id": scene_id, "location": beat["location"], "time_of_day": "剧情设定时间",
                            "summary": beat["summary"][:300]})
         scene_id = locations[scene_key]
-        count = max(1, ceil(beat["duration_sec"] / video.capabilities["duration"]["max"]))
+        groups = [beat["character_ids"]]
+        if beat["character_ids"]:
+            maximum = (data.catalog["i2i"][0]["capabilities"].get("reference_images") or {}).get("max", 0)
+            weights = {cid: max(1, len(characters[cid]["reference"]["artifact_ids"])) for cid in beat["character_ids"]}
+            if sum(weights.values()) > maximum and all(weight <= maximum for weight in weights.values()):
+                groups, group, weight = [], [], 0
+                for cid in beat["character_ids"]:
+                    if group and weight + weights[cid] > maximum:
+                        groups.append(group)
+                        group, weight = [], 0
+                    group.append(cid)
+                    weight += weights[cid]
+                if group:
+                    groups.append(group)
+        count = max(len(groups), ceil(beat["duration_sec"] / video.capabilities["duration"]["max"]))
         durations = distribute_duration(beat["duration_sec"], min(count, 20), video)
-        for duration in durations:
+        for clip_index, duration in enumerate(durations):
+            cast = groups[clip_index % len(groups)]
             transition = "start" if not shots else ("tail_frame" if shots[-1]["scene_id"] == scene_id else "independent")
-            refs = list(dict.fromkeys(ref for cid in beat["character_ids"]
+            if shots and shots[-1]["character_ids"] != cast and transition == "tail_frame":
+                transition = "hard_cut"
+            refs = list(dict.fromkeys(ref for cid in cast
                                      for ref in characters[cid]["reference"]["artifact_ids"]))
             # Generated identity references will be bound by the preview service.
-            has_identity = bool(beat["character_ids"])
+            has_identity = bool(cast)
             mode = "i2i" if refs or has_identity else "t2i"
             image = data.catalog[mode][0]
             frame = {"method": "generate", "image_mode": mode, "model_id": image["model_id"],
@@ -81,7 +98,7 @@ def _mock_plan(data):
                     frame = {"method": "user_image", "image_mode": None, "model_id": None,
                              "prompt": "", "reference_artifact_ids": [first.attachment_id]}
             shots.append({"shot_id": f"s{len(shots) + 1:02d}", "scene_id": scene_id, "order": len(shots) + 1,
-                          "beat_ids": [beat["beat_id"]], "character_ids": beat["character_ids"],
+                          "beat_ids": [beat["beat_id"]], "character_ids": cast,
                           "summary": beat["summary"][:300], "framing": "中景，主体位于视觉中心",
                           "duration_sec": duration, "transition_in": transition, "first_frame": frame, "end_frame": None,
                           "motion": {"mode": "i2v", "model_id": video.model_id, "prompt": "", "params": {"duration": duration}},
@@ -102,7 +119,10 @@ The first shot uses start. Continuous action within a scene uses tail_frame, fir
 and is serial. Scene/time changes use independent or hard_cut and can run in parallel. Use only i2v; optional
 keyframe_bridge/first_last_frame is available only when the catalog explicitly enables it. No t2v or r2v.
 Split beats using the video model's duration min/max/step AND parameter schema; keep the requested total length.
-For a generated frame with characters, use i2i and their reference artifact IDs. Generated characters awaiting
+For a generated frame with characters, use i2i and their reference artifact IDs.
+If the image model cannot fit all character references, stage separate reaction/cross-cut shots with subsets
+of the cast and independent or hard_cut transitions; preserve story timing and never silently drop identities
+or invent a higher reference limit. If the user explicitly needs a shared frame, ask or keep an invalid draft. Generated characters awaiting
 portrait production have no IDs yet: leave that reference list empty, never invent placeholders. A user first_frame
 image can be method=user_image. All other generation requires a catalog image model. Only keyframe_bridge has an
 end_frame. References and character IDs must match the supplied story. Maximum shot count is supplied in data.
@@ -126,7 +146,14 @@ def director_v2(state, registry=None, issues=None):
     run = AgentRun.query.filter_by(run_id=state["run_id"]).one()
     spec = RequestSpec.model_validate(resolved_request(state))
     catalog = {}
-    for mode in ("t2i", "i2i", "i2v"):
+    story = state["story_package"]
+    modes = ["i2v"]
+    if story["characters"]:
+        modes.append("i2i")
+    if not story["characters"] or any(c["reference"]["source"] == "generate" for c in story["characters"]) or any(
+            not beat["character_ids"] for beat in story["story"]["beats"]):
+        modes.append("t2i")
+    for mode in modes:
         try:
             selected = select_for_request(spec, mode)
         except AppError as error:
