@@ -29,7 +29,7 @@ def _normal(value):
 
 
 def _label(value):
-    return re.sub(r"\s*(?:系列|模型|family|series|model)\s*$", "", value, flags=re.I).strip()
+    return re.sub(r"(?:\s*(?:系列|(?:的)?(?:视频|图像|图片)?(?:生成)?模型|family|series|models?))+\s*$", "", value, flags=re.I).strip()
 
 
 def _matches(value, model):
