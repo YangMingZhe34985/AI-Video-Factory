@@ -103,6 +103,8 @@ class VideoCompositionService:
         if not sources or len(sources) != len(durations) or len(sources) != len(shot_ids):
             raise AppError("INVALID_INPUT", "Composition source order is incomplete", 422)
         sources = [cls._path(source) for source in sources]
+        if target in sources or target.with_name(target.stem + "_compressed.mp4") in sources:
+            raise AppError("INVALID_REFERENCE", "Composition outputs cannot overwrite source media", 422)
         target.parent.mkdir(parents=True, exist_ok=True)
         warnings, mock_materialized = [], False
         with tempfile.TemporaryDirectory(prefix="compose-", dir=target.parent) as directory:
@@ -129,7 +131,7 @@ class VideoCompositionService:
                 entries = []
                 for index, source in enumerate(staged):
                     # Controlled relative filenames keep concat's safe mode enabled.
-                    linked = staging / f"clip_{index:03}{source.suffix.lower()}"
+                    linked = staging / f"clip_{index:03}.mp4"
                     try:
                         os.link(source, linked)
                     except OSError:

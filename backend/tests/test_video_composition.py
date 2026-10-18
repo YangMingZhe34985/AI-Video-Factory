@@ -105,3 +105,29 @@ def test_media_paths_must_remain_in_managed_storage(app_ctx, tmp_path):
     outside.write_bytes(MOCK_VIDEO_BYTES)
     with pytest.raises(AppError):
         compose([outside])
+
+
+def test_matching_audio_clips_preserve_audio_with_streamcopy(app_ctx):
+    sources = [make_media("audio_one.mp4", audio_duration=1.2),
+               make_media("audio_two.mp4", color="blue", audio_duration=1.2)]
+    target, result = compose(sources)
+    media = MediaProbeService.probe(target, decode=True)
+    assert result["mode"] == "stream_copy" and media["has_audio"]
+    assert media["duration_sec"] == pytest.approx(2.4, abs=.11)
+    assert media["fps"] == pytest.approx(10, abs=.1)
+
+
+def test_oversized_windows_command_fails_without_exposing_paths(app_ctx, monkeypatch):
+    monkeypatch.setattr(VideoMediaService, "_run", lambda *_a: pytest.fail("Oversized command must not execute"))
+    with pytest.raises(AppError) as error:
+        VideoCompositionService._run(["-i", "private-path" * 3000], 30)
+    assert error.value.code == "DELIVERY_INCOMPLETE"
+    assert "private-path" not in error.value.message
+
+
+def test_output_must_not_overwrite_an_approved_source(app_ctx):
+    source = make_media("protected.mp4")
+    original = digest(source)
+    with pytest.raises(AppError):
+        VideoCompositionService.compose([source], source, durations=[1.2], shot_ids=["s01"])
+    assert digest(source) == original
