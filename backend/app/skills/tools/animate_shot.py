@@ -23,9 +23,15 @@ class AnimateShotInput(BaseModel):
 def validate_bridge(data, model):
     if not data.last_frame_artifact_id:
         return
+    from app.adapters.dashscope_wan3 import MODEL_IDS
+
+    supported_adapter = (
+        model.adapter_name == "dashscope_i2v" and model.model_id.startswith("wan2.7-i2v")
+        or model.adapter_name == "dashscope_wan3" and model.model_id in MODEL_IDS
+    )
     if (not current_app.config.get("AGENT_ENABLE_KEYFRAME_BRIDGE", False)
             or "first_last_frame" not in (model.capabilities or {}).get("modes", [])
-            or model.adapter_name != "dashscope_i2v" or not model.model_id.startswith("wan2.7-i2v")):
+            or not supported_adapter):
         raise AppError("KEYFRAME_BRIDGE_UNAVAILABLE", "First/last-frame generation is not enabled for this model", 422)
 
 
