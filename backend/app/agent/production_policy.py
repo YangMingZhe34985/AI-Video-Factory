@@ -37,17 +37,23 @@ def _artifact(run, version, kind, target):
     return task.artifact_ids[0]
 
 
-def _motion_prompt(run, task, shot):
+def _motion_prompt(run, task, shot, _seen=()):
+    if task.id in _seen or len(_seen) > 2:
+        raise AppError("MODEL_PREFERENCE_VIOLATION", "Repair approval lineage is invalid", 422)
     for key, receipt in ((run.snapshot or {}).get("production_repairs") or {}).items():
         if receipt.get("replacement_task_id") != task.id:
             continue
         failed = AgentShotTask.query.filter_by(id=receipt.get("failed_task_id"), run_id=run.run_id,
             plan_version=task.plan_version, target_type="video", target_id=task.target_id, status="failed").first()
+        bound = (failed and str(failed.id) == key and receipt.get("shot_id") == task.target_id
+                 and receipt.get("plan_version") == task.plan_version
+                 and receipt.get("status") in {"running", "completed", "failed"})
+        if receipt.get("action") in {"retry_submit", "recover_read"}:
+            if bound:
+                return _motion_prompt(run, failed, shot, (*_seen, task.id))
+            return shot["motion"]["prompt"]
         reserved = receipt.get("reserved_credits")
-        if (failed and str(failed.id) == key and receipt.get("shot_id") == task.target_id
-                and receipt.get("plan_version") == task.plan_version
-                and receipt.get("action") == "rewrite_prompt" and receipt.get("category") == "content_policy"
-                and receipt.get("status") in {"running", "completed"}
+        if (bound and receipt.get("action") == "rewrite_prompt" and receipt.get("category") == "content_policy"
                 and isinstance(reserved, (int, float)) and not isinstance(reserved, bool) and reserved > 0
                 and isinstance(receipt.get("motion_prompt"), str) and receipt["motion_prompt"].strip()):
             return receipt["motion_prompt"]

@@ -313,3 +313,34 @@ def test_frozen_job_input_cannot_drift_before_submission(app_ctx, monkeypatch, c
         validate_job_policy(job)
     assert error.value.code == "MODEL_PREFERENCE_VIOLATION"
     assert not ApiTask.query.first()
+
+
+@pytest.mark.parametrize("revised", [False, True])
+def test_retry_receipt_inherits_only_authorized_motion_lineage(app_ctx, monkeypatch, revised):
+    row, version, data, original = production()
+    original.status = "failed"
+    prior, receipts = original, {}
+    if revised:
+        data["prompt"] = "人物漫步在安静的城市，镜头轻轻前移。"
+        prior = AgentShotTask(run_id=row.run_id, plan_version=version.version, target_type="video", target_id="s01",
+            attempt=2, inputs_hash=versions.inputs_hash(data), status="failed", artifact_ids=[])
+        db.session.add(prior)
+        db.session.flush()
+        receipts[str(original.id)] = {"failed_task_id": original.id, "shot_id": "s01", "plan_version": version.version,
+            "action": "rewrite_prompt", "category": "content_policy", "status": "failed", "reserved_credits": 10,
+            "motion_prompt": data["prompt"], "replacement_task_id": prior.id}
+    replacement = AgentShotTask(run_id=row.run_id, plan_version=version.version, target_type="video", target_id="s01",
+        attempt=prior.attempt + 1, inputs_hash=versions.inputs_hash(data), status="pending", artifact_ids=[])
+    db.session.add(replacement)
+    db.session.flush()
+    receipts[str(prior.id)] = {"failed_task_id": prior.id, "shot_id": "s01", "plan_version": version.version,
+        "action": "retry_submit", "category": "transient", "status": "running", "reserved_credits": 5,
+        "replacement_task_id": replacement.id}
+    row.snapshot = {**row.snapshot, "production_repairs": receipts}
+    db.session.commit()
+    monkeypatch.setattr(JobRunService, "start", lambda *_a, **_kw: None)
+    result = get_registry().invoke("animate_shot", data, context(row, replacement))
+    from app.agent.model_policy import validate_job_policy
+    job = Job.query.filter_by(job_id=result["output"]["job_id"]).one()
+    validate_job_policy(job)
+    assert job.config["agent_story_production"]["motion_prompt"] == data["prompt"]
