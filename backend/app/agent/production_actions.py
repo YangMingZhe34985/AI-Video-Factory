@@ -93,6 +93,7 @@ def _task_fingerprint(task):
 def quote(run, payload, *, review_status=None, _allow_command=False):
     from app.agent.protocol import ProductionQuote
     from app.agent.production_repair import repair_decision
+    from app.agent.production_engine import recoverable_tail
     try:
         value = ProductionQuote.model_validate(payload).model_dump(mode="json", exclude_none=True)
     except ValidationError as error:
@@ -108,16 +109,17 @@ def quote(run, payload, *, review_status=None, _allow_command=False):
     affected = _closure(version, value["shot_id"])
     tasks = latest_tasks(run, version)
     task = tasks.get(value["shot_id"])
-    if not task or task.status not in {"success", "failed", "stale"}:
+    local_tail = recoverable_tail(run, version, value["shot_id"]) if operation == "retry" else None
+    if not local_tail and (not task or task.status not in {"success", "failed", "stale"}):
         raise AppError("INVALID_AGENT_STATE", "此镜头尚未完成一次生产，请先处理上游。", 409)
     if _unsafe(task):
         raise AppError("UNSAFE_RETRY", "提交结果尚未核实，不能重新提交付费任务。", 409)
-    missing_success = task.status == "success" and not usable_artifact(task)
+    missing_success = bool(task and task.status == "success" and not usable_artifact(task))
     if missing_success and operation == "redo":
         raise AppError("UNSAFE_RETRY", "成功视频的本地文件缺失，请先恢复原任务下载。", 409)
-    kept = [sid for sid in affected if sid != task.target_id and usable_artifact(tasks.get(sid))]
+    kept = [sid for sid in affected if sid != value["shot_id"] and usable_artifact(tasks.get(sid))]
     continued = [shot["shot_id"] for shot in version.plan["shots"]
-                 if shot["shot_id"] != task.target_id and shot["shot_id"] not in tasks]
+                 if (local_tail or shot["shot_id"] != value["shot_id"]) and shot["shot_id"] not in tasks]
     warnings = []
     if kept:
         warnings.append("只重做当前镜头会保留旧下游视频，请接受画面衔接可能变化。")
@@ -128,7 +130,9 @@ def quote(run, payload, *, review_status=None, _allow_command=False):
     can_retry = False
     reason = "由当前镜头与已确认的尾帧依赖决定影响范围。"
     if operation == "retry":
-        if missing_success:
+        if local_tail:
+            decision = {"action": "recover_tail", "estimated_cost": 0.0}
+        elif missing_success:
             from app.agent.production_repair import classify_job_failure
             job = Job.query.filter_by(job_id=task.job_id).first() if task.job_id else None
             failure = classify_job_failure(job) if job else {}
@@ -139,10 +143,10 @@ def quote(run, payload, *, review_status=None, _allow_command=False):
         if status == "awaiting_video_review" and not (decision["action"] == "recover_read"
                 and decision.get("failure", {}).get("stage") == "download"):
             raise AppError("UNSAFE_RETRY", "视频审核阶段只允许免费恢复已完成视频的下载。", 409)
-        can_retry = decision["action"] in {"recover_read", "retry_submit", "rewrite_prompt"}
+        can_retry = decision["action"] in {"recover_read", "retry_submit", "rewrite_prompt", "recover_tail"}
         only = round(decision["estimated_cost"] + continuation_cost, 6) if can_retry else None
         cascade = None
-        reason = {"recover_read": "免费恢复原任务查询或下载，不重新提交模型。", "retry_submit": "原提交被明确拒绝，可以确认费用后重新提交。",
+        reason = {"recover_tail": "重新提取已完成上游视频的尾帧；提帧免费，报价包含继续生成未完成镜头的费用。", "recover_read": "免费恢复原任务查询或下载，不重新提交模型。", "retry_submit": "原提交被明确拒绝，可以确认费用后重新提交。",
                   "rewrite_prompt": "合规修订一次动作提示词，再重新生成；费用包含修订和视频。"}.get(decision["action"], "当前错误不适合重试，请核实或返回分镜修改。")
     else:
         only = round(costs[task.target_id] + continuation_cost, 6)
@@ -150,7 +154,7 @@ def quote(run, payload, *, review_status=None, _allow_command=False):
             costs[sid] for sid in set(affected) | set(continued)), 6)
         if cascade is None:
             warnings.append("依赖链中存在未核实的提交结果，不能连带重做。")
-    result = {"base_version": version.version, "shot_id": task.target_id, "affected_shot_ids": affected,
+    result = {"base_version": version.version, "shot_id": value["shot_id"], "affected_shot_ids": affected,
               "kept_shot_ids": kept, "continuation_shot_ids": continued,
               "estimated_credits": {"only": only, "cascade": cascade}, "can_retry": can_retry,
               "reason": reason, "warnings": warnings}
@@ -212,11 +216,17 @@ def _save_receipt(run, key, **changes):
     return records[key]
 
 
-def _retained(tasks, ids):
-    return {sid: {"task_id": tasks[sid].id, "source_version": tasks[sid].plan_version,
+def _retained(tasks, ids, previous):
+    retained = {sid: {"task_id": tasks[sid].id, "source_version": tasks[sid].plan_version,
         "inputs_hash": tasks[sid].inputs_hash, "job_id": tasks[sid].job_id,
         "invocation_id": tasks[sid].invocation_id, "artifact_ids": deepcopy(tasks[sid].artifact_ids)}
         for sid in ids if usable_artifact(tasks.get(sid))}
+    for sid, value in retained.items():
+        original = previous.get(sid)
+        if original and all(original.get(key) == value[key] for key in
+                            ("inputs_hash", "job_id", "invocation_id", "artifact_ids")):
+            retained[sid] = deepcopy(original)
+    return retained
 
 
 def _copy_tasks(run, source, target, force_ids):
@@ -248,14 +258,22 @@ def _make_intent(run, command, estimate, *, review_status=None):
         retained = deepcopy((run.snapshot or {}).get("production", {}).get("retained_sources", {}))
         retained = {sid: value for sid, value in retained.items() if sid not in force}
         if command["scope"] == "only":
-            retained.update(_retained(tasks, result["kept_shot_ids"]))
+            retained.update(_retained(tasks, result["kept_shot_ids"], retained))
         plan = deepcopy(version.plan)
         if command.get("motion_prompt"):
             next(shot for shot in plan["shots"] if shot["shot_id"] == command["shot_id"])["motion"]["prompt"] = command["motion_prompt"]
         intent.update(plan=plan, story_package=version.story_package, check=version.check,
             force_shot_ids=force, retained_sources=retained)
     elif command["action"] == "retry_shot":
-        intent["task_id"] = latest_tasks(run, version)[command["shot_id"]].id
+        from app.agent.production_engine import recoverable_tail
+        result = _current_quote(run, command, review_status=review_status)
+        intent["continuation_costs"] = {shot["shot_id"]: shot_cost(run, shot)
+            for shot in version.plan["shots"] if shot["shot_id"] in result["continuation_shot_ids"]}
+        local_tail = recoverable_tail(run, version, command["shot_id"])
+        if local_tail:
+            intent["tail_recovery"] = local_tail
+        else:
+            intent["task_id"] = latest_tasks(run, version)[command["shot_id"]].id
     return intent
 
 
@@ -264,8 +282,23 @@ def _within_quote(cost, authorized):
         raise AppError("PRODUCTION_QUOTE_EXPIRED", "当前预计费用超过已确认报价，请重新确认。", 409)
 
 
+def _authorize_continuation(run, version, intent, repair_cost):
+    costs = intent.get("continuation_costs", {})
+    tasks = latest_tasks(run, version)
+    current = {shot["shot_id"]: shot_cost(run, shot) for shot in version.plan["shots"]
+               if shot["shot_id"] in costs and not usable_artifact(tasks.get(shot["shot_id"]))}
+    # Preserve the quoted reservation even after some continuation work finishes.
+    # A crashed action must not spend its already-consumed allowance a second time.
+    reserved = sum(max(cost, current.get(sid, cost)) for sid, cost in costs.items())
+    _within_quote(repair_cost + reserved, intent["estimated_cost"])
+    if costs:
+        approved = deepcopy((run.snapshot or {}).get("production", {}).get("approved_shot_costs", {}))
+        approved.update(costs)
+        update_production(run, approved_shot_costs=approved)
+
+
 def apply_command(run, payload, registry=None, *, review_status=None):
-    from app.agent.production_engine import begin_production, retry_shot
+    from app.agent.production_engine import begin_production, retry_shot, retry_tail
     from app.skills import get_registry
     command = command_payload(payload)
     key, fingerprint = command["request_key"], receipt_fingerprint(command)
@@ -302,13 +335,20 @@ def apply_command(run, payload, registry=None, *, review_status=None):
         _within_quote(remaining_video_cost(run, version), intent["estimated_cost"])
         event(run, "cascade_confirmed", key=key, scope=command["scope"], shot_ids=intent["force_shot_ids"])
         status = begin_production(run, version, 0)
+    elif action == "retry_shot" and intent.get("tail_recovery"):
+        versions.require_current_version(run, source.version)
+        _authorize_continuation(run, source, intent, 0)
+        recovered = retry_tail(run, source, intent["tail_recovery"], registry or get_registry())
+        status = "producing" if recovered else "production_attention"
+        update_production(run, status=status)
     elif action == "retry_shot":
+        versions.require_current_version(run, source.version)
         task = db.session.get(AgentShotTask, intent["task_id"])
         if task.status == "success" and not usable_artifact(task):
             versions.mark_stale(run, task.plan_version, target_type="video", target_ids={task.target_id})
         from app.agent.production_repair import repair_decision
         decision = repair_decision(run, task, automatic=False)
-        _within_quote(decision["estimated_cost"], intent["estimated_cost"])
+        _authorize_continuation(run, source, intent, decision["estimated_cost"])
         # retry_shot owns a durable failed-task receipt and may safely be replayed.
         retry_shot(run, task, registry or get_registry(), automatic=False)
         status = "producing"

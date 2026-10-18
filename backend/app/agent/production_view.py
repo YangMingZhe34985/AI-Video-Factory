@@ -28,15 +28,18 @@ def public_production(run):
             parent = tasks.get(deps[sid][0])
             status = "blocked" if parent and parent.status in {"failed", "stale", "cancelled"} else "waiting_dependency"
         error = task.error if task else None
+        local_tail = None
         if not task and deps[sid]:
+            from app.agent.production_engine import recoverable_tail
+            local_tail = recoverable_tail(run, version, sid)
             tail = versions.latest_task(run, version.version, "tail_frame", deps[sid][0])
-            if tail and tail.status in {"failed", "stale"}:
+            if tail and (tail.status in {"failed", "stale"} or local_tail):
                 status, error = "blocked", tail.error or {"code": "FRAME_EXTRACTION_FAILED", "summary": "尾帧提取未完成，请检查媒体服务。"}
         if error and "category" not in error:
-            error = {**error, "category": "permanent", "stage": "local", "submission_state": "unknown",
-                     "provider_task_id": None, "recovery_action": "stop"}
+            error = {**error, "category": "permanent", "stage": "local", "submission_state": "not_submitted",
+                     "provider_task_id": None, "recovery_action": "recover_tail" if local_tail else "stop"}
         unsafe = bool(error and error.get("category") == "submit_unknown")
-        can_retry = False
+        can_retry = bool(editable and run.status == "production_attention" and local_tail)
         if editable and task and not unsafe:
             from app.agent.production_repair import classify_job_failure, repair_decision
             if task.status == "success" and not artifact and task.job_id:
