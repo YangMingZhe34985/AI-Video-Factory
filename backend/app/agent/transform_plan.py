@@ -101,6 +101,9 @@ def validate_transform_plan(raw, spec, *, run, require_quote=False, check_budget
         raise AppError("INVALID_PLAN", "Transform source must match the understood request", 422)
     mode = OPERATION_MODES[plan.operation]
     model = select_for_request(spec, mode, plan.model_id)
+    from app.adapters.dashscope_wan3 import MODEL_IDS
+    if model.provider != "dashscope" or model.adapter_name != "dashscope_wan3" or model.model_id not in MODEL_IDS:
+        raise AppError("MODEL_CAPABILITY_MISMATCH", "Native video transformations require the supported Wan 3 protocol", 422)
     plan.model_id = model.model_id
     references = sum(item.type == "reference_image" for item in plan.media)
     plan.params = validate_generation_model(model, mode, plan.params, reference_count=references)

@@ -214,3 +214,20 @@ def test_reference_url_prefix_is_not_an_explicit_user_url():
     raw["transform"]["reference_urls"] = ["https://example.test/"]
     with pytest.raises(ValueError):
         validate_request_spec(raw, [], source_text="根据 https://example.test/full/path 生成视频")
+
+
+@pytest.mark.parametrize("field,value", [("adapter_name", "dashscope_t2v"), ("provider", "other-provider")])
+def test_approved_quote_rejects_provider_protocol_drift(app_ctx, video, field, value):
+    from app.agent.transform_policy import approve
+    run, spec, raw = setup_run(video)
+    quoted = validate_transform_plan(raw, spec, run=run)
+    run.snapshot = {"request_spec": spec, "plan": quoted}; db.session.commit()
+    approve(run, quoted)
+    model = ModelService.get_model("wan3.0-video")
+    setattr(model, field, value)
+    db.session.commit()
+    before = counts()
+    with pytest.raises(AppError) as error:
+        validate_transform_plan(quoted, spec, run=run, require_quote=True)
+    assert error.value.code == "MODEL_CAPABILITY_MISMATCH"
+    assert counts() == before
