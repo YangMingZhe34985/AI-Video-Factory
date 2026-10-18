@@ -194,20 +194,24 @@ def tick_production(run, registry):
     if not enabled() or not version or metadata.get("approved_version") != version.version:
         raise AppError("PRODUCTION_DISABLED", "当前版本尚未授权视频生产。", 409)
     _poll(run, version, registry)
+    limit = max(1, int(current_app.config.get("AGENT_MAX_PARALLEL_SHOTS", 3)))
+
+    def slot_available():
+        return sum(item.status == "running" for item in latest_tasks(run, version).values()) < limit
+
     # Resume reservations even if a crash happened after allocating a new
     # attempt but before linking it to the repair receipt.
     for key, receipt in list((run.snapshot or {}).get("production_repairs", {}).items()):
-        if receipt.get("plan_version") == version.version and receipt.get("status") in {"claimed", "running"}:
+        if slot_available() and receipt.get("plan_version") == version.version and receipt.get("status") in {"claimed", "running"}:
             original = db.session.get(AgentShotTask, int(key))
             retry_shot(run, original, registry, automatic=receipt.get("automatic", True))
     tasks = latest_tasks(run, version)
     for task in list(tasks.values()):
         if task.status == "success" and not usable_artifact(task):
             versions.mark_stale(run, version.version, target_type="video", target_ids={task.target_id})
-        if task.status in {"failed", "stale"}:
+        if slot_available() and task.status in {"failed", "stale"}:
             retry_shot(run, task, registry, automatic=True)
     deps = dependencies(version)
-    limit = max(1, int(current_app.config.get("AGENT_MAX_PARALLEL_SHOTS", 3)))
     tasks = latest_tasks(run, version)
     running = sum(task.status == "running" for task in tasks.values())
     for shot in version.plan["shots"]:

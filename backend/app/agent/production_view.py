@@ -43,14 +43,14 @@ def public_production(run):
             "download_url": f"/api/artifacts/{artifact.artifact_id}/download" if artifact else None,
             "error": error, "estimated_credits": cost,
             "repair_count": sum(1 for item in repairs.values() if item.get("shot_id") == sid),
-            "can_retry": editable and run.status == "production_attention" and status in {"failed", "stale"} and not unsafe,
+            "can_retry": editable and (run.status == "production_attention" or (task and task.status == "success" and not artifact)) and status in {"failed", "stale"} and not unsafe,
             "can_redo": editable and status in {"success", "failed", "stale"} and not unsafe,
             "retained": sid in metadata.get("retained_sources", {})})
     spent = BudgetGuard.spent(run.run_id)
     invocations = ToolInvocation.query.filter_by(budget_scope=run.run_id).all()
     video_spent = sum(item.estimated_cost for item in invocations if item.tool_name == "animate_shot" and item.status != "rejected")
     repair_invocations = {item.get("invocation_id") for item in repairs.values()}
-    repair_tasks = {item.get("replacement_task_id") for item in repairs.values()}
+    repair_tasks = {item.get("replacement_task_id") for item in repairs.values() if item.get("action") != "recover_read"}
     from app.models import AgentShotTask
     for task in AgentShotTask.query.filter_by(run_id=run.run_id).all():
         if task.id in repair_tasks:
