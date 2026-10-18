@@ -49,7 +49,7 @@
                 </div>
                 <span class="status-pill" :class="pillClass(selected.status)">{{ statusLabel(selected.status) }}</span>
               </div>
-              <RunStepper class="mt-4" :status="selected.status" :asked="clarifications.length > 0" :has-plan="Boolean(plan)" :has-results="results.length > 0" />
+              <RunStepper class="mt-4" :status="selected.status" :asked="clarifications.length > 0" :has-plan="Boolean(plan)" :has-results="results.length > 0" :story-mode="isStoryPlan" />
               <div v-if="budgetLimit" class="mt-4">
                 <div class="flex justify-between text-xs text-slate-500 dark:text-slate-400">
                   <span>{{ t('spent', { spent: round(selected.estimated_spent), budget: budgetLimit }) }}</span>
@@ -112,14 +112,24 @@
             </section>
 
             <SimplePlanEditor
-              v-if="draft && !draft.shots"
+              v-if="draft && !draft.shots && !isStoryPlan"
               :key="`simple-${selected.run_id}-${selected.status}`"
               :plan="draft" :models="models" :attachments="attachments"
               :editable="selected.status === 'awaiting_approval' && !selected.command" :disabled="actionDisabled"
               @approve="act('approve', $event)" @reject="act('reject')"
             />
 
-            <template v-if="draft?.shots">
+            <StoryboardEditor
+              v-if="isStoryPlan" :key="`story-${selected.run_id}`"
+              :run-id="selected.run_id" :plan="plan" :story="story || {}" :plan-version="planVersion"
+              :previews="previews" :estimates="storyEstimates" :issues="storyIssues" :spec="requestSpec || {}"
+              :models="models" :status="selected.status" :disabled="busy || Boolean(selected.command)"
+              :demo="mode === 'mock'" :duration-tolerance-ratio="storyConfig.durationToleranceRatio"
+              :keyframe-bridge-enabled="storyConfig.keyframeBridgeEnabled"
+              @action="storyAction" @refresh="select(selected.run_id)"
+            />
+
+            <template v-if="draft?.shots && !isStoryPlan">
               <ShotPlanEditor
                 :plan="draft" :shots="selected.snapshot?.shots" :history="selected.snapshot?.shot_history" :issues="selected.snapshot?.plan_issues || []"
                 :source-duration="sourceVideo?.duration ?? null" :mock="Boolean(selected.snapshot?.mock)"
@@ -170,10 +180,11 @@ import ResearchCard from '@/components/agent/ResearchCard.vue'
 import ClarificationCard from '@/components/agent/ClarificationCard.vue'
 import SimplePlanEditor from '@/components/agent/SimplePlanEditor.vue'
 import ShotPlanEditor from '@/components/agent/ShotPlanEditor.vue'
+import StoryboardEditor from '@/components/agent/StoryboardEditor.vue'
 import AuthedImage from '@/components/agent/AuthedImage.vue'
 import AuthedVideo from '@/components/agent/AuthedVideo.vue'
 import messages from '@/components/agent/messages'
-import { actOnAgentRun, answerAgentCard, createAgentRun, getAgentRun, listAgentRuns, listModels, reviseAgentShot } from '@/api/agent'
+import { actOnAgentRun, actOnStoryboard, answerAgentCard, createAgentRun, getAgentRun, listAgentRuns, listModels, reviseAgentShot } from '@/api/agent'
 
 const { t, locale } = useI18n({ useScope: 'local', messages })
 const route = useRoute()
@@ -181,8 +192,10 @@ const router = useRouter()
 
 const enabled = ref(null), mode = ref('auto'), runs = ref([]), selected = ref(null), draft = ref(null)
 const busy = ref(false), error = ref(''), models = ref([]), paramsInvalid = ref(false), composer = ref(null)
+const storyConfig = ref({ durationToleranceRatio: 0.1, keyframeBridgeEnabled: false })
 let timer, disposed = false, selectionVersion = 0
 let requestKey = null, requestPayload = null, revisionKey = null, revisionPayload = null
+let storyKey = null, storyPayload = null
 
 // v2 fields (CONTRACTS A.10) with fallbacks to the run snapshot / v1 request.
 const pick = (run, key) => run?.[key] ?? run?.snapshot?.[key] ?? null
@@ -195,6 +208,12 @@ const results = computed(() => pick(selected.value, 'results') || [])
 const clarifications = computed(() => selected.value?.snapshot?.clarifications || [])
 const assumptions = computed(() => selected.value?.snapshot?.assumptions || [])
 const plan = computed(() => pick(selected.value, 'plan'))
+const story = computed(() => pick(selected.value, 'story'))
+const planVersion = computed(() => pick(selected.value, 'plan_version') ?? plan.value?.plan_version)
+const isStoryPlan = computed(() => plan.value?.recipe === 'story_video' && Number.isInteger(planVersion.value) && Array.isArray(plan.value?.scenes))
+const previews = computed(() => pick(selected.value, 'previews') || {})
+const storyEstimates = computed(() => pick(selected.value, 'estimates') || {})
+const storyIssues = computed(() => pick(selected.value, 'plan_issues') || [])
 const isRemix = computed(() => selected.value?.request?.mode === 'remix' || requestSpec.value?.recipe_hint === 'remix')
 // v1 stores the remix source on the request; v2 has it as the remix_source attachment.
 const sourceVideo = computed(() => {
@@ -222,6 +241,7 @@ const shortTime = (value) => (value ? new Date(value).toLocaleDateString(locale.
 const TONE = {
   success: 'good', partial_success: 'warn', failed: 'bad', cancelled: 'muted', needs_attention: 'bad',
   awaiting_input: 'ask', awaiting_approval: 'ask', awaiting_delivery: 'ask',
+  awaiting_characters: 'ask', awaiting_storyboard: 'ask', storyboard_approved: 'good',
 }
 const dotClass = (status) => ({ good: 'bg-emerald-500', warn: 'bg-amber-500', bad: 'bg-red-500', muted: 'bg-slate-400', ask: 'bg-blue-500' }[TONE[status]] || 'bg-blue-300 animate-pulse')
 const pillClass = (status) => `tone-${TONE[status] || 'busy'}`
@@ -305,6 +325,30 @@ async function revise(shot) {
     await refresh()
   } catch (err) { error.value = message(err) } finally { busy.value = false }
 }
+async function storyAction({ action, payload, onSuccess, onError }) {
+  const runId = selected.value.run_id
+  const serialized = JSON.stringify({ runId, action, payload })
+  const requiresKey = ['regenerate', 'regenerate_stale', 'edit_plan'].includes(action)
+  if (serialized !== storyPayload) { storyPayload = serialized; storyKey = newKey() }
+  busy.value = true
+  error.value = ''
+  try {
+    const value = await actOnStoryboard(runId, action, { ...payload, ...(requiresKey ? { request_key: storyKey } : {}) })
+    if (selected.value?.run_id === runId) { applyRun(value); onSuccess?.(value) }
+    storyKey = null; storyPayload = null
+    await refresh()
+  } catch (err) {
+    const failure = err.response?.data?.error
+    const hint = failure?.code === 'PLAN_VERSION_CONFLICT' ? '计划版本已更新，请刷新后重新编辑。' : message(err)
+    if (selected.value?.run_id === runId) {
+      error.value = hint; onError?.(hint)
+      // Retain the local draft; the editor exposes an explicit discard-and-refresh action.
+      if (failure?.code === 'PLAN_VERSION_CONFLICT') {
+        try { const latest = await getAgentRun(runId); if (selected.value?.run_id === runId) applyRun(latest) } catch { /* keep the conflict message */ }
+      }
+    }
+  } finally { busy.value = false }
+}
 async function poll() {
   await refresh()
   if (!disposed) timer = setTimeout(poll, 3000)
@@ -316,6 +360,10 @@ onMounted(async () => {
     const data = (await response.json()).data
     enabled.value = Boolean(data.agent_mode)
     mode.value = data.mode
+    storyConfig.value = {
+      durationToleranceRatio: Number.isFinite(data.story_duration_tolerance_ratio) ? data.story_duration_tolerance_ratio : 0.1,
+      keyframeBridgeEnabled: Boolean(data.keyframe_bridge_enabled),
+    }
     if (enabled.value && !disposed) {
       listModels().then((value) => { models.value = value.models || [] }).catch(() => {})
       if (route.query.run) await select(route.query.run)

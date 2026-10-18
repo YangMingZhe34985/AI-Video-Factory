@@ -23,22 +23,25 @@ const props = defineProps({
   asked: { type: Boolean, default: false },          // any clarification card shown in this run
   hasPlan: { type: Boolean, default: false },
   hasResults: { type: Boolean, default: false },
+  storyMode: { type: Boolean, default: false },
 })
 const { t } = useI18n({ useScope: 'local', messages })
 
 const STATUS_STAGE = {
   queued: 'understand', understanding: 'understand', analyzing: 'understand', researching: 'understand',
   awaiting_input: 'clarify', planning: 'plan', awaiting_approval: 'review',
+  previewing: 'preview', awaiting_characters: 'characters', awaiting_storyboard: 'storyboard', storyboard_approved: 'approved',
   producing: 'produce', awaiting_delivery: 'deliver', delivering: 'deliver',
 }
 
 const stages = computed(() => {
-  const keys = ['understand', ...(props.asked || props.status === 'awaiting_input' ? ['clarify'] : []), 'plan', 'review', 'produce', 'deliver']
-  const labels = { understand: 'stageUnderstand', clarify: 'stageClarify', plan: 'stagePlan', review: 'stageReview', produce: 'stageProduce', deliver: 'stageDeliver' }
+  const keys = ['understand', ...(props.asked || props.status === 'awaiting_input' ? ['clarify'] : []), 'plan',
+    ...(props.storyMode ? ['preview', 'characters', 'storyboard', 'approved'] : ['review', 'produce', 'deliver'])]
+  const labels = { understand: 'stageUnderstand', clarify: 'stageClarify', plan: 'stagePlan', review: 'stageReview', produce: 'stageProduce', deliver: 'stageDeliver', preview: 'stagePreview', characters: 'stageCharacters', storyboard: 'stageStoryboard', approved: 'stageApproved' }
   let current = STATUS_STAGE[props.status]
   const finished = ['success', 'partial_success'].includes(props.status)
   const broken = ['failed', 'cancelled', 'needs_attention'].includes(props.status)
-  if (broken) current = props.hasResults ? 'produce' : props.hasPlan ? 'review' : 'understand'
+  if (broken) current = props.hasResults ? 'produce' : props.hasPlan ? (props.storyMode ? 'storyboard' : 'review') : 'understand'
   const activeIndex = finished ? keys.length : keys.indexOf(current)
   return keys.map((key, index) => ({
     key,
