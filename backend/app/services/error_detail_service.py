@@ -46,6 +46,8 @@ class ErrorDetailService:
             "technical_message": cls._truncate(str(raw_message or ""), cls.MAX_TEXT),
             "hint": cls.HINTS.get(error_code),
         }
+        if isinstance(error, AppError):
+            detail["status_code"] = error.status_code
         if job:
             detail["job_id"] = job.job_id
         if node_run:

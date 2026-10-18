@@ -11,7 +11,7 @@ from app.api import AppError
 from app.extensions import db
 from app.models import AgentPlanVersion, AgentRun, AgentShotTask, Artifact, Job, ToolInvocation
 
-TARGET_TYPES = {"character", "keyframe", "end_frame"}
+TARGET_TYPES = {"character", "keyframe", "end_frame", "video", "tail_frame"}
 TASK_STATUSES = {"pending", "running", "success", "failed", "stale", "cancelled"}
 TRANSITIONS = {
     "pending": {"running", "success", "failed", "stale", "cancelled"},

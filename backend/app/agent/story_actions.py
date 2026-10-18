@@ -124,10 +124,15 @@ def validate_command(run, command, *, review_status=None):
         require_previews(run, version, "all")
         checked = check_plan(version.plan, version.story_package, run.snapshot["request_spec"], run=run, preview_credits=0)
         checked["issues"].extend(missing_prompt_issues(checked["plan"]))
+        cost = checked["estimates"]["video_credits"]
+        if (run.snapshot or {}).get("production"):
+            from app.agent.production_state import remaining_video_cost
+            cost = remaining_video_cost(run, version)
+            checked["issues"] = [item for item in checked["issues"] if item["code"] != "BUDGET_EXCEEDED"]
         if checked["issues"]:
             raise AppError("INVALID_PRODUCTION_PLAN", "分镜仍有问题，请修改后再确认。", 422,
                            payload={"plan_issues": checked["issues"]})
-        BudgetGuard.check(run.run_id, run.request["budget_limit"], checked["estimates"]["video_credits"])
+        BudgetGuard.check(run.run_id, run.request["budget_limit"], cost)
     elif action == "approve_characters":
         require_previews(run, version, "characters")
         characters = {item["character_id"]: item for item in version.story_package["characters"]}
