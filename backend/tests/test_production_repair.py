@@ -16,6 +16,7 @@ from app.services.job_run_service import JobRunService
 from app.skills import build_default_registry
 from app.skills.budget import BudgetGuard
 from app.utils.ids import new_id
+from tests.test_simple_plan import request_spec
 
 
 SHOT = {"shot_id": "s01", "summary": "人物向伙伴挥手", "duration_sec": 10,
@@ -27,7 +28,8 @@ STORY = {"characters": [{"character_id": "c01", "lock_description": "蓝色短�
 def fixture(h, *, code="API_TASK_FAILED", http=429, provider_code=None, phase="submit", provider_id=None,
             response=None, allowance=60, budget=200, mq=False):
     run = AgentRun(owner_id="local", request_key=new_id("d3"), request={"budget_limit": budget},
-                   snapshot={"production": {"repair_budget_credits": allowance}})
+                   snapshot={"production": {"repair_budget_credits": allowance},
+                             "request_spec": request_spec("single_clip")})
     db.session.add(run)
     db.session.commit()
     version = versions.create_version(run, PLAN, STORY, {"issues": [], "estimates": {}})
@@ -352,3 +354,16 @@ def test_manual_free_read_recovery_is_separately_authorized_after_auto_limit(app
     assert repair.repair_decision(run, task)["reason"] == "REPAIR_LIMIT_EXCEEDED"
     decision = repair.repair_decision(run, task, automatic=False)
     assert decision["action"] == "recover_read" and decision["estimated_cost"] == 0
+
+
+
+def test_changed_model_price_is_requoted_before_repair_reservation(app_ctx, h):
+    from app.services.model_service import ModelService
+    run, task, job, api = fixture(h, allowance=10)
+    model = ModelService.get_model("wan2.7-i2v")
+    model.capabilities = {**model.capabilities, "pricing": {"unit": "second", "credits_per_unit": 3}}
+    db.session.commit()
+    decision = repair.repair_decision(run, task)
+    assert decision["estimated_cost"] == 30
+    assert decision["action"] == "stop" and decision["reason"] == "REPAIR_BUDGET_EXCEEDED"
+    assert repair.repair_decision(run, task, automatic=False)["estimated_cost"] == 30
