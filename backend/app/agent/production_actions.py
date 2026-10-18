@@ -354,9 +354,13 @@ def apply_command(run, payload, registry=None, *, review_status=None):
         status = "producing"
         update_production(run, status=status)
     elif action == "review_plan":
+        versions.require_current_version(run, source.version)
         status = "awaiting_storyboard"
         update_production(run, approved_version=None, status=status)
     else:
+        # Persisted intent is not proof that files/model approval remain valid
+        # after a crash. Completed receipts above still replay without effects.
+        validate_command(run, command, review_status=intent["status_before"])
         status = "videos_approved"
         event(run, "videos_approved", key=key)
         update_production(run, status=status)
