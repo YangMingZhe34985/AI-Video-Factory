@@ -3,7 +3,7 @@ from pathlib import Path
 from flask import Blueprint, current_app, request, send_file
 from flask_jwt_extended import get_jwt_identity, verify_jwt_in_request
 
-from app.agent.attachments import require_upload_job_owner
+from app.agent.attachments import is_private_agent_job, require_upload_job_owner
 from app.api import AppError, api_success
 from app.services.artifact_service import ArtifactService
 from app.services.job_service import JobService
@@ -19,7 +19,7 @@ def _owner():
 
 def _readable_artifact(artifact_id):
     artifact = ArtifactService.get_by_artifact_id(artifact_id)
-    if artifact.job.strategy == "agent_upload":
+    if is_private_agent_job(artifact.job):
         # Classic previews remain public; user-supplied Agent attachments do not.
         if current_app.config.get("API_AUTH_REQUIRED", True):
             verify_jwt_in_request()

@@ -27,6 +27,8 @@ class ToolContext:
     invocation_id: str | None = None
     # Set when the call retries a previously failed invocation.
     previous: "ToolInvocation | None" = None
+    # Server-only linkage; public Skill schemas never accept this field.
+    preview_task_id: int | None = None
 
 
 @dataclass(frozen=True)

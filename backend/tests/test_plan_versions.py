@@ -271,3 +271,16 @@ def test_repeatable_migration_repair_and_downgrade(tmp_path):
         assert db.session.execute(text("SELECT version_num FROM alembic_version")).scalar() == "20261018_002"
         db.session.remove()
         db.engine.dispose()
+
+
+def test_completed_attempt_never_overwrites_previous_artifact(app_ctx, h):
+    row = run()
+    save(row)
+    first, replacement = artifact(row, h), artifact(row, h)
+    task = versions.create_task(row, 1, "keyframe", "s01", INPUTS)
+    versions.update_task(row, task, status="success", artifact_ids=[first.artifact_id])
+    with pytest.raises(AppError, match="immutable"):
+        versions.update_task(row, task, artifact_ids=[replacement.artifact_id])
+    assert task.artifact_ids == [first.artifact_id]
+    versions.mark_stale(row, 1, target_type="keyframe", target_ids={"s01"})
+    assert task.artifact_ids == [first.artifact_id]

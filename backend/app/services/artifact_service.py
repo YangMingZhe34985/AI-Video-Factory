@@ -1,10 +1,10 @@
 from pathlib import Path
 
-from sqlalchemy import or_
+from sqlalchemy import or_, select
 
 from app.api import AppError
 from app.extensions import db
-from app.models import ApiTask, Artifact, Job, JobNodeRun, Template
+from app.models import AgentRun, ApiTask, Artifact, Job, JobNodeRun, Template
 from app.services.event_service import EventService
 from app.services.job_run_state_service import JobRunStateService
 from app.services.storage_service import StorageService
@@ -70,9 +70,12 @@ class ArtifactService:
 
     @staticmethod
     def list_for_job(job: Job, include_history: bool = False, agent_upload_owner: str | None = None) -> list[dict]:
-        if (agent_upload_owner is not None and job.strategy == "agent_upload"
-                and (job.config or {}).get("agent_upload_owner") != agent_upload_owner):
-            return []
+        if agent_upload_owner is not None:
+            from app.agent.attachments import require_upload_job_owner
+            try:
+                require_upload_job_owner(job, agent_upload_owner)
+            except AppError:
+                return []
         result = []
         current_run_id = JobRunStateService.current_run_id(job)
         for artifact in job.artifacts:
@@ -125,6 +128,9 @@ class ArtifactService:
         if agent_upload_owner is not None:
             query = query.filter(or_(Job.strategy != "agent_upload",
                                      Job.config["agent_upload_owner"].as_string() == agent_upload_owner))
+            preview_scope = Job.config["agent_story_preview"]["run_id"].as_string()
+            query = query.filter(or_(preview_scope.is_(None), preview_scope.in_(
+                select(AgentRun.run_id).where(AgentRun.owner_id == agent_upload_owner))))
 
         if series_id:
             query = query.filter(Template.series == series_id.strip())

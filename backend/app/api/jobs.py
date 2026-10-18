@@ -5,7 +5,7 @@ from http import HTTPStatus
 from flask import Blueprint, Response, current_app, request
 from flask_jwt_extended import get_jwt_identity, verify_jwt_in_request
 
-from app.agent.attachments import require_upload_job_owner, validate_job_attachment_sources
+from app.agent.attachments import is_private_agent_job, require_upload_job_owner, validate_job_attachment_sources
 from app.api import api_success
 from app.models import JobEvent
 from app.schemas.job_schema import (
@@ -31,7 +31,7 @@ def _protect_agent_upload_job():
     if request.method == "OPTIONS" or not job_id or not request.path.startswith("/api/jobs/"):
         return
     job = JobService.get_job(job_id)
-    if job.strategy == "agent_upload":
+    if is_private_agent_job(job):
         if current_app.config.get("API_AUTH_REQUIRED", True):
             verify_jwt_in_request()
             owner_id = get_jwt_identity()

@@ -122,6 +122,9 @@ def resolve_artifact(artifact_id: str, image_only: bool = False, ctx: ToolContex
         if run and (run.request or {}).get("schema_version") == 2:
             if artifact.artifact_id in run.request.get("attachment_ids", []):
                 artifact = attachment_for_owner(artifact.artifact_id, run.owner_id)
+            elif artifact.artifact_type == "agent_reference_image":
+                from app.agent.search.references import reference_for_run
+                artifact = reference_for_run(artifact.artifact_id, run)
             elif (artifact.job.config or {}).get("skill", {}).get("budget_scope") != run.run_id:
                 raise AppError("ATTACHMENT_NOT_FOUND", "Artifact is not part of this run", 404)
     if image_only and not str(artifact.mime_type or "").startswith("image/"):
@@ -163,6 +166,14 @@ def launch(
         "budget_scope": ctx.budget_scope,
         "caller_role": ctx.role,
     }
+    if ctx.preview_task_id is not None:
+        from app.agent.preview_production import invocation_key
+        from app.models import AgentShotTask
+        preview = AgentShotTask.query.filter_by(id=ctx.preview_task_id, run_id=ctx.budget_scope).first()
+        if not preview or ctx.tool_name != "generate_image" or invocation_key(preview) != ctx.idempotency_key:
+            raise AppError("INVALID_REFERENCE", "Invalid preview task linkage", 422)
+        config["agent_story_preview"] = {"run_id": preview.run_id, "plan_version": preview.plan_version,
+                                         "target_type": preview.target_type, "target_id": preview.target_id}
     job = JobService.create_job(
         {
             "template_id": template.template_id,

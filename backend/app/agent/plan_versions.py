@@ -223,6 +223,11 @@ def update_task(run, task, **values):
         if not row:
             raise AppError("INVALID_REFERENCE", "Preview task is not part of this run", 422)
         status = values.get("status", row.status)
+        if row.status in {"success", "failed", "stale", "cancelled"} and any(
+            key in values and values[key] != getattr(row, key)
+            for key in ("artifact_ids", "invocation_id", "job_id", "error")
+        ):
+            raise AppError("INVALID_INPUT", "Completed preview outputs are immutable; create a new attempt", 409)
         if status != row.status and status not in TRANSITIONS[row.status]:
             raise AppError("INVALID_INPUT", "Preview attempt is terminal; create a new attempt", 409)
         merged = {**row.to_dict(), **values}
