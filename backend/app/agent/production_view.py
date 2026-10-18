@@ -28,6 +28,10 @@ def public_production(run):
             parent = tasks.get(deps[sid][0])
             status = "blocked" if parent and parent.status in {"failed", "stale", "cancelled"} else "waiting_dependency"
         error = task.error if task else None
+        if not task and deps[sid]:
+            tail = versions.latest_task(run, version.version, "tail_frame", deps[sid][0])
+            if tail and tail.status in {"failed", "stale"}:
+                status, error = "blocked", tail.error or {"code": "FRAME_EXTRACTION_FAILED", "summary": "尾帧提取未完成，请检查媒体服务。"}
         if error and "category" not in error:
             error = {**error, "category": "permanent", "stage": "local", "submission_state": "unknown",
                      "provider_task_id": None, "recovery_action": "stop"}

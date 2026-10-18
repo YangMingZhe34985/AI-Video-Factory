@@ -42,7 +42,8 @@ def begin_production(run, version, repair_budget_credits=0):
     values = {} if metadata.get("plan_version") == version.version else {
         "retained_sources": {}, "force_shot_ids": []}
     update_production(run, **values, plan_version=version.version, approved_version=version.version,
-                      repair_budget_credits=repair_budget_credits, status="producing")
+                      repair_budget_credits=repair_budget_credits, status="producing",
+                      approved_shot_costs={shot["shot_id"]: shot_cost(run, shot) for shot in version.plan["shots"]})
     event(run, "production_started")
     return "producing"
 
@@ -72,7 +73,8 @@ def _inputs(run, version, shot, task=None):
 
 def _local_failure(error):
     invalid = error.code in {"INVALID_INPUT", "INVALID_REFERENCE", "INVALID_PRODUCTION_PLAN",
-        "MODEL_CAPABILITY_MISMATCH", "MODEL_SELECTION_UNSATISFIED", "KEYFRAME_BRIDGE_UNAVAILABLE"}
+        "MODEL_CAPABILITY_MISMATCH", "MODEL_SELECTION_UNSATISFIED", "KEYFRAME_BRIDGE_UNAVAILABLE",
+        "MODEL_PRICE_CHANGED", "REPAIR_BUDGET_EXCEEDED"}
     return {"category": "invalid_parameters" if invalid else "submit_unknown",
         "code": error.code, "summary": error.message, "stage": "local" if invalid else "submit",
         "submission_state": "not_submitted" if invalid else "unknown", "provider_task_id": None,
@@ -82,6 +84,22 @@ def _local_failure(error):
 def _submit(run, task, data, registry):
     ctx = _context(run, task)
     try:
+        previous = ToolInvocation.query.filter_by(idempotency_key=ctx.idempotency_key).first()
+        if previous is None:
+            version = versions.get_version(run, task.plan_version)
+            shot = next(item for item in version.plan["shots"] if item["shot_id"] == task.target_id)
+            cost = shot_cost(run, shot)
+            receipt = next((item for item in (run.snapshot or {}).get("production_repairs", {}).values()
+                            if item.get("replacement_task_id") == task.id), None)
+            if receipt:
+                rewrite = ToolInvocation.query.filter_by(invocation_id=receipt.get("invocation_id")).first() if receipt.get("invocation_id") else None
+                used = rewrite.estimated_cost if rewrite and rewrite.status != "rejected" else 0
+                if cost + used > receipt.get("reserved_credits", 0) + 1e-6:
+                    raise AppError("REPAIR_BUDGET_EXCEEDED", "修复单价已变更，请重新审核费用。", 409)
+            else:
+                approved = (run.snapshot or {}).get("production", {}).get("approved_shot_costs", {}).get(task.target_id, task.estimated_cost)
+                if cost > approved + 1e-6:
+                    raise AppError("MODEL_PRICE_CHANGED", "模型单价已上涨，请重新审核费用。", 409)
         response = invoke_once(registry, "animate_shot", data, ctx)
         versions.update_task(run, task, status="running", invocation_id=response["invocation_id"],
                              job_id=response["output"]["job_id"])
@@ -94,6 +112,8 @@ def _submit(run, task, data, registry):
         else:
             versions.update_task(run, task, status="failed", error=_local_failure(error))
             event(run, "shot_failed", task=task)
+    if task.status == "failed":
+        _finish_repairs(run, task)
 
 
 def _finish_repairs(run, task):
