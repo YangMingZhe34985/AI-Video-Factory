@@ -948,7 +948,7 @@ Run.status = editing / delivery_attention / success；delivery.stage = pending /
 - package_story 输入 {plan_version,artifact_id,compressed_artifact_id:null|str}；返回 {artifact_id,download_url,file_name}。包含所有批准原镜头、主片、可选压缩副本、计划/故事/QC/费用 manifest，不包含密钥、绝对路径或外部下载 URL。
 
 本地交付 Job 复用 agent_story_production 私有标记 target_type:"delivery" 与 skill.budget_scope；不得运行经典 DAG 或通过公开 run-* 重交。所有交付工件走现有 owner 鉴权。
-MediaProbeService.probe(path,decode=False) 返回 duration_sec,width,height,fps,video(codec,pixel_format,time_base,sar,profile,level,codec_parameters_hash),audio(codec,sample_rate,channels,channel_layout)|null,has_audio,stream_count,copy_compatible_metadata,decoded,mock,duration_source,video_duration_verified,container_duration_sec。decode=True 全片解码，时长按视频流核验。
+MediaProbeService.probe(path,decode=False) 返回 duration_sec,width,height,fps,video(codec,pixel_format,time_base,sar,profile,level,codec_parameters_hash),audio(codec,profile,sample_rate,channels,channel_layout)|null,has_audio,stream_count,copy_compatible_metadata,decoded,mock,duration_source,video_duration_verified,container_duration_sec。decode=True 全片解码，时长按视频流核验。
 同编码/参数集签名/流布局、画幅、fps、时间基等充分一致才 stream-copy；元数据不足或不一致走 normalized。规范化以首镜头宽高/fps 为基准、保比例 pad 到偶数尺寸，H.264 CRF18；音频保留，缺失段补静音并对齐视频时长。高质量重编码不称无损。主片默认未额外压缩；显式需求另产压缩副本，主片保留。
 Mock 模式仅识别适配器精确哨兵并在交付工作区构造有效示意 MP4，标注 mock_materialized；不改原工件，不把任意损坏视频当 Mock，不作为画质验证。
 

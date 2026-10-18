@@ -367,3 +367,11 @@ C-Gate 评审结论：通过。
 分支：四个独立Codex工作树分别使用agent-v2/E1、E2、E3、E4，从feat/agent-v2 @ d06b3f4切出。主目录在Claude的agent-v2/D-Gate，不切换/修改其工作树。
 范围：Agent压缩策略、拼接与可选副本、结构质检/Editor/素材包、交付功能界面。D-Gate与美化保持Claude负责。
 验证：仅Mock、隔离SQLite/存储和本地FFmpeg有效测试片；不改真实.env、不做付费调用、推送或PR。完成后更新验收与交接。
+
+
+## 2026-10-18 · Codex · Phase E 集成验收中
+状态：E1–E4实现已整合，仍待完整回归与浏览器验收结束；不作为最终交付。
+冻结代码：agent-v2/E1 @ 16e2c60（此后本条仅文档）。已合入E2/E3/E4功能，主目录仍由Claude在agent-v2/D-Gate工作，未移动其分支或修改其未提交文件。
+已验证：集成相关61项通过；公共授权与双开关边界8项通过；前端39项通过、npm run build通过。完整后端Mock/隔离SQLite回归进行中。
+内容：默认保留Agent源片、私有零费用拼接与可选压缩副本、独立源规格质检、素材ZIP、Editor断点恢复、交付组件。有效MP4/WebM仅本地生成测试片，Mock输出有显式标记，未调用真实生成服务。
+下一步：读取完整回归结果，完成鉴权浏览器交付/恢复验收，更新PLAN与最终交接；E-Gate留Claude，不进入F。独立工作树缺node_modules入口已用Junction复用现有依赖，未安装新包或修改真实.env。
