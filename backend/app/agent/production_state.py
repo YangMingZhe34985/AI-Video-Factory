@@ -3,6 +3,7 @@
 from copy import deepcopy
 
 from flask import current_app
+from pydantic import ValidationError
 
 from app.agent import plan_versions as versions
 from app.agent.production_plan import select_plan_model
@@ -94,9 +95,14 @@ def video_inputs(run, version, shot):
         if not last:
             return None
         last_id = last.artifact_id
-    return AnimateShotInput(first_frame_artifact_id=first_artifact.artifact_id,
-        last_frame_artifact_id=last_id, prompt=shot["motion"]["prompt"],
-        model_id=shot["motion"]["model_id"], params=deepcopy(shot["motion"]["params"])).model_dump(mode="json")
+    try:
+        return AnimateShotInput(first_frame_artifact_id=first_artifact.artifact_id,
+            last_frame_artifact_id=last_id, prompt=shot["motion"]["prompt"],
+            model_id=shot["motion"]["model_id"], params=deepcopy(shot["motion"]["params"])).model_dump(mode="json")
+    except ValidationError:
+        # Editable drafts may intentionally be incomplete. Review remains readable;
+        # validate_start still rejects them before any production side effect.
+        return None
 
 
 def shot_cost(run, shot):
