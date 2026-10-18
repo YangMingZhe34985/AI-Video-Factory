@@ -128,7 +128,7 @@ class AgentWorker:
         # These receipts commit with relational plan/task writes, independently
         # of graph checkpoints; never drop them on a crash or an inbox retry.
         preserved = {key: row.snapshot[key] for key in ("plan_operations", "story_action_receipts", "story_model_overrides",
-                     "production", "production_action_receipts", "production_repairs",
+                     "production", "production_action_receipts", "transform", "production_repairs",
                      "delivery", "delivery_action_receipts")
                      if key in (row.snapshot or {})}
         return {**dict(values), **preserved}
@@ -140,7 +140,7 @@ class AgentWorker:
         previous_status = row.status
         row.snapshot = AgentWorker._merged_snapshot(row, values)
         row.status = values.get("status", "needs_attention")
-        row.error = error or values.get("delivery_error") or values.get("production_error")
+        row.error = error or values.get("delivery_error") or values.get("production_error") or values.get("transform_error")
         row.command = None
         db.session.commit()
         if previous_status != row.status:

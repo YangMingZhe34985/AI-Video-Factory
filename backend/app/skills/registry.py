@@ -95,6 +95,14 @@ class ToolRegistry:
         ctx.tool_name = spec.name
         from app.agent.production_policy import require_task_authorization
         require_task_authorization(spec.name, ctx)
+        from app.agent.transform_policy import require_tool_authorization
+        require_tool_authorization(spec.name, ctx)
+        if spec.name == "transform_video":
+            from app.agent.transform_policy import validate_submission
+            validate_submission(data, ctx)
+        if spec.name == "capture_reference_page":
+            from app.skills.tools.capture_reference_page import validate_source
+            validate_source(data, ctx)
         if ctx.shot_task_id is not None:
             from app.agent.production_policy import validate_submission
             validate_submission(data, ctx)
@@ -144,7 +152,7 @@ class ToolRegistry:
             )
 
     def _invoke_with_ledger(self, spec: ToolSpec, data: BaseModel, ctx: ToolContext) -> dict:
-        scoped = spec.permission == "external" or spec.name in {"analyze_image", "extract_frame"} | DELIVERY_TOOLS or ctx.shot_task_id is not None
+        scoped = spec.permission == "external" or spec.name in {"analyze_image", "extract_frame"} | DELIVERY_TOOLS or ctx.shot_task_id is not None or spec.name == "transform_video"
         generated_key = idempotency_key_for(spec.name, data)
         if scoped:
             generated_key = f"{ctx.budget_scope}:tool:{hashlib.sha256(generated_key.encode()).hexdigest()[:32]}"
@@ -187,6 +195,10 @@ class ToolRegistry:
                 if invocation.status == "success":
                     recovering_download = (spec.name in {"probe_media", "qc_video"}
                         or not _delivery_module(spec.name).cached_output_is_valid(invocation))
+            if spec.name == "capture_reference_page" and invocation.status == "success":
+                from app.skills.tools.capture_reference_page import cached_output_is_valid
+                if not cached_output_is_valid(invocation):
+                    raise AppError("TRANSFORM_INPUT_CHANGED", "Stored page snapshot is missing or changed; automatic refetch stopped", 409)
             if invocation.status in REPLAYABLE_STATUSES and not recovering_download:
                 if scoped and invocation.status in {"pending", "running"} and invocation.job is None:
                     raise AppError("RECOVERY_REQUIRED", "Research call outcome is unknown; automatic repeat stopped", 409)
@@ -305,7 +317,7 @@ class ToolRegistry:
 
     @staticmethod
     def _check_scoped_replay(spec, invocation, data, ctx):
-        if spec.permission == "external" or spec.name in {"analyze_image", "extract_frame"} | DELIVERY_TOOLS or ctx.shot_task_id is not None:
+        if spec.permission == "external" or spec.name in {"analyze_image", "extract_frame"} | DELIVERY_TOOLS or ctx.shot_task_id is not None or spec.name == "transform_video":
             if (invocation.tool_name != spec.name or invocation.budget_scope != ctx.budget_scope
                     or invocation.input_payload != data.model_dump(mode="json")):
                 raise AppError("IDEMPOTENCY_KEY_CONFLICT", "Tool key belongs to different input or Run", 409)

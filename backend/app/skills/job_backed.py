@@ -191,6 +191,9 @@ def launch(
     if ctx.shot_task_id is not None:
         from app.agent.production_policy import job_marker
         config["agent_story_production"] = job_marker(ctx)
+    if ctx.transform_hash is not None:
+        from app.agent.transform_policy import job_marker
+        config["agent_transform"] = job_marker(ctx)
     job = JobService.create_job(
         {
             "template_id": template.template_id,
@@ -207,7 +210,11 @@ def launch(
         invocation = ToolInvocation.query.filter_by(invocation_id=ctx.invocation_id).one()
         invocation.job = job
         db.session.commit()
-    if ctx.shot_task_id is not None:
+    if ctx.transform_hash is not None:
+        from app.agent.transform_policy import authorized_job_dispatch
+        with authorized_job_dispatch(job, "run_full"):
+            JobRunService.start(job.job_id, "run_full")
+    elif ctx.shot_task_id is not None:
         from app.agent.production_policy import authorized_job_dispatch
         with authorized_job_dispatch(job, "run_full"):
             JobRunService.start(job.job_id, "run_full")

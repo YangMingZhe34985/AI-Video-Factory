@@ -52,7 +52,10 @@ def recover_job(job: Job, scope: str) -> None:
         node.ended_at = utc_now()
     job.status = "pending"
     db.session.commit()
-    from app.agent.production_policy import authorized_job_dispatch
+    if (job.config or {}).get("agent_transform"):
+        from app.agent.transform_policy import authorized_job_dispatch
+    else:
+        from app.agent.production_policy import authorized_job_dispatch
     with authorized_job_dispatch(job, "run_full"):
         JobRunService.start(job.job_id, "run_full")
 
@@ -63,6 +66,13 @@ def invoke_once(registry, name, data, ctx):
         # Free local extraction owns a durable artifact + output receipt; an
         # interrupted handler may safely reconstruct that receipt.
         return registry.invoke(name, data, ctx)
+    if name == "transform_video":
+        from app.agent.transform_policy import validate_submission
+        spec = registry.get(name)
+        parsed = registry._validate_input(spec, data)
+        registry._authorize(spec, ctx)
+        ctx.tool_name = name
+        validate_submission(parsed, ctx)
     if ctx.shot_task_id is not None:
         from app.agent.production_policy import validate_submission
         spec = registry.get(name)
@@ -89,7 +99,7 @@ def invoke_once(registry, name, data, ctx):
             return registry.invoke(name, data, ctx)
         if previous.status in {"failed", "rejected"}:
             raise AppError(previous.error_code or "TOOL_FAILED", previous.error_message or "Previous call failed", 409)
-        job_backed = name in {"produce_shot", "remix_shot", "analyze_video", "generate_image", "generate_video", "animate_shot"}
+        job_backed = name in {"produce_shot", "remix_shot", "analyze_video", "generate_image", "generate_video", "animate_shot", "transform_video"}
         if job_backed and not previous.job:
             # A crash can occur between JobService's commit and ledger linking.
             job = Job.query.filter(
