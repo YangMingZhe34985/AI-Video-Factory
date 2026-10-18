@@ -36,6 +36,14 @@ def nodes(registry):
                 status = state["status"]
                 if current.version != state.get("plan_version"):
                     status = "production_attention"
+                from app.agent.production_state import enabled, latest_tasks
+                production = (run.snapshot or {}).get("production", {})
+                if (enabled() and production.get("approved_version") == current.version and any(
+                        task.status in {"pending", "running"} for task in latest_tasks(run, current).values())):
+                    # An action can commit its replacement before its result receipt.
+                    # Finish admitted work even when replay rejects newer prices;
+                    # the frozen per-shot caps still guard every new submission.
+                    status = "producing"
                 result = {"status": status, "plan_version": current.version, "plan": current.plan,
                     "story_package": current.story_package,
                     "production_error": {"code": error.code, "message": error.message}}
