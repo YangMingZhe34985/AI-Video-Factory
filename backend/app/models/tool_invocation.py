@@ -16,6 +16,8 @@ class ToolInvocation(db.Model, SerializerMixin):
     tool_name = db.Column(db.String(80), nullable=False, index=True)
     idempotency_key = db.Column(db.String(128), unique=True, nullable=False)
     caller_role = db.Column(db.String(40), nullable=False)
+    caller_agent = db.Column(db.String(40), nullable=True)
+    delegation_id = db.Column(db.Integer, nullable=True)
     budget_scope = db.Column(db.String(128), nullable=False, default="default", index=True)
     status = db.Column(db.String(40), nullable=False, default="pending")
     attempt = db.Column(db.Integer, nullable=False, default=1)

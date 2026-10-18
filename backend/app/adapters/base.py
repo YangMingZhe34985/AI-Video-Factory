@@ -91,7 +91,16 @@ class BaseModelAdapter(ABC):
         return session
 
     def request_json(self, method: str, url: str, **kwargs) -> dict:
-        response = self.http_session().request(
+        no_retry = kwargs.pop("no_retry", False)
+        session = self.http_session()
+        if no_retry:
+            # Explicitly controlled billable calls must not be resubmitted by
+            # connection/status retries or Requests' separate redirect logic.
+            for adapter in session.adapters.values():
+                adapter.max_retries = Retry(total=0, connect=0, read=0, redirect=0, status=0, other=0,
+                                            raise_on_status=False)
+            kwargs["allow_redirects"] = False
+        response = session.request(
             method,
             url,
             timeout=kwargs.pop("timeout", self.request_timeout),
@@ -101,7 +110,7 @@ class BaseModelAdapter(ABC):
             data = response.json()
         except ValueError:
             data = {"text": response.text}
-        if response.status_code >= 400:
+        if response.status_code >= 400 or (no_retry and 300 <= response.status_code < 400):
             # Extract provider-specific error code and message from response body
             error_code = data.get("code") or (data.get("output") or {}).get("code")
             error_msg  = data.get("message") or (data.get("output") or {}).get("message")

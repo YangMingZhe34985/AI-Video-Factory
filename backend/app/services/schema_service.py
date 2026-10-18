@@ -71,6 +71,14 @@ class SchemaService:
             db.session.commit()
             repaired.append("tool_invocations")
 
+        if inspect(db.engine).has_table("tool_invocations"):
+            columns = {column["name"] for column in inspect(db.engine).get_columns("tool_invocations")}
+            for name, sql_type in (("caller_agent", "VARCHAR(40)"), ("delegation_id", "INTEGER")):
+                if name not in columns:
+                    db.session.execute(text(f"ALTER TABLE tool_invocations ADD COLUMN {name} {sql_type} NULL"))
+                    db.session.commit()
+                    repaired.append(f"tool_invocations.{name}")
+
         if not inspector.has_table("agent_runs"):
             from app.models.agent_run import AgentRun
             AgentRun.__table__.create(bind=db.session.connection(), checkfirst=True)

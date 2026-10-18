@@ -50,6 +50,15 @@ backend/app/plans/                 # Plan IR、编译器、运行时、Patch（V
 
 `ToolContext` 新增服务端字段（公共 Skill API 不接受这些字段）：`caller_agent: str|None`、`delegation_id: int|None`、`agent_step: int|None`。`tool_invocations` 新增可空列 `caller_agent`、`delegation_id`（迁移 + SchemaService 兼容）。
 
+兼容目录（D-032）：`app.tools` 是唯一实现；旧 `app.skills` 全模块路径保持共享模块/账本行为。`build_default_registry()` 与旧 API describe 保留原22项及原字段；`build_v3_registry()` 扩展本阶段新工具。新元数据供代码及 `function_schemas` 使用。异步生成 `io_types.outputs` 表示完成后解析的命名工件（`image`/`images`/`video`），不是初始 Job 回执字段；V4 必须实现完成解析与类型检查，不能直接把 Job ID 当素材。
+
+V1 新工具接口精化（D-032）：
+- `analyze_images({artifact_ids:[1..8个唯一ID],focus?}) -> {images:[{artifact_id,analysis:ImageAnalysis}],usage:{prompt_tokens,completion_tokens}|null}`；多图仅一次请求，归属与返回ID一一核验。
+- `list_models({mode?,family?}) -> {models:[{model_id,display_name,provider,family,modes,capabilities,parameter_schema,default_params,pricing,integration_status,verification_status}],demo:true}`；只返回启用且agent_selectable的目录，不由provider元信息授予权限。
+- `estimate_cost({nodes:[1..200个 {node_id?,model_id,mode,params?,reference_artifact_ids?,media?,source_artifact_id?}]}) -> {nodes:[{node_id,model_id,mode,params,estimated_cost,input_video_seconds,output_video_seconds,pricing}],total_credits,demo:true}`；一项为单节点，多项为片段。只接受已解析输入，生成能力与参数仍验证；Wan3输入视频秒数由同Run素材实测，拒绝客户端自报或未解析的未来引用，不保存/执行计划。
+
+回执隔离（D-032）：新Agent工具默认幂等键包含Run、caller_agent、delegation_id与输入摘要；运行时可提供更精确的工具调用键。`agent_llm_turn`保持V.3规定的step键，V3调用普通工具时须使用独立ToolContext，不能复用LLM回合键。v3预算准入按Run串行预留；`get_task_status.invocation_id`是查询目标而非上下文赋值，允许导出，但只能查询当前Run的Job/账本关联。
+
 函数调用导出：`ToolRegistry.function_schemas(names) -> list[dict]`，返回 OpenAI 兼容的 `{"type":"function","function":{name, description, parameters}}`。`parameters` 来自 `input_model.model_json_schema()`，去掉 `ToolContext` 才能设置的字段。
 
 ### V.2.1 v3.0 Agent 可见工具
@@ -86,9 +95,11 @@ agent_chat(role, messages, tools: list[function_schema], *, ctx, max_tool_calls=
 ```
 
 - 以内部 ToolSpec `agent_llm_turn` 的形式经 Registry 执行（permission `llm`）。幂等键为 `{run_id}:{delegation_id}:{step}`：崩溃恢复时**回放**已记录的响应，不重复调用、不重复计费。
-- 模型解析沿用 `AGENT_<ROLE>_MODEL → AGENT_PLANNER_MODEL → DEFAULT_PROMPT_REWRITE_MODEL`。v3 默认文本模型为 `deepseek-v4.1-flash`，多模态为 `qwen3.7-plus`（D-030）。
+- 模型解析（D-032）：`AGENT_<ROLE>_MODEL → AGENT_PLANNER_MODEL → AGENT_V3_DEFAULT_TEXT_MODEL`；最后一项默认 `deepseek-v4.1-flash`，显式置空才回退 `DEFAULT_PROMPT_REWRITE_MODEL`。vision 对应 `AGENT_V3_DEFAULT_VISION_MODEL`（默认 `qwen3.7-plus`）。v2解析与经典默认不变。
 - `qwen_chat` 适配器增加 `tools`、`tool_choice`，并解析 `tool_calls`（包括一次返回多个调用的情况）。参数 JSON 解析失败时返回结构化错误给 Agent 自我纠正，最多纠正 2 次，然后终止该 Agent 循环。
-- **计费**：按 usage × 模型目录 `pricing.credits_per_1k_tokens`（新增可选字段；缺失时回退到原按次估价）。调用前先按 `max_tokens` 预估占用预算，调用后按实际 usage 结算。
+- 回合错误（D-032）：返回可选 `tool_call_errors:[{index,id?,name?,code,message,arguments}]`；任一错误使整轮工具请求不可执行。一次 `agent_chat` 只请求一次；纠错 helper 为下一step构建受控错误消息，最多两次修正，V3负责实际循环。已完成错误响应也持久化并结算，恢复不重复请求。
+- **计费**：按 usage × 模型目录 `pricing.credits_per_1k_tokens`（新增可选字段；缺失时回退到原按次估价）。调用前先按 `max_tokens` 预估占用预算，调用后按实际 usage 结算。`credits_per_1k_tokens` 为非负有限标量，输入/输出同价；预留包括保守输入估计和输出max_tokens。缺失/无效usage不能当0退款；异常实际费超过预留时记录实际费并停止后续执行（D-032）。
+- **多图调用**（D-032）：`analyze_images`在预留时冻结模型、消息、参数及价格，一次调用内不重新解析角色配置或单价；Mock使用独立`vision`脚本身份与服务端step，避免复用调用方的函数调用响应。
 - **Mock**：`ScriptedLLM`。测试按 `(agent, step)` 预设返回值：文本或 tool_calls 序列。脚本耗尽时报错，**不得**静默返回空。`MODEL_ADAPTER_MODE=mock` 时 v3 的所有 LLM 都走脚本；没有脚本的 Agent 使用内置的最小“直接完成”脚本，供端到端 Mock 演示，并标注为示例结果。
 
 ---
@@ -324,6 +335,7 @@ PlanPatch
 | 键 | 默认 | 说明 |
 |---|---|---|
 | `AGENT_V3_ENABLED` | false | 新 Run 是否使用 v3 |
+| `AGENT_V3_DEFAULT_TEXT_MODEL` / `AGENT_V3_DEFAULT_VISION_MODEL` | deepseek-v4.1-flash / qwen3.7-plus | V1专用回退；不替换旧默认（D-032） |
 | `AGENT_V3_PLANNING_CREDITS` | 20 | V.11 |
 | `AGENT_V3_PREVIEW_MAX_CREDITS` | 3 | V.11 |
 | `AGENT_V3_MAX_VIDEO_SECONDS` | 600 | V.8 |

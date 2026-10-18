@@ -147,6 +147,12 @@ class Config:
 
     # Agent mode (skill layer and LangGraph). Off by default so
     # the classic workflow is unaffected unless explicitly enabled.
+    AGENT_V3_ENABLED = _bool_env("AGENT_V3_ENABLED", False)
+    AGENT_V3_DEFAULT_TEXT_MODEL = os.getenv("AGENT_V3_DEFAULT_TEXT_MODEL", "deepseek-v4.1-flash")
+    AGENT_V3_DEFAULT_VISION_MODEL = os.getenv("AGENT_V3_DEFAULT_VISION_MODEL", "qwen3.7-plus")
+    AGENT_PRODUCER_MODEL = os.getenv("AGENT_PRODUCER_MODEL", "")
+    AGENT_CRITIC_MODEL = os.getenv("AGENT_CRITIC_MODEL", "")
+    AGENT_REPAIR_MODEL = os.getenv("AGENT_REPAIR_MODEL", "")
     AGENT_MODE_ENABLED = _bool_env("AGENT_MODE_ENABLED", False)
     # Admission-only controls: existing sessions can finish during a rollback drain.
     AGENT_ACCEPT_NEW_RUNS = _bool_env("AGENT_ACCEPT_NEW_RUNS", True)

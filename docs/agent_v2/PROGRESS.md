@@ -604,3 +604,30 @@ W-Gate 结论：通过。
 - V2 与 V3 可以在 V1 合入后并行。Skill 内容从 v2 现有 INSTRUCTION 与契约迁移，不得编造未实测的能力。
 需要用户决定：无。
 
+
+
+## 2026-10-18 · Codex · V1 工具层与受控函数调用
+状态：完成；最终后端全量1505项通过，前端64项与构建通过。本条所在提交完成后本地合入feat/agent-v2，不推送。
+分支与基线：`agent-v3/V1` 从 `feat/agent-v2 @ a67ffaf` 切出；在既有隔离工作树 `cinecrew-agent-v2-a4` 实现。未改主工作区的用户笔记或私人报告；不推送、不创建PR。
+完成内容：
+- D-032先明确兼容目录、v3模型默认、回合纠错、token计费与新工具Schema，再更新v3契约V.2/V.3/V.13。此任务只交付V1基础，不提前接入v3图、Agent循环、Plan IR或界面。
+- `app.tools` / `app.tools.specs` 为唯一工具实现；`app.skills`及原29个子模块路径保留兼容。旧默认Registry仍22项、原API字段不变，支持旧模块与新模块双向monkeypatch；`build_v3_registry()`私有目录为25项，内部`agent_llm_turn`仅按需在该实例注册。
+- ToolSpec增加Agent可见性、计划可执行性、类型化输入输出与Agent说明；启动/注册/导出/执行多处拒绝向Agent开放生成工具。ToolContext增加server字段，公开Skill请求明确拒绝客户端提供caller_agent/delegation_id/agent_step；账本增加两个可空列，迁移`20261018_003`与SchemaService兼容旧库。
+- `qwen_chat`透传tools/tool_choice，解析多函数调用、空content、usage与参数错误。工具模式明确禁用HTTP底层重试及重定向，仍沿用旧百炼兼容URL；普通无tools调用行为保留。任一函数错误使整批请求不可执行，纠错helper最多构造两次显式新回合。
+- `agent_chat`经Registry按Run/委派/step持久化；已完成响应回放不调用不重复计费，失败/未知回合停止。新调用校验服务端模型、价格与预留，防伪造便宜内部请求。按usage结算，缺失usage保留预留，超额记录实际费用并报错；同Run并发调用先串行预留预算。普通v3工具默认key包含调用Agent和委派身份。
+- `ScriptedLLM`支持按(agent,step)脚本、显式耗尽错误和标注Mock的最小完成示例。`analyze_images`支持1–8图一次请求、当前Run归属与返回ID校验、独立vision脚本身份、调用内冻结模型/消息/价格，费用只由外层工具账本结算一次。
+- `list_models`仅只读返回启用、Agent可选且适配器已注册的能力/参数/演示价格；`estimate_cost`复用有效参数、系列约束与计价，Wan3输入秒数必须来自当前Run的媒体检查，缺失别名不会触发补种模型。视频分析和状态查询的v3分支新增当前Run素材/Job/真实账本关联校验，旧角色路径保持不变。
+- 新增配置`AGENT_V3_ENABLED=false`与独立v3默认模型（文本deepseek-v4.1-flash、多模态qwen3.7-plus），并补`.env.example`；未改动真实.env、未连接真实MySQL/Redis。
+测试：
+- 定向：适配器及旧Qwen测试78项；agent_chat 35项；最终catalog46项；兼容52项；scope26项+旧相关5项；迁移/预算并发18项；随后修正公共Schema负向测试误触发必填字段问题，新增真实API边界后75项相关回归全部通过。以上为各次实际结果，不相加冒充全量。
+- 前端未改源码；`node --test tests/*.test.js` 64 passed，`npm run build`通过。
+- 第一轮后端全量在19%主动停止，用于修正上述测试假阳性和公共字段拒绝；第二轮在33%停止，MQ失败源于临时目录过长（263字符触发Windows路径限制），另补齐test_plan_versions中遗漏的Alembic head断言。短临时目录复验新模型集成10项、迁移/计划版本25项全部通过；两次中断不计作全量完成。最终短目录单次全量：**1505 passed，45 warnings，22分41秒**（基线1278项+新增227项，无跳过）；覆盖经典、v1/v2及V1新工具。警告来自既有测试短JWT密钥及JUnit record_property格式，不是失败。结果XML：`%TEMP%/cinecrew-v1-final-full-results.xml`。
+- 测试使用AGENTS指定Conda Python、Mock/Stub和临时SQLite/存储，网络阻断；pypdf通过`%TEMP%/cinecrew-w1-pypdf-6.21.1`加入PYTHONPATH，FFMPEG_BINARY使用主工作区已有FFmpeg 7.1。Windows全量测试的--basetemp请用短名称（例如%TEMP%/v1xxxxxx），避免MQ租约产物子目录突破路径限制。没有安装/修改用户环境。
+真实调用：0次，真实估算费用0；未进行可选的1–3次函数调用冒烟，没有任何真实图片/视频生成。所有credits为演示估价，未验证服务商账户可用性、真实账单或生成质量。
+下一步 / 给Claude和后续实现：
+- V1已完成，可并行开始V2与V3；本条所在提交按协作规则本地合入feat/agent-v2。Claude的V-Gate1在V1–V3全部完成后进行；当前不提前宣称Gate通过。
+- 新代码导入app.tools；旧app.skills仅作兼容。Agent运行时用build_v3_registry并从Card限制工具清单；不得把内部agent_llm_turn或生成工具加入Agent可见清单。
+- V3必须为每次普通工具调用创建独立ToolContext和服务端key，不复用agent_chat留下的LLM回合key；由运行时处理循环、纠错step、委派额度、checkpoint和finish。messages采用兼容接口消息格式，输出tool_calls是已解析的{name,arguments}，回填assistant历史时需转换为function结构及JSON参数串。
+- V4须解析异步Job完成后的image/images/video工件、校验类型及缺失输出；当前io_types不代表初始Job回执已含工件。estimate_cost只接受已解析素材，不是完整计划编译器；analyze_images当前接纳Run上传图与研究参考图，未来计划预览产物的授权解析需要在V4贯通。
+- token输入预留是保守字节估计（图片包含data URL），不是服务商tokenizer或严格上限，可能偏高；未配置token价格时保持原按次演示费用。实际超额会记录并停止。真实模型函数调用能力、多图质量/价格、MySQL迁移与并发行为尚待单独验收。
+需要用户决定：无新增。

@@ -1,49 +1,11 @@
-from app.skills.tools import (
-    analyze_image,
-    analyze_video,
-    compose_video,
-    probe_media,
-    qc_video,
-    package_story,
-    animate_shot,
-    download_reference,
-    extract_frame,
-    fetch_page,
-    web_search,
-    generate_image,
-    generate_video,
-    transform_video,
-    capture_reference_page,
-    get_task_status,
-    image_search,
-    package_project,
-    produce_shot,
-    remix_shot,
-    rerun_node,
-    rewrite_prompt,
-)
+"""Compatibility aliases preserving module identity and monkeypatch behavior."""
 
-ALL_SPECS = [
-    web_search.SPEC,
-    fetch_page.SPEC,
-    analyze_image.SPEC,
-    analyze_video.SPEC,
-    compose_video.SPEC,
-    probe_media.SPEC,
-    qc_video.SPEC,
-    package_story.SPEC,
-    animate_shot.SPEC,
-    download_reference.SPEC,
-    extract_frame.SPEC,
-    image_search.SPEC,
-    rewrite_prompt.SPEC,
-    generate_image.SPEC,
-    generate_video.SPEC,
-    transform_video.SPEC,
-    capture_reference_page.SPEC,
-    get_task_status.SPEC,
-    rerun_node.SPEC,
-    package_project.SPEC,
-    produce_shot.SPEC,
-    remix_shot.SPEC,
-]
+import sys
+from importlib import import_module
+from types import ModuleType
+
+_canonical = import_module("app.tools.specs")
+for _name, _value in vars(_canonical).items():
+    if isinstance(_value, ModuleType) and _value.__name__.startswith("app.tools.specs."):
+        sys.modules[f"{__name__}.{_name}"] = _value
+sys.modules[__name__] = _canonical

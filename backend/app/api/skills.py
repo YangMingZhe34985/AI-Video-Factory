@@ -110,5 +110,7 @@ def get_invocation(invocation_id: str):
         raise AppError("INVOCATION_NOT_FOUND", "Tool invocation not found", 404)
     _check_invocation(invocation, _owner())
     data = invocation.to_dict()
+    data.pop("caller_agent", None)
+    data.pop("delegation_id", None)
     data["job_public_id"] = invocation.job.job_id if invocation.job else None
     return api_success(data)

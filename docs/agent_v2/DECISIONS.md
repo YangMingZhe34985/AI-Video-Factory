@@ -184,3 +184,15 @@ retry_shot 允许服务端识别的 blocked 子镜头恢复本地尾帧提取：
 - Agent 调用经典路径的判断条件：用户明确表达**生产意图**时，例如“用于产品生产，需要保留 i2i 与 i2v 提示词”“帮我反推这个视频的提示词”“帮我测试这个提示词的效果”。此时 Agent 必须落到“系列 + 模板”的结构中执行。没有这类意图时，不走经典路径。
 - 排期：该能力复杂度较高，放在 v3 的最后阶段（V8），不阻塞核心交付。具体契约在 V8 开始前补写。
 
+
+
+## D-032 · 2026-10-18 · V1 工具兼容、回合错误与估价接口精化
+- 原因：V1 不能改变经典/v1/v2 API 或模型默认，但 V.3 又要求 v3 默认使用 deepseek-v4.1-flash；异步工具返回 Job 回执与 Plan IR 完成后输出也需区分。函数参数错误必须可记账与回放，不能通过隐式多次 POST 纠正。
+- 决定：app.tools 为唯一实现，app.skills 全部旧模块路径保留兼容（包括共享 registry 和 monkeypatch 模块身份）；旧默认目录与 API describe 仍为原22项。build_v3_registry 扩展 v3 工具；新增可见性/io元数据不改旧 API 的字段。
+- 决定：v3 模型回退为角色配置 → AGENT_PLANNER_MODEL → AGENT_V3_DEFAULT_TEXT_MODEL（默认 deepseek-v4.1-flash，显式空值再退 DEFAULT_PROMPT_REWRITE_MODEL）；vision 使用对应 AGENT_V3_DEFAULT_VISION_MODEL（默认 qwen3.7-plus）。不改 v2 resolver 或经典默认。
+- 决定：agent_chat 每 step 只请求一次；tool_call_errors 为可选结构化错误列表，任一错误令整轮工具请求不可执行。纠错通过下一 step 的显式错误消息进行，最多两次修正；V1 提供受控纠错 helper，V3 接入实际循环。失败/未知回合不自动重发；成功/已完成错误响应按原 key 回放并保留 usage。
+- 决定：token单价为非负有限标量 credits_per_1k_tokens，输入与输出使用同一价；预留包含保守输入估计与 max_tokens，成功按实际usage结算；缺单价按旧每次费用。缺失/无效usage不可当0退款；若实际费用异常超过预留，记入实际费用并停止，不截断账本或继续调用。
+- 决定：io_types.outputs 对异步生成表示完成后解析的命名工件（image/images/video），不改变初始 JobLaunchOutput；V4 编译/执行必须实现映射与缺失检查后才能使用，V1不提前执行Plan。
+- 决定：list_models/estimate_cost 当前只读查询已接入目录与已解析节点片段，不提前实现V4编译器；Transform输入秒数必须源自同Run实测素材，拒绝客户端秒数和未解析引用。analyze_images 一次多图调用，只记外层工具一次费用，返回逐图分析及usage。
+- 补充边界：v3工具回执默认按Run、caller_agent、delegation_id和输入隔离；同Run并发预算准入串行预留。get_task_status的invocation_id仅为查询目标，允许导出，但必须核验当前Run的Job与账本双向关联。analyze_images使用独立vision脚本身份，防止与调用方同step的工具请求响应混淆；一次调用内冻结模型、消息与价格。
+- 影响：V1–V4；补充v3契约V.2/V.3/V.13。仅Mock/Stub回归，真实冒烟须按D-030独立记录。

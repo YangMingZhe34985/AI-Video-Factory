@@ -58,6 +58,10 @@ class QwenChatAdapter(MockChatAdapter):
         for key in ("enable_thinking", "top_p", "max_tokens"):
             if params.get(key) is not None:
                 payload[key] = params[key]
+        for key in ("tools", "tool_choice"):
+            value = inputs[key] if key in inputs else params.get(key)
+            if value is not None:
+                payload[key] = value
         if schema and expect_json:
             payload["response_format"] = {
                 "type": "json_schema",
@@ -75,6 +79,18 @@ class QwenChatAdapter(MockChatAdapter):
         request_payload = dict(payload)
         expect_json = bool(request_payload.pop("_expect_json", request_payload.get("response_format")))
         completion = self._chat_completion(request_payload)
+        if "tools" in request_payload or "tool_choice" in request_payload:
+            turn = self._extract_completion_turn(completion)
+            parsed = None
+            if expect_json and not turn["tool_calls"] and not turn.get("tool_call_errors"):
+                parsed = self._parse_json_object(turn["content"] or "")
+            return {
+                "provider_task_id": completion.get("id"),
+                "status": "success",
+                "json": parsed,
+                "raw_response": completion,
+                **turn,
+            }
         text = self._extract_completion_text(completion)
         parsed = self._parse_json_object(text) if expect_json else None
         return {
@@ -148,6 +164,10 @@ class QwenChatAdapter(MockChatAdapter):
             "Content-Type": "application/json",
         }
         timeout = (30, max(int(self.request_timeout), 180))
+        if "tools" in payload or "tool_choice" in payload:
+            # A function turn is billed and replayed by the tool ledger. Only
+            # the Agent loop may request a new turn after a completed response.
+            return self.request_json("POST", url, headers=headers, json=payload, timeout=timeout, no_retry=True)
         try:
             return self.request_json("POST", url, headers=headers, json=payload, timeout=timeout)
         except AppError:
@@ -163,6 +183,86 @@ class QwenChatAdapter(MockChatAdapter):
                     fallback.pop("response_format", None)
                     return self.request_json("POST", url, headers=headers, json=fallback, timeout=timeout)
             raise
+
+    @classmethod
+    def _extract_completion_turn(cls, completion: dict) -> dict:
+        choices = completion.get("choices") or []
+        message = ((choices[0] or {}).get("message") or {}) if choices else {}
+        result = {
+            "content": cls._extract_completion_text(completion) if message.get("content") is not None else None,
+            "tool_calls": [],
+            "usage": cls._extract_usage(completion),
+        }
+        calls = message.get("tool_calls")
+        if calls is None:
+            return result
+        errors = []
+        if not isinstance(calls, list):
+            errors.append(cls._tool_call_error(0, None, "INVALID_TOOL_CALL", "tool_calls must be an array"))
+            calls = []
+        seen_ids = set()
+        for index, call in enumerate(calls):
+            function = call.get("function") if isinstance(call, dict) else None
+            call_id = call.get("id") if isinstance(call, dict) else None
+            name = function.get("name") if isinstance(function, dict) else None
+            if (not isinstance(call, dict) or call.get("type") != "function"
+                    or not isinstance(function, dict)
+                    or not isinstance(call_id, str) or not call_id.strip()
+                    or not isinstance(name, str) or not name.strip()):
+                errors.append(cls._tool_call_error(index, call, "INVALID_TOOL_CALL",
+                                                  "Each function call needs a non-empty id and function.name"))
+                continue
+            if call_id in seen_ids:
+                errors.append(cls._tool_call_error(index, call, "INVALID_TOOL_CALL", "Duplicate tool call id"))
+                continue
+            seen_ids.add(call_id)
+            raw_arguments = function.get("arguments")
+            try:
+                if not isinstance(raw_arguments, str):
+                    raise ValueError("function.arguments must be a JSON object encoded as a string")
+                arguments = json.loads(raw_arguments, parse_constant=cls._reject_json_constant)
+                if not isinstance(arguments, dict):
+                    raise ValueError("function.arguments must decode to a JSON object")
+            except (ValueError, RecursionError) as error:
+                errors.append(cls._tool_call_error(index, call, "INVALID_TOOL_ARGUMENTS", str(error)))
+                continue
+            result["tool_calls"].append({"id": call_id, "name": name, "arguments": arguments})
+        if errors:
+            result["tool_call_errors"] = errors
+        return result
+
+    @staticmethod
+    def _reject_json_constant(value: str):
+        raise ValueError(f"Invalid JSON constant: {value}")
+
+    @staticmethod
+    def _tool_call_error(index: int, call, code: str, message: str) -> dict:
+        call = call if isinstance(call, dict) else {}
+        function = call.get("function")
+        function = function if isinstance(function, dict) else {}
+        return {
+            "index": index,
+            "id": call.get("id") if isinstance(call.get("id"), str) else None,
+            "name": function.get("name") if isinstance(function.get("name"), str) else None,
+            "code": code,
+            "message": message,
+            "arguments": function.get("arguments"),
+        }
+
+    @staticmethod
+    def _extract_usage(completion: dict) -> dict | None:
+        usage = completion.get("usage")
+        if not isinstance(usage, dict):
+            return None
+        result = {}
+        for key in ("prompt_tokens", "completion_tokens"):
+            value = usage.get(key)
+            if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+                # Unknown usage must retain the reservation, not settle a paid
+                # response as zero tokens and refund the planning budget.
+                return None
+            result[key] = value
+        return result
 
     @staticmethod
     def _extract_completion_text(completion: dict) -> str:
