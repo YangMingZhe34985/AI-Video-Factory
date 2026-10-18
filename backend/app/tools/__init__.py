@@ -35,4 +35,8 @@ def build_v3_registry():
         registry.register(replace(spec, allowed_roles=spec.allowed_roles | roles) if spec.agent_visible else spec)
     for module in (analyze_images, list_models, estimate_cost):
         registry.register(module.SPEC)
+    from app.tools.specs.skill_library import register_skill_tools
+    from app.agents.tools import register_agent_tools
+    register_skill_tools(registry)
+    register_agent_tools(registry)
     return registry

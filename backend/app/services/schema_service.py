@@ -85,8 +85,8 @@ class SchemaService:
             db.session.commit()
             repaired.append("agent_runs")
 
-        from app.models import AgentPlanVersion, AgentShotTask
-        for model in (AgentPlanVersion, AgentShotTask):
+        from app.models import AgentDelegation, AgentPlanVersion, AgentShotTask, AgentStep, AgentWorkspaceItem
+        for model in (AgentPlanVersion, AgentShotTask, AgentDelegation, AgentStep, AgentWorkspaceItem):
             if not inspect(db.engine).has_table(model.__tablename__):
                 model.__table__.create(bind=db.session.connection(), checkfirst=True)
                 db.session.commit()

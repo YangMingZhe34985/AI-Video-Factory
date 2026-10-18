@@ -1,0 +1,38 @@
+{
+  "name": "director",
+  "description": "拆解镜头和依赖，选择能力与衔接方式，起草可验证计划。",
+  "accepts": {
+    "brief": "RequirementBrief",
+    "story": "StoryPackage?",
+    "research": "Dossier?"
+  },
+  "returns": "PlanDraft",
+  "model_role": "director",
+  "tools": [
+    "list_skills",
+    "load_skill",
+    "read_skill_resource",
+    "list_agents",
+    "read_workspace",
+    "write_workspace",
+    "ask_user",
+    "finish",
+    "delegate",
+    "list_models",
+    "estimate_cost",
+    "analyze_images"
+  ],
+  "can_delegate_to": [
+    "creative",
+    "research",
+    "prompt_smith",
+    "critic"
+  ],
+  "limits": {
+    "max_steps": 40,
+    "max_llm_calls": 30,
+    "planning_credits": 20,
+    "max_parallel_delegations": 4
+  },
+  "prompt": "prompts/director.md"
+}

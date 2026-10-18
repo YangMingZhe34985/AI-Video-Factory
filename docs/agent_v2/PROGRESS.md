@@ -631,3 +631,31 @@ W-Gate 结论：通过。
 - V4须解析异步Job完成后的image/images/video工件、校验类型及缺失输出；当前io_types不代表初始Job回执已含工件。estimate_cost只接受已解析素材，不是完整计划编译器；analyze_images当前接纳Run上传图与研究参考图，未来计划预览产物的授权解析需要在V4贯通。
 - token输入预留是保守字节估计（图片包含data URL），不是服务商tokenizer或严格上限，可能偏高；未配置token价格时保持原按次演示费用。实际超额会记录并停止。真实模型函数调用能力、多图质量/价格、MySQL迁移与并发行为尚待单独验收。
 需要用户决定：无新增。
+
+## 2026-10-19 · Codex · V2 Skill 库与 V3 Agent 运行时
+状态：Codex 实现与 Mock/Stub 回归完成；关键 Skill 审定与 V-Gate1 仍由 Claude 负责。本轮不进入 V4–V8，不修改前端功能或美化。
+分支与提交：从 feat/agent-v2 @ea9da2c 分出 agent-v3/V2、agent-v3/V3。V2 @9f196f0 已本地集成到 V3；本条所在 V3 提交已通过验收，接下来合回本地 feat/agent-v2，暂不推送、不开 PR。
+
+完成内容：
+- V2：新增 20 项 Skill（15 个知识包与六个 Blueprint 指南，video-remix 共用目录）、启动时校验与缓存、list_skills/load_skill/read_skill_resource。使用受限 SafeLoader，拒绝重复键、别名、不安全标签、过深或过大文档、无效工具/builder/关联项；资源仅可读启动时固定快照，拒绝越界路径、隐藏文件、符号链接。关键四项 intent-analysis/delegation-policy/long-form-video/character-consistency 明确标为待 Claude 审定。Blueprint 指南不冒充尚未实现的 V4 builder。
+- V3：七角色最小 Card 与安全提示词、每个委派独立 LangGraph checkpoint、工具循环、纠错上限、循环/无进展检测、深度/步数/时间/额度限制。所有工具仍通过 Registry，LLM 回合和每个普通工具使用各自稳定 key；生成工具不向 Agent 开放。并行表示多个持久化子任务可就绪，单 worker 每 tick 推进一个回合，没有新增模型线程池或 MQ。
+- 委派按父级可用规划额度划拨，未完成子任务保留配额，完成释放未用配额；自身、所有祖先及 Run 总预算共同准入，实际费用只取工具账本。新增默认规划额度 20 credits、最大委派深度 3；用户更低预算优先，不自动扩额。steps/calls/费用均不因 checkpoint 回放重复累计。
+- 新增 agent_delegations/agent_steps/agent_workspace_items 三表及 Alembic head 20261018_004；工作区不可变版本、独立写入收据与来源校验。brief 复核用户原文的模型约束与附件，研究产物绑定成功检索/抓取/下载/视觉工具回执；不接受模型自报“已验证”。引用检查包括同 Run 归属、版本和类型。PlanDraft 仅有结构验证，尚无编译、报价或执行许可。
+- 非 Producer 的问题自动逐层退回并保留部分工作区与其他子任务结果，不额外调用中间 Agent；由 Producer 决定询问用户。复用选择题/答案校验、默认规则与轮数限制，阻塞问题不能无答案越过。仅 Producer 创建公开问题卡。
+- 本地副作用与 Registry/checkpoint 之间的故障可按原收据恢复：工作区不重复升版本、委派不重复创建、问题不丢失、finish 不重复执行、LLM 不重复扣费。未知或失败的付费提交不自动重发。意外 worker 错误保留原命令并进入 attention，需显式恢复，不在后台反复重试。
+- v3 Run 创建灰度、公开状态投影、分页步骤与 answer/reject/resume 接通；请求幂等固定原 schema_version，关闭灰度后仍能恢复已有 v3 Run。公开响应不返回内部消息、工作区原始载荷或异常详情；任务中心按业务阶段聚合，尚无执行节点时为 0，不将分析 Job 伪装成产出进度。
+- D-033 与 v3 CONTRACTS 已同步分阶段边界、配额、协作调度、工作区收据和资源返回形状。AGENT_V3_ENABLED 仍默认 false；默认经典工具目录保持 22 项，v3 私有注册表 34 项，按角色过滤可见工具。真实 .env、AGENTS.md/CLAUDE.md、用户未跟踪技术笔记和私人报告均保留。
+
+测试与证据：
+- 定向：Skill 库 87 项通过；最终运行时 31 项、API/恢复 9 项、工作区 65 项、配额 17 项通过；迁移与旧迁移/计划版本 28 项通过。测试集合存在交集，不相加声称总量。
+- 前端未改源码；node --test tests/*.test.js 为 64 passed，npm run build 通过。
+- 后端最终单次全量：**1732 passed，7 warnings，38 分 35 秒**，无失败、无跳过（V1 基线 1505 项，本轮新增 227 项）。警告均为既有 record_property 与 JUnit xunit2 格式兼容提示。证据：`%TEMP%/cinecrew-v2-v3-final-results.xml`，隔离测试目录 `%TEMP%/v335c471`。此前一次全量在早期主动中止以补齐深层问题的确定性上抛，不计作通过。
+- 使用 AGENTS 指定 Conda Python、隔离 SQLite/存储、Mock/Stub；pypdf 沿用临时 PYTHONPATH，FFmpeg 使用工作区已有 7.1，--basetemp 使用短路径。没有安装或修改用户环境。
+真实调用：0 次，真实费用 0；没有连接真实 MySQL/Redis、调用真实文本/多模态/图片/视频模型。credits 均为演示估价。
+
+下一步 / 给 Claude 与后续实现：
+1. Claude 审定四项关键 Skill，并执行 V-Gate1；重点检查 Card 权限、父子配额、深层提问、工作区证据与幂等恢复。可从 test_v3_skill_library/test_v3_runtime/test_v3_runtime_api/test_v3_runtime_budget/test_v3_workspace/test_v3_runtime_migrations 复用证据。本轮自检不代表 Gate 已通过。
+2. V4 实现编译器、dry-run、六个 Blueprint builder、预览和计划审批后，再开放相关工具与 plan_submitted；工作区中的 origin.blueprint 仍是未验证草稿，必须用服务端 builder 收据确认，不能凭模型标记解除 experimental。还须映射异步 Job 的完成工件，并区分规划与生产费用。
+3. V5 Patch、V6 正式创作提示词/策略、V7 协作与审核界面、V8 经典生产意图均未实现。当前最小 Card 只证明运行机制，不代表高质量长片规划已经验收。旧页面不作为 v3 新交互的验收结果。
+4. 契约中的 600 秒为从委派开始计算的墙钟时限，当前包括排队与人工等待；恢复不重置此上限。Claude 可在 Gate 审查此取舍，如调整应先变更契约并补跨长等待回归。MySQL 迁移/并发、真实函数调用质量、真实价格与媒体效果均未验收。
+需要对方或用户决定：关键 Skill 与 V-Gate1 待 Claude；本轮无需新增用户授权。

@@ -1,0 +1,28 @@
+{
+  "name": "prompt_smith",
+  "description": "根据明确的镜头意图起草提示词输入补丁，不修改预算与权限。",
+  "accepts": {
+    "plan": "PlanDraft"
+  },
+  "returns": "PromptUpdates",
+  "model_role": "prompt_smith",
+  "tools": [
+    "list_skills",
+    "load_skill",
+    "read_skill_resource",
+    "list_agents",
+    "read_workspace",
+    "write_workspace",
+    "ask_user",
+    "finish",
+    "list_models"
+  ],
+  "can_delegate_to": [],
+  "limits": {
+    "max_steps": 40,
+    "max_llm_calls": 30,
+    "planning_credits": 20,
+    "max_parallel_delegations": 4
+  },
+  "prompt": "prompts/prompt_smith.md"
+}

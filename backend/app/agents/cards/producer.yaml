@@ -1,0 +1,38 @@
+{
+  "name": "producer",
+  "description": "理解文本与附件，协调任务，汇总结果；唯一直接面向用户的角色。",
+  "accepts": {
+    "request": "UserRequest"
+  },
+  "returns": "ProducerOutput",
+  "model_role": "producer",
+  "tools": [
+    "list_skills",
+    "load_skill",
+    "read_skill_resource",
+    "list_agents",
+    "read_workspace",
+    "write_workspace",
+    "ask_user",
+    "finish",
+    "delegate",
+    "analyze_images",
+    "analyze_video",
+    "get_task_status",
+    "list_models",
+    "estimate_cost"
+  ],
+  "can_delegate_to": [
+    "research",
+    "creative",
+    "director",
+    "critic"
+  ],
+  "limits": {
+    "max_steps": 40,
+    "max_llm_calls": 30,
+    "planning_credits": 20,
+    "max_parallel_delegations": 4
+  },
+  "prompt": "prompts/producer.md"
+}

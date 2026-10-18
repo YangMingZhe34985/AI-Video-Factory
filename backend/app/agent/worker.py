@@ -42,20 +42,40 @@ def worker_lock():
 class AgentWorker:
     """Call only while holding worker_lock (tests use the same lock)."""
 
-    def __init__(self, graph, graph_v2=None):
+    def __init__(self, graph, graph_v2=None, v3_saver=None):
         self.graph = graph
         self.graph_v2 = graph_v2
+        self.v3_saver = v3_saver
 
     def tick(self):
         db.session.expire_all()
         ids = [row.run_id for row in AgentRun.query.filter(
             (AgentRun.status.in_(["queued", "understanding", "analyzing", "researching", "planning", "previewing", "producing", "delivering", "editing"])) | AgentRun.command.is_not(None)
+        ).filter(~((AgentRun.request["schema_version"].as_integer() == 3) & (AgentRun.status == "attention"))
         ).order_by(AgentRun.id).all()]
         for run_id in ids:
             self.advance(run_id)
 
     def advance(self, run_id):
         row = AgentRun.query.filter_by(run_id=run_id).one()
+        if row.request.get("schema_version") == 3:
+            from app.agents.runtime import advance
+            try:
+                if self.v3_saver is None:
+                    # Preserve the original worker constructor for integrations/tests.
+                    with SqliteSaver.from_conn_string(str(checkpoint_path())) as saver:
+                        advance(row, saver=saver)
+                else:
+                    advance(row, saver=self.v3_saver)
+            except Exception as error:
+                db.session.rollback()
+                row = AgentRun.query.filter_by(run_id=run_id).one()
+                row.status = "attention"
+                row.error = {"code": getattr(error, "code", "AGENT_RUNTIME_FAILED")}
+                # Keep the durable inbox: a recovery tick replays the same command.
+                db.session.commit()
+                current_app.logger.exception("Agent v3 run stopped: %s", run_id)
+            return
         config = {"configurable": {"thread_id": run_id}, "recursion_limit": 100}
         command = row.command
         version = row.request.get("schema_version", 1)
@@ -169,7 +189,7 @@ def run_worker(once=False):
     current_app.config["FAILURE_AGENT_ENABLED"] = False
     current_app.config["AGENT_WORKER_ACTIVE"] = True
     with worker_lock(), SqliteSaver.from_conn_string(str(checkpoint_path())) as saver:
-        worker = AgentWorker(build_graph(saver), build_graph_v2(saver))
+        worker = AgentWorker(build_graph(saver), build_graph_v2(saver), v3_saver=saver)
         while True:
             worker.tick()
             db.session.remove()

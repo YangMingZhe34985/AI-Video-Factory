@@ -144,6 +144,9 @@ class ToolRegistry:
             from app.tools.agent_chat import validate_turn_submission
             validate_turn_submission(data, ctx, self)
         ctx.tool_name = spec.name
+        if ctx.caller_agent is not None:
+            from app.agents.budget import validate_context
+            validate_context(ctx, tool_name=spec.name)
         from app.agent.production_policy import require_task_authorization
         require_task_authorization(spec.name, ctx)
         from app.agent.transform_policy import require_tool_authorization
@@ -291,6 +294,9 @@ class ToolRegistry:
                 cost = float(spec.cost_fn(data, ctx))
                 # Refuse without touching the failed record: its spent cost stays counted.
                 BudgetGuard.check(ctx.budget_scope, ctx.budget_limit, cost)
+                if ctx.caller_agent is not None:
+                    from app.agents.budget import check_admission
+                    check_admission(ctx, cost)
                 invocation.attempt += 1
                 invocation.estimated_cost += cost
             else:  # "rejected": nothing ran, evaluate again from scratch
@@ -406,6 +412,9 @@ class ToolRegistry:
     ) -> None:
         try:
             BudgetGuard.check(ctx.budget_scope, ctx.budget_limit, cost)
+            if ctx.caller_agent is not None:
+                from app.agents.budget import check_admission
+                check_admission(ctx, cost)
         except AppError as error:
             invocation.status = "rejected"
             invocation.error_code = error.code

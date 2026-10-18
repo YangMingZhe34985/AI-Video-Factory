@@ -196,3 +196,13 @@ retry_shot 允许服务端识别的 blocked 子镜头恢复本地尾帧提取：
 - 决定：list_models/estimate_cost 当前只读查询已接入目录与已解析节点片段，不提前实现V4编译器；Transform输入秒数必须源自同Run实测素材，拒绝客户端秒数和未解析引用。analyze_images 一次多图调用，只记外层工具一次费用，返回逐图分析及usage。
 - 补充边界：v3工具回执默认按Run、caller_agent、delegation_id和输入隔离；同Run并发预算准入串行预留。get_task_status的invocation_id仅为查询目标，允许导出，但必须核验当前Run的Job与账本双向关联。analyze_images使用独立vision脚本身份，防止与调用方同step的工具请求响应混淆；一次调用内冻结模型、消息与价格。
 - 影响：V1–V4；补充v3契约V.2/V.3/V.13。仅Mock/Stub回归，真实冒烟须按D-030独立记录。
+
+## D-033 · 2026-10-18 · V2/V3 分阶段启用与持久化边界
+- 原因：Skill 元数据要求工具和 builder 实际存在，但 Blueprint 执行函数、编译器与提交审批在 V4；七个 Agent 的正式提示词在 V6。需要让本轮基础设施可测试，同时不假装后续能力已经上线。
+- 决定：V2 先提供 15 个知识 Skill 与六个 Blueprint 的使用指南；video-remix 共用同一目录，共 20 项。指南暂不含 blueprint 元数据，也不引用尚未注册的工具；V4 实现 builder 后再升级。显式声明的 builder 仍必须可导入且可调用。四个关键 Skill 是待 Claude 审定稿，不宣称审定或 V-Gate1 通过。
+- 决定：V3 提供七角色最小运行卡片和安全提示词，只开放已经实现的工具；正式创作质量、委派策略评测留 V6。工作区 plan_draft 可提前做 V.8 的结构校验，但不是编译、报价、dry-run 或执行许可；patch 写入及 plan_submitted 完成结果在对应后续能力实现前明确拒绝。
+- 决定：delegate 增加可选 planning_credits，默认分配调用方当前可用额度的一半，额度从父级划拨；实际花费由工具账本聚合，不维护第二套可漂移扣费账。Run、祖先委派和未完成同级额度共同约束新调用。完成子委派释放未用配额，花费仍归入所有祖先。
+- 决定：并行委派采用持久化就绪队列与协作式调度：允许多个未完成子委派，每个 worker tick 只推进一个就绪委派回合，不创建新的模型线程池或消息队列。每个委派有独立 LangGraph checkpoint thread；回合和副作用有稳定收据，恢复不重复计费。步骤摘要不存入公开原始消息，工作区写入有独立幂等收据防止 checkpoint 间隙重复追加版本。
+- 决定：V3 澄清复用 A.7 的问题、答案和默认规则，卡片 asked_by 使用 producer；不扩展旧卡片的角色枚举。子 Agent 的问题作为 returned 数据交回父级，由 Producer 决定是否询问。规划额度耗尽时本轮停止并展示部分结果，不隐式追加预算。
+- 影响：V2/V3 实现及 V4/V6 接续；用户本轮明确仅 Mock/Stub，优先于 D-030 的历史可选真实调用授权。本地合并，不推送。
+- 接续边界：工作区中的 `origin.blueprint` 同其他 Agent 草稿字段一样未验证；V4 需要依据确定性 builder 的服务端收据核验来源，不能凭模型自填标记将 experimental 置 false。V2 的资源读取返回 `{name,path,content}`，正文与资源在启动时固定为同一内存快照。

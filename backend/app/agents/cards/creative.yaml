@@ -1,0 +1,31 @@
+{
+  "name": "creative",
+  "description": "根据约束与资料构思故事；需求不足时退回问题。",
+  "accepts": {
+    "brief": "RequirementBrief",
+    "research": "Dossier?"
+  },
+  "returns": "StoryPackage",
+  "model_role": "creative",
+  "tools": [
+    "list_skills",
+    "load_skill",
+    "read_skill_resource",
+    "list_agents",
+    "read_workspace",
+    "write_workspace",
+    "ask_user",
+    "finish",
+    "delegate"
+  ],
+  "can_delegate_to": [
+    "research"
+  ],
+  "limits": {
+    "max_steps": 40,
+    "max_llm_calls": 30,
+    "planning_credits": 20,
+    "max_parallel_delegations": 4
+  },
+  "prompt": "prompts/creative.md"
+}

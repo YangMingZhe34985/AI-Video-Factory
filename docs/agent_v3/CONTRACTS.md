@@ -127,7 +127,7 @@ blueprint:                       # 可选，仅 Blueprint
 - 加载器在启动时扫描、校验 frontmatter（引用的工具、related、builder 必须存在），结果缓存在内存中；校验失败的 Skill 不加载，并在启动日志和测试中报错。
 - `list_skills(agent?, query?) -> [{name, description, when_to_use, blueprint: bool}]`
 - `load_skill(name) -> {name, version, body, resources: [path]}`
-- `read_skill_resource(name, path)`：只能读取该 Skill 目录内的文本文件（拒绝路径穿越），单文件 ≤ 64KB。
+- `read_skill_resource(name, path) -> {name, path, content}`：只能读取该 Skill 目录内的 UTF-8 文本文件（拒绝路径穿越），单文件 ≤ 64KB。资源与正文一起在启动时缓存为固定快照，读取不跟随启动后的文件更换（D-033）。
 - Skill 内容视为**可信的系统知识**，因为它在仓库内并经过审定；运营者以后要在线编辑时另行决策。
 
 ### V.4.2 Blueprint
@@ -139,6 +139,8 @@ blueprint:                       # 可选，仅 Blueprint
 ### V.4.3 首批 Skill（V2）
 
 `intent-analysis`、`clarification`、`delegation-policy`、`image-edit-portrait`、`t2i-prompt-writing`、`i2v-prompt-writing`、`t2v-prompt-writing`、`long-form-video`、`character-consistency`、`first-last-frame`、`video-remix`、`wan3-transform`、`web-research`、`budget-planning`、`plan-review`（Critic 用），再加上六个 Blueprint 各自的 SKILL.md。内容从 v2 现有的 INSTRUCTION 与契约规则迁移，**不得编造未实测的能力或质量结论**。
+
+分阶段启用（D-033）：V2 的六个 Blueprint 文档先作为知识指南，不含 `blueprint` frontmatter；V4 实现 builder 后再登记。`video-remix` 共用目录，因此本轮共 20 项。metadata 仅引用当前存在的工具；显式声明的 builder 仍须校验为可调用。四个关键 Skill 的内容由 Claude 审定。
 
 ---
 
@@ -159,6 +161,8 @@ prompt: prompts/director.md
 v3.0 角色：`producer`（唯一面向用户、可 `submit_plan`）、`research`、`creative`、`director`、`prompt_smith`、`critic`、`repair`。
 - `list_agents() -> [{name, description, accepts, returns}]`，不暴露提示词和上限。
 - 卡片在启动时校验：工具存在且 `agent_visible`；`can_delegate_to` 中的 Agent 存在；全局委派图中不允许自己委派自己。
+
+V3 只交付可运行的最小卡片与安全提示词，工具清单不得提前包含 V4/V5 未实现能力；V6 再完善正式提示词和创作策略（D-033）。
 
 ---
 
@@ -182,7 +186,7 @@ run_agent(card, task, context_refs, delegation) :
 
 ### V.6.2 委派
 
-`delegate(agent, task: str ≤2000, context_refs: [workspace_ref], expected: str) -> {delegation_id, status, output_ref?, returned_reason?}`
+`delegate(agent, task: str ≤2000, context_refs: [workspace_ref], expected: str, planning_credits?: float) -> {delegation_id, status, output_ref?, returned_reason?}`
 
 - 校验调用方卡片的 `can_delegate_to`。委派深度从 Producer 算起不超过 3 层（Producer → Director → Creative → Research）。
 - 被委派方的额度从委派方的剩余额度中划拨（调用时可以指定，默认为剩余额度的一半）。
@@ -209,6 +213,8 @@ run_agent(card, task, context_refs, delegation) :
 - 其他 Agent 调用 `ask_user` 时，运行时把问题作为 `returned` 结果交还给上一层，逐层上抛到 Producer；由 Producer 合并、去重，或者自己根据已知信息回答后再提问。
 - 回答写入工作区（`kind=clarification`），所有 Agent 都可以读取。
 
+V3 卡片的 `asked_by=producer`，问题与答案 Schema、默认策略沿用 A.7，不改变 v2 的 asked_by 枚举。额度耗尽可返回部分结果并停止，本阶段不自动批准追加预算（D-033）。
+
 ---
 
 ## V.7 Run 工作区（V3）
@@ -222,6 +228,12 @@ run_agent(card, task, context_refs, delegation) :
 - 委派时传 `workspace_ref = {key, version}`，不复制内容。
 
 `RequirementBrief`（Producer 写入）：沿用 A.6 RequestSpec 的字段**去掉 `recipe_hint`**，增加 `intent_notes`、`production_intent: bool`（V8 使用）。
+
+阶段边界（D-033）：V3 的 `plan_draft` 只通过 V.8 结构 Schema，不表示通过编译和 dry-run；`patch` 写入、`finish(outcome=plan_submitted)` 在对应 V5/V4 实现前拒绝。工作区写入使用服务端调用键保存独立收据，崩溃回放不得追加重复版本。
+
+草稿 `origin.blueprint` 未经验证。V4 必须将其与确定性 builder 的服务端收据核对后才能用于 experimental 判定，不能相信 Agent 自报来源。
+
+持久化与调度（D-033）：每个委派保存独立 checkpoint，多个子委派可同时处于就绪状态，每 tick 协作式推进一个回合。工具账本是实际花费的唯一来源；父级可用额度扣除子树实际花费与未结束子委派的剩余配额，子委派结束后释放未使用配额。任何层级的上限不能被新委派扩大。
 
 ---
 

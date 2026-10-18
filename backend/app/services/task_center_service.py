@@ -152,7 +152,10 @@ def project_parent(row, owner):
         shots = latest_shots(obj.run_id, version.version).all() if version else []
         videos = [shot for shot in shots if shot.target_type == "video"]
         planned = (version.plan or {}).get("shots", []) if version else []
-        if version:
+        if obj.request.get("schema_version") == 3:
+            # Planning has no execution nodes until the V4 compiler is enabled.
+            item["progress"] = _progress([], 0, "plan_nodes")
+        elif version:
             item["progress"] = _progress([task.status for task in videos], len(planned), "video_shots")
         else:
             # Agent helper Jobs (e.g. video analysis) run a few nodes of the
@@ -186,7 +189,8 @@ def project_parent(row, owner):
     item["queue_counts"] = queue_counts(tasks)
     task, phase = _phase_for(tasks)
     # Preserve the business-level approval/editing stage over old queue records.
-    if phase and item["state"] not in {"waiting", "completed", "cancelled"} and obj.status != "editing":
+    if (phase and item["state"] not in {"waiting", "completed", "cancelled"} and obj.status != "editing"
+            and not (row["source"] == "agent" and obj.request.get("schema_version") == 3)):
         item["stage"], item["wait_reason"] = phase[1:]
     context["api_tasks"] = tasks
     return item, context
@@ -281,8 +285,11 @@ def task_detail(owner, source, task_id, args):
     with db.session.no_autoflush:
         row = _parent(owner, source, task_id)
         item, context = project_parent(row, owner)
-        children, total = (story_children(context, page, per_page)
-            if source == "agent" and context["version"] else workflow_children(context, page, per_page))
+        if source == "agent" and context["object"].request.get("schema_version") == 3:
+            children, total = [], 0
+        else:
+            children, total = (story_children(context, page, per_page)
+                if source == "agent" and context["version"] else workflow_children(context, page, per_page))
     return {**metadata(), "item": item, "children": children, "total": total, "page": page, "per_page": per_page}
 
 

@@ -1,6 +1,9 @@
 from .api_task import ApiTask
 from .queue import JobDispatch, TaskOutbox
 from .agent_run import AgentRun
+from .agent_delegation import AgentDelegation
+from .agent_step import AgentStep
+from .agent_workspace_item import AgentWorkspaceItem
 from .agent_plan_version import AgentPlanVersion
 from .agent_shot_task import AgentShotTask
 from .artifact import Artifact
@@ -18,6 +21,9 @@ from .workflow_node import WorkflowNode
 
 __all__ = [
     "AgentRun",
+    "AgentDelegation",
+    "AgentStep",
+    "AgentWorkspaceItem",
     "AgentPlanVersion",
     "AgentShotTask",
     "ApiTask",

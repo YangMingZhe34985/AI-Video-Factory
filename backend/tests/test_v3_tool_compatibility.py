@@ -87,7 +87,10 @@ def test_v3_catalog_does_not_mutate_legacy_roles_or_descriptions():
     before = legacy.describe_all()
     v3 = build_v3_registry()
     assert legacy.describe_all() == before == build_default_registry().describe_all()
-    assert set(v3.names()) - set(LEGACY_NAMES) == {"analyze_images", "estimate_cost", "list_models"}
+    assert set(v3.names()) - set(LEGACY_NAMES) == {
+        "analyze_images", "estimate_cost", "list_models", "list_skills", "load_skill", "read_skill_resource",
+        "list_agents", "delegate", "ask_user", "read_workspace", "write_workspace", "finish",
+    }
     assert "producer" in v3.get("analyze_video").allowed_roles
     assert "producer" not in legacy.get("analyze_video").allowed_roles
 

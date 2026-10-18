@@ -6,7 +6,7 @@ from app.models import AgentPlanVersion, AgentRun, AgentShotTask, ApiTask, Job, 
 
 STATES = ("queued", "running", "waiting", "attention", "completed", "cancelled")
 WAITING = ("storyboard_approved", "characters_approved", "videos_approved", "paused", "pending")
-ATTENTION = ("failed", "partial_success", "needs_attention", "production_attention", "delivery_attention")
+ATTENTION = ("failed", "partial_success", "needs_attention", "production_attention", "delivery_attention", "attention")
 
 
 def state_expression(status, unknown=None):

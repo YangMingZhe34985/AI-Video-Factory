@@ -1,0 +1,35 @@
+{
+  "name": "research",
+  "description": "检索并核验资料、读取多模态参考，形成带来源的研究结果。",
+  "accepts": {
+    "brief": "RequirementBrief"
+  },
+  "returns": "Dossier",
+  "model_role": "research",
+  "tools": [
+    "list_skills",
+    "load_skill",
+    "read_skill_resource",
+    "list_agents",
+    "read_workspace",
+    "write_workspace",
+    "ask_user",
+    "finish",
+    "web_search",
+    "image_search",
+    "fetch_page",
+    "download_reference",
+    "capture_reference_page",
+    "analyze_images",
+    "analyze_video",
+    "get_task_status"
+  ],
+  "can_delegate_to": [],
+  "limits": {
+    "max_steps": 40,
+    "max_llm_calls": 30,
+    "planning_credits": 20,
+    "max_parallel_delegations": 4
+  },
+  "prompt": "prompts/research.md"
+}

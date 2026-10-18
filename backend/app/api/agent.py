@@ -72,6 +72,9 @@ def attachment_metadata(row):
 
 
 def serialize(row):
+    if row.request.get("schema_version") == 3:
+        from app.agents.api import public_view
+        return public_view(row)
     result = row.to_dict()
     result.pop("id", None)
     result.pop("owner_id", None)
@@ -121,8 +124,9 @@ def list_runs():
 def create_run():
     data = parse(CreateRun)
     payload = data.model_dump(mode="json", exclude={"request_key"}, exclude_none=True)
-    payload["schema_version"] = 2
     row = AgentRun.query.filter_by(owner_id=owner(), request_key=data.request_key).first()
+    # A rollout toggle cannot reinterpret an already accepted idempotency key.
+    payload["schema_version"] = row.request.get("schema_version", 2) if row else (3 if current_app.config.get("AGENT_V3_ENABLED") else 2)
     if not row:
         ensure_admission()
         validate_request(data)
@@ -135,7 +139,8 @@ def create_run():
         except IntegrityError:
             db.session.rollback()
             row = AgentRun.query.filter_by(owner_id=owner(), request_key=data.request_key).one()
-    if row.request != payload:
+    original_request = {key: value for key, value in row.request.items() if not key.startswith("_v3_")}
+    if original_request != payload:
         raise AppError("IDEMPOTENCY_KEY_CONFLICT", "Request key belongs to different request content", 409)
     return api_success(serialize(row), 202)
 
@@ -143,6 +148,17 @@ def create_run():
 @bp.get("/runs/<run_id>")
 def detail(run_id):
     return api_success(serialize(get_run(run_id)))
+
+
+@bp.get("/runs/<run_id>/steps")
+def steps(run_id):
+    row = get_run(run_id)
+    if row.request.get("schema_version") != 3:
+        raise AppError("INVALID_AGENT_STATE", "Steps are available for v3 runs", 409)
+    from app.agents.api import step_page
+    from app.services.task_center_service import pagination
+    page, per_page = pagination(request.args, default=30)
+    return api_success(step_page(row, page, per_page))
 
 
 @bp.get("/runs/<run_id>/metrics")
@@ -194,8 +210,16 @@ def transform_quote(run_id):
 
 @bp.post("/runs/<run_id>/actions")
 def action(run_id):
-    data = parse(RunAction)
     row = get_run(run_id)
+    if row.request.get("schema_version") == 3:
+        from app.agents.api import RuntimeAction, admit_action
+        try:
+            admit_action(row, parse(RuntimeAction))
+        except Exception:
+            db.session.rollback()
+            raise
+        return api_success(serialize(row), 202)
+    data = parse(RunAction)
     from app.agent.delivery import DELIVERY_ACTIONS
     if data.action in DELIVERY_ACTIONS:
         return delivery_action(row, data)

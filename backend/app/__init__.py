@@ -51,6 +51,12 @@ def create_app(config_name: str | None = None, config_overrides: dict | None = N
             except Exception as exc:
                 app.logger.warning("Schema compatibility check skipped: %s", exc)
 
+    from app.tools import build_v3_registry
+    from app.agents.skill_library import initialize_skill_library
+    from app.agents.cards import init_agent_cards
+    registry = build_v3_registry()
+    initialize_skill_library(app, registry)
+    init_agent_cards(app, registry)
     register_blueprints(app)
     register_auth_handlers(app, jwt)
     register_error_handlers(app)

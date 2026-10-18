@@ -1,0 +1,29 @@
+{
+  "name": "critic",
+  "description": "审阅资料、故事与计划的约束、连续性和风险，给出具体修改意见。",
+  "accepts": {
+    "plan": "PlanDraft"
+  },
+  "returns": "CriticReview",
+  "model_role": "critic",
+  "tools": [
+    "list_skills",
+    "load_skill",
+    "read_skill_resource",
+    "list_agents",
+    "read_workspace",
+    "write_workspace",
+    "ask_user",
+    "finish",
+    "list_models",
+    "estimate_cost"
+  ],
+  "can_delegate_to": [],
+  "limits": {
+    "max_steps": 40,
+    "max_llm_calls": 30,
+    "planning_credits": 20,
+    "max_parallel_delegations": 4
+  },
+  "prompt": "prompts/critic.md"
+}

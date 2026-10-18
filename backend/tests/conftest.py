@@ -38,6 +38,8 @@ os.environ.update(
         "MQ_ENABLED": "false",
         "AGENT_MODE_ENABLED": "false",
         "AGENT_V3_ENABLED": "false",
+        "AGENT_V3_PLANNING_CREDITS": "20",
+        "AGENT_V3_MAX_DELEGATION_DEPTH": "3",
         "AGENT_V3_DEFAULT_TEXT_MODEL": "deepseek-v4.1-flash",
         "AGENT_V3_DEFAULT_VISION_MODEL": "qwen3.7-plus",
         "AGENT_PRODUCER_MODEL": "",

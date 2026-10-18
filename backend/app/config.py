@@ -148,6 +148,8 @@ class Config:
     # Agent mode (skill layer and LangGraph). Off by default so
     # the classic workflow is unaffected unless explicitly enabled.
     AGENT_V3_ENABLED = _bool_env("AGENT_V3_ENABLED", False)
+    AGENT_V3_PLANNING_CREDITS = float(os.getenv("AGENT_V3_PLANNING_CREDITS", "20"))
+    AGENT_V3_MAX_DELEGATION_DEPTH = int(os.getenv("AGENT_V3_MAX_DELEGATION_DEPTH", "3"))
     AGENT_V3_DEFAULT_TEXT_MODEL = os.getenv("AGENT_V3_DEFAULT_TEXT_MODEL", "deepseek-v4.1-flash")
     AGENT_V3_DEFAULT_VISION_MODEL = os.getenv("AGENT_V3_DEFAULT_VISION_MODEL", "qwen3.7-plus")
     AGENT_PRODUCER_MODEL = os.getenv("AGENT_PRODUCER_MODEL", "")
