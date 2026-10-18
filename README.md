@@ -184,3 +184,5 @@ Production uses its own `.env.production` injected into containers; keep it sepa
 
 
 2026-10 新模型目录、旧百炼 URL、已接入模式与限制见 [模型目录说明](README_zh.md#模型目录更新2026-10)。新增目录不会切换默认模型，当前仅完成 Mock 验证。
+
+Agent / 经典工作流的共享队列阶段、等待原因与只读边界见 [任务中心说明](README_zh.md#任务中心)。

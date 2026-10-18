@@ -459,3 +459,35 @@ C-Gate 评审结论：通过。
 - Phase F 尚未开始；F 章契约与任何付费评测都需要用户新的指令。
 需要用户决定：无新增。
 
+## 2026-10-18 · Codex · M1–M3 / T1 完成
+
+状态：模型升级与任务中心功能、Mock 集成验收完成；MT-Gate 与界面美化留 Claude，不进入 Phase F 或付费评测。
+分支与提交：保留 `agent-v2/M1`、`M2`、`M3`、`T1`。冻结验收代码为 `agent-v2/M3 @ 7498618`；已完整保留 Claude E-Gate `5396198 / 30560e0`，后续仅 README、本条交接与 PLAN 文档。本条所属文档提交为本轮交付提交，供本地 `feat/agent-v2` 快进集成；不推送、不创建 PR。
+
+完成内容：
+- M1（`76610ef / af55b83`）：新增 qwen-image-3.0、qwen-image-3.0-pro、wan3.0-video、wan3.0-video-prime、deepseek-v4.1-flash。保留旧 task_type，按已接入 modes 扩展 API/Skill/Agent/经典页面筛选；精确模型 ID 优先，系列匹配不串到相似前缀。没有切换任何 DEFAULT_*。Qwen 动态尺寸/图片数量、Wan 固定2–30秒及随机种子边界均校验；prime 标为高速，不承诺更高画质。
+- M2（`b69dba3 / b02b37a`）：Wan3 单一真实 ID 接文生视频、首帧、首尾候选、图片参考，复用提交/轮询/下载与共用 MQ。请求使用 input.prompt + media，不发送虚构的任务类型或型号别名；经典反向提示词转换为正向文本中的“避免出现”段落，仍要求正向文本非空。模型默认参数先合并，再由显式参数覆盖；首尾与参考媒体互斥、资源数量/图片完整解码均在提交前检查。
+- M3（`24ed7f8 / 38e22c4 / 1792ad1`）：Qwen3 异步 messages 协议，文生图/图像编辑、多图输出复用既有 output_slots 与下载链路；支持 n=1–6（Agent Skill仍最多4），参考图最多3张。拒绝不支持的参数及 i2i 的 prompt_extend_mode=agent，验证完整图片解码，含截断 JPEG 回归。DeepSeek v4.1 Flash 走百炼 Key/兼容接口，结构化调用也继承默认 enable_thinking=false；不误用 DeepSeek 自营凭据。
+- **按用户要求沿用旧 URL**：图像 `/api/v1/services/aigc/image-generation/generation`，视频 `/api/v1/services/aigc/video-generation/video-synthesis`，轮询 `/api/v1/tasks/{id}`；文本使用现有 compatible-mode/v1。仍读取 DASHSCOPE_API_BASE_URL / DASHSCOPE_OPENAI_BASE_URL，不引入 Workspace ID。新适配器独立请求头，不给新模型继承旧内容检查开关；旧适配器行为保留。
+- 费用：Wan3 使用分辨率对应的每秒演示 credits；公式为（受信任的输入视频秒数 + 输出秒数×输出数量）×费率。输入时长只接受服务端关键字参数，不信任用户 params；当前 Agent 无视频参考所以为0。非法时长/未知分档拒绝；保留旧估算回退。前端分镜估算同步分档。官方人民币价格、图像输入计价和 LLM token 账单均不与演示 credits 混为一谈。
+- T1（`feea8f9`）：新增 `/task-center`、列表/详情 GET API、SQL 权限过滤与稳定分页。范围是本人 Agent + 现有共享经典作业；内部 Job 归并到父 Run，只统计当前版本/轮次/attempt，上传与孤立私有 Job 不进入共享列表。展示提交、服务商生成、下载、本地交付和等待依赖/授权/核实；未知提交归为需处理。无 Worker 心跳则显示未知，不编造队列名次或 ETA。
+- 任务中心 GET 只读数据库，不调用完整 Run serialize、文件校验、Redis 或工具。旧 `/api/jobs/queue/status` 也补上所有者过滤和字段脱敏，保留 enabled/mode/counts/items 外层结构；不再暴露内部命令。前端5秒刷新、隐藏/卸载停止、失败保留旧数据并标记过期，操作返回原工作页。
+- README 补充新模型与任务中心使用说明。没有真实数据库迁移或目录写入；API 启动种子/现有 seed-defaults 接口可在用户环境补目录，旧自定义价格/能力按原种子逻辑保留，默认参数/schema 仍会更新，操作前应保留自定义配置。
+
+验收与审计：
+- **完整后端回归1165 passed**：冻结代码 `7498618` 的77个测试文件分成3个互不重叠分片，342 / 446 / 377项，分别约580.91 / 620.48 / 700.00秒，均退出0。已解析JUnit核对没有遗漏、重复、失败或跳过。相对 E-Gate 的993项新增172项；定向回归与全量重叠，不相加计数。
+- 45条警告：38条已有测试短JWT密钥警告，7条因本次导出JUnit触发的 record_property/xunit2 兼容警告。首轮因未激活环境的PATH缺少FFmpeg而停止；重新在配置导入前设置本机已有 `FFMPEG_BINARY` 后，完整三片从头运行通过，没有安装新依赖或修改应用配置。失败首轮不作为验收结果。
+- 全量清单、JUnit与汇总：`C:/Users/MingZheYang/AppData/Local/Temp/cinecrew-mt-regression-kgnztpwb/` 的 manifest.json、verified-shard-0/1/2.xml、acceptance-summary.json。使用 Conda video-factory Python；FFmpeg 来自主目录 .venv 中已有 imageio_ffmpeg 二进制。临时路径仅为本机证据，不是运行依赖。
+- 新增协议与集成测试覆盖旧域名/headers/payload、模型默认参数、正确百炼凭据、MQ/非MQ、三张图片输出、三类经典视频模式、首尾、系列限制、分档费用、幂等和非法资源；仅 Stub HTTP。其余全量覆盖经典19节点DAG、旧Agent、A–E与本轮任务中心。没有真实供应商请求。
+- **前端50项通过、npm run build通过**。任务中心浏览器验收代码 `1756d76` 与冻结版本 `7498618` 的 Git tree 完全相同（f64bc18a）。临时 SQLite/存储、鉴权开启、无执行器、阻断外网；父项分页20+8无重复、24镜头分页20+4，来源/状态/搜索、待依赖/待授权/未知提交/本地质检显示正确；注入503后保留4条旧记录并显示过期。
+- 实际离开路由后22.6秒内 task-center GET 为0；浏览器工具切标签仍报告visible，**真实后台隐藏未验收**，隐藏取消/恢复由确定性前端测试覆盖。匿名任务中心401；后端回归覆盖双用户隔离与经典共享。只读浏览前后均26 Jobs /8 ApiTasks /2条种子ToolInvocation /0 Outbox /0 credits。
+- 浏览器无最终控制台错误，中文/英文检查通过。**400px仍受原有260px侧栏与全局padding挤压，任务中心仅剩约70px可用宽度，不声称完整移动端通过**；没有修改 Claude 的全局布局。临时5086/5206服务和本轮标签已关闭、无监听。证据：`C:/Users/MingZheYang/AppData/Local/Temp/cinecrew-t1-ui-20261018/` 的 acceptance-summary.json、cleanup.json、requests.jsonl、smoke.db及截图。
+- 全程隔离 SQLite / Mock / Stub，无真实 MySQL/Redis部署、付费调用、真实.env修改或新数据库迁移。AGENTS.md / CLAUDE.md、ProductionBoard、DeliveryPanel 与 Claude E-Gate 文件没有本轮重写；主目录原有未跟踪技术笔记保留。
+
+给 Claude / 下一步：
+1. **MT-Gate**：先读 D-025 与 CONTRACTS M/T；重点审查多模式筛选、精确ID与系列、默认模型不变、分档计费、多输出恢复和旧queue/status隐私边界，可复用上述全量与浏览器证据。任务中心核心文件为 api/task_center.py、services/task_center_query.py / task_center_service.py、TaskCenterView.vue、components/task-center/；不要将旧 queue/status 的内部命令恢复到公开响应。
+2. **界面美化**：任务中心已有功能接线，继续由 Claude 负责；优先处理既有移动端全局侧栏，沿用 E-Gate 留下的预算提示、警告本地化等事项。模型页面如展示官方能力，必须同时区分“已接入”与“未开放”，不能把 provider_capabilities 当作 Agent 许可。
+3. **未开放能力**：所有 reference_video 在适配器明确拒绝；视频编辑/延长尚需受控输入、完整输入时长计费、计划审批和恢复契约。高级媒体仅有适配器级受控 WAV（总1–15秒）、TXT/MD与public link支持；远程音频/文件、MP3与分页文档拒绝，当前没有相应公共 Agent Skill。Agent 仍只能使用本轮明确接通的生成模式，智能时长-1不开放。
+4. 首尾候选仍受 AGENT_ENABLE_KEYFRAME_BRIDGE 控制、默认关闭；未实测质量。五模型在真实账号与旧域名下的可用性、效果、时长和费用尚未付费验证。本轮不自动进入F、不更换默认模型；后续真实测试需用户单独批准。
+需要用户决定：本轮无新增阻塞项；真实单价与后续付费测试仍待明确安排。
+
