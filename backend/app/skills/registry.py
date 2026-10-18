@@ -168,6 +168,8 @@ class ToolRegistry:
                     raise AppError("RECOVERY_REQUIRED", "Research call outcome is unknown; automatic repeat stopped", 409)
                 db.session.commit()
                 return self._result(spec, invocation, invocation.output_payload, replayed=True)
+            if invocation.status == "failed" and ctx.shot_task_id is not None and spec.name == "animate_shot":
+                raise AppError("UNSAFE_RETRY", "Failed production attempts require the repair policy and a new task", 409)
             if recovering_download:
                 # Only this free local tool has a durable byte receipt and atomic
                 # artifact/output commit. Paid external calls never re-enter here.

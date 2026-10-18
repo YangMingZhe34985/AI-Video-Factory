@@ -344,3 +344,19 @@ def test_retry_receipt_inherits_only_authorized_motion_lineage(app_ctx, monkeypa
     job = Job.query.filter_by(job_id=result["output"]["job_id"]).one()
     validate_job_policy(job)
     assert job.config["agent_story_production"]["motion_prompt"] == data["prompt"]
+
+
+
+def test_registry_cannot_bypass_production_repair_with_failed_key(app_ctx, monkeypatch):
+    row, version, data, item = production()
+    monkeypatch.setattr(JobRunService, "start", lambda *_a, **_kw: None)
+    result = get_registry().invoke("animate_shot", data, context(row, item))
+    invoice = ToolInvocation.query.filter_by(invocation_id=result["invocation_id"]).one()
+    invoice.status, invoice.job.status, item.status = "failed", "failed", "failed"
+    db.session.commit()
+    spent = BudgetGuard.spent(row.run_id)
+    with pytest.raises(AppError) as error:
+        get_registry().invoke("animate_shot", data, context(row, item))
+    assert error.value.code == "UNSAFE_RETRY"
+    assert invoice.attempt == 1 and BudgetGuard.spent(row.run_id) == spent
+    assert not ApiTask.query.first()
