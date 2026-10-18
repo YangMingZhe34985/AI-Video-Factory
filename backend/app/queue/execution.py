@@ -47,6 +47,11 @@ def process_event(event_id, expected_phase=None):
         if phase == "submit":
             if not model or not model.enabled:
                 raise AppError("MODEL_DISABLED", "Model was removed or disabled before submission", 400)
+            if (job.config or {}).get("agent_transform"):
+                from app.agent.transform_policy import validate_before_submit
+                validate_before_submit(job, model, logical_inputs, params, adapter_name=task.adapter_name)
+                if task.branch_key not in {"submit_r2v_flash", "r2v_flash"}:
+                    raise AppError("TRANSFORM_APPROVAL_MISMATCH", "Queued transform operation differs from approval", 409)
             if logical_inputs is not None:
                 payload = adapter.build_payload(logical_inputs, params or {})
                 task = owned(task_id, token)
@@ -55,6 +60,8 @@ def process_event(event_id, expected_phase=None):
                     return
                 task.queue_data = {**task.queue_data, "wire_payload": payload}
                 db.session.commit()
+            if (job.config or {}).get("agent_transform"):
+                validate_before_submit(job, model, logical_inputs, params, adapter_name=task.adapter_name)
             response = adapter.submit(payload)
         elif phase == "poll":
             response = adapter.poll(provider_id)

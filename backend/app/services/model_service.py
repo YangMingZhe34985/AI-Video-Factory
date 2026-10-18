@@ -131,7 +131,7 @@ CHAT_PARAMETER_SCHEMA = {
 
 GENERATION_TASK_MODES = {
     "text_to_image": {"t2i", "i2i"}, "text_to_video": {"t2v"},
-    "image_to_video": {"i2v"}, "reference_to_video": {"r2v"},
+    "image_to_video": {"i2v"}, "reference_to_video": {"r2v", "omni_reference", "video_edit", "video_extend"},
 }
 LEGACY_TASK_MODES = {**GENERATION_TASK_MODES, "text_to_image": {"t2i"}, "video_understanding": {"text", "image_understanding", "video_understanding"},
                      "text_to_text": {"text"}, "prompt_rewrite": {"text"}}
@@ -448,6 +448,25 @@ for _seed in DEFAULT_MODELS:
                 "input_plus_output_seconds_max": 30},
             notes="演示 credits，非供应商报价；按分辨率及输入视频秒数+输出秒数估算。Prime为能力对齐的高速版，画质未实测。当前Agent只接入图片参考；视频/音频/file/link/编辑延长不自动启用，首尾画质未实测。")
 
+# Recognize only the previous factory capability profile when upgrading existing
+# rows. Preserve operator pricing, agent selection, limits and custom mode lists.
+WAN3_LEGACY_CAPABILITIES = {item["model_id"]: deepcopy(item["capabilities"])
+                           for item in DEFAULT_MODELS if item["adapter_name"] == "dashscope_wan3"}
+for _seed in DEFAULT_MODELS:
+    if _seed["model_id"] in WAN3_LEGACY_CAPABILITIES:
+        caps = _seed["capabilities"]
+        caps["modes"] += ["omni_reference", "video_edit", "video_extend"]
+        caps["provider_capabilities"].update(
+            reference_video={"max": 5, "max_total_seconds": 15, "agent_enabled": True, "adapter_enabled": True},
+            reference_audio={"max": 5, "max_total_seconds": 15, "agent_enabled": True},
+            file={"max": 1, "agent_enabled": True, "formats": ["txt", "md", "pdf"]},
+            link={"agent_enabled": True, "strategy": "snapshot_file"},
+            video_edit={"agent_enabled": True}, video_extend={"agent_enabled": True})
+        caps["notes"] = ("演示 credits，非供应商报价；按分辨率及实际输入视频秒数+最终输出秒数估算。"
+                         "全模态参考/编辑/延长须审核报价；网页转正文快照；总视频秒数≤30。Prime为高速版，画质未实测。")
+        caps["transform_revision"] = 1
+
+
 DEFAULT_MODEL_BY_ID = {model["model_id"]: model for model in DEFAULT_MODELS}
 
 
@@ -514,6 +533,14 @@ class ModelService:
                 # Backfill legacy rows, but never overwrite operator pricing/selection.
                 if not existing.capabilities:
                     existing.capabilities = deepcopy(data["capabilities"])
+                    changed = True
+                legacy = WAN3_LEGACY_CAPABILITIES.get(existing.model_id)
+                caps = existing.capabilities or {}
+                if (legacy and all(caps.get(key) == legacy.get(key)
+                                   for key in ("modes", "provider_capabilities", "notes"))):
+                    existing.capabilities = {**deepcopy(caps), **{
+                        key: deepcopy(data["capabilities"][key])
+                        for key in ("modes", "provider_capabilities", "notes", "transform_revision")}}
                     changed = True
                 for field in (
                     "display_name",

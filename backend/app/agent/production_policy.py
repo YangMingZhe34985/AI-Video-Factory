@@ -22,7 +22,7 @@ def require_task_authorization(tool_name, ctx):
 
 
 def reject_manual_dispatch(job):
-    if (job.config or {}).get("agent_story_production"):
+    if (job.config or {}).get("agent_story_production") or (job.config or {}).get("agent_transform"):
         raise AppError("UNSAFE_RETRY", "Production Jobs must use the story retry/redo approval flow", 409)
 
 
