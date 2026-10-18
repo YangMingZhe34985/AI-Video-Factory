@@ -130,7 +130,7 @@
             />
 
             <ProductionBoard
-              v-if="isStoryPlan && production" :key="`production-${selected.run_id}`"
+              v-if="isStoryPlan && production && (production.approved_version || productionStatuses.includes(selected.status))" :key="`production-${selected.run_id}`"
               :run-id="selected.run_id" :plan="plan" :plan-version="planVersion" :production="production"
               :status="selected.status" :budget-limit="budgetLimit" :disabled="busy || Boolean(selected.command)"
               :demo="mode === 'mock'" @action="storyAction"
@@ -224,6 +224,7 @@ const previews = computed(() => pick(selected.value, 'previews') || {})
 const storyEstimates = computed(() => pick(selected.value, 'estimates') || {})
 const storyIssues = computed(() => pick(selected.value, 'plan_issues') || [])
 const production = computed(() => pick(selected.value, 'production'))
+const productionStatuses = ['storyboard_approved', 'producing', 'production_attention', 'awaiting_video_review', 'videos_approved']
 const isRemix = computed(() => selected.value?.request?.mode === 'remix' || requestSpec.value?.recipe_hint === 'remix')
 // v1 stores the remix source on the request; v2 has it as the remix_source attachment.
 const sourceVideo = computed(() => {

@@ -12,6 +12,7 @@ export const recoveryLabels = {
 export const categoryLabels = {
   transient: '临时服务故障', content_policy: '内容审核', invalid_params: '参数不符',
   capability: '模型能力不符', budget: '预算不足', unknown_submission: '提交结果不确定',
+  invalid_parameters: '参数不符', submit_unknown: '提交结果不确定', permanent: '无法自动恢复',
   output_invalid: '输出无效', dependency: '依赖尚未完成', local_media: '本地媒体处理失败', unknown: '需要核实',
 }
 
@@ -57,7 +58,9 @@ export function isCurrentQuote(quote, context) {
   return Boolean(quote?.quote_id && quote.base_version === context?.planVersion && quote.shot_id === context?.shotId)
 }
 export function productionActionAllowed(status, row, operation, disabled = false) {
-  return !disabled && reviewStatuses.has(status) && Boolean(operation === 'retry' ? row?.can_retry : row?.can_redo)
+  if (disabled) return false
+  if (operation === 'retry') return status === 'production_attention' && Boolean(row?.can_retry)
+  return operation === 'redo' && reviewStatuses.has(status) && Boolean(row?.can_redo)
 }
 export function buildShotAction(quote, context, scope, operation) {
   if (!['redo', 'retry'].includes(operation)) throw new Error('不支持的生产操作。')
@@ -71,6 +74,10 @@ export function buildShotAction(quote, context, scope, operation) {
     if (context.motionPrompt?.trim()) payload.motion_prompt = context.motionPrompt.trim()
   }
   return { action: operation === 'retry' ? 'retry_shot' : 'redo_shot', payload }
+}
+export function startProductionCost(estimates, repairBudget) {
+  const video = finiteCredits(estimates?.remaining_credits), repair = finiteCredits(repairBudget)
+  return video == null || repair == null ? null : video + repair
 }
 export function productionError(error) {
   if (!error) return ''

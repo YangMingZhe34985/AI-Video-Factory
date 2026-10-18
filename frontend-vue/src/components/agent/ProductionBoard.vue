@@ -9,7 +9,7 @@
     <div class="mt-4 grid gap-2 text-sm sm:grid-cols-2 xl:grid-cols-4" aria-label="生产费用">
       <div class="metric"><span>本版视频预计 · 按秒</span><strong>{{ money(estimates.video_credits) }} credits</strong></div>
       <div class="metric"><span>视频累计已花</span><strong>{{ money(estimates.video_spent_credits) }} credits</strong></div>
-      <div class="metric"><span>修复累计已花</span><strong>{{ money(estimates.repair_spent_credits) }} credits</strong></div>
+      <div class="metric"><span>修复已花 · 包含在累计中</span><strong>{{ money(estimates.repair_spent_credits) }} credits</strong></div>
       <div class="metric"><span>全部累计 · 含规划和图片</span><strong>{{ money(estimates.spent_credits) }} credits</strong></div>
     </div>
     <p class="mt-2 text-xs text-slate-500">待生成预计 {{ money(estimates.remaining_credits) }} credits · 自动修复额度 {{ money(production.repair_budget_credits ?? 0) }} credits。以服务器账本和报价为准；失败重做也会累计费用。</p>
@@ -56,7 +56,7 @@
         <div class="flex items-start justify-between gap-3"><h4 class="text-base font-semibold">{{ confirmation.kind === 'start' ? '确认视频生产' : confirmation.kind === 'approve' ? '确认视频素材' : confirmation.kind === 'review_plan' ? '返回分镜修改' : `${confirmation.shotId} · ${confirmation.operation === 'retry' ? '局部重试' : '重做与影响范围'}` }}</h4><button type="button" class="secondary-btn" :disabled="locked" @click="cancelDialog">关闭</button></div>
         <p v-if="modalError" role="alert" class="mt-3 break-words text-sm text-red-600 dark:text-red-400">{{ modalError }}</p>
         <template v-if="confirmation.kind === 'start'">
-          <p class="mt-4 text-sm">将按已审核分镜生成 {{ rows.length }} 个镜头，视频预计 {{ money(estimates.video_credits) }} credits，按模型单价 × 秒数计算。</p>
+          <p class="mt-4 text-sm">本版共 {{ rows.length }} 个镜头，已完成且可复用的素材保留；待生成视频预计 {{ money(estimates.remaining_credits) }} credits，按模型单价 × 秒数计算。</p>
           <label class="field-label mt-4">本次允许自动修复的额外额度（credits）<input v-model.number="repairBudget" type="number" min="0" step="0.1" class="field" /></label>
           <p class="mt-2 text-xs text-slate-500">默认 0。自动修复只处理明确可恢复的错误，并受单镜头次数、额度与总预算约束；提交结果不确定时先核实，不重复提交。</p>
           <p class="mt-3 text-sm">视频与自动修复授权合计上限 {{ money(startTotal) }} credits；剩余总预算 {{ money(remainingBudget) }} credits。</p>
@@ -98,7 +98,7 @@
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import AuthedVideo from './AuthedVideo.vue'
 import { quoteAgentProduction } from '@/api/agent'
-import { buildShotAction, categoryLabels, creditText, dependencyText, finiteCredits, isCurrentQuote, productionActionAllowed, productionCounts, productionError, productionLabels, productionRows, quoteImpact, recoveryLabels, reviewStatuses } from './production'
+import { buildShotAction, categoryLabels, creditText, dependencyText, finiteCredits, isCurrentQuote, productionActionAllowed, productionCounts, productionError, productionLabels, productionRows, quoteImpact, recoveryLabels, reviewStatuses, startProductionCost } from './production'
 
 const props = defineProps({
   runId: { type: String, required: true }, plan: { type: Object, required: true }, production: { type: Object, required: true },
@@ -118,7 +118,7 @@ const canReviewPlan = computed(() => props.status === 'production_attention' && 
 const phaseLabel = computed(() => ({ storyboard_approved: '待开始生产', producing: '生产中', production_attention: '需要处理', awaiting_video_review: '审核 B · 视频素材', videos_approved: '视频素材已确认' }[props.status] || '待生产'))
 const warnings = computed(() => [...new Set([...(props.production.warnings || []).map(warningText), ...(props.production.kept_downstream?.length ? [`保留旧下游视频：${props.production.kept_downstream.join('、')}。请检查与新上游的画面衔接。`] : [])])])
 const remainingBudget = computed(() => finiteCredits(estimates.value.remaining_budget) ?? (finiteCredits(props.budgetLimit) != null && finiteCredits(estimates.value.spent_credits) != null ? Math.max(0, props.budgetLimit - estimates.value.spent_credits) : null))
-const startTotal = computed(() => finiteCredits(repairBudget.value) != null && finiteCredits(estimates.value.video_credits) != null ? repairBudget.value + estimates.value.video_credits : null)
+const startTotal = computed(() => startProductionCost(estimates.value, repairBudget.value))
 const validStart = computed(() => props.status === 'storyboard_approved' && props.production.enabled && startTotal.value != null && (remainingBudget.value == null || startTotal.value <= remainingBudget.value))
 const currentShot = computed(() => rows.value.find((shot) => shot.shot_id === confirmation.value?.shotId))
 const quoteContext = computed(() => ({ planVersion: props.planVersion, shotId: confirmation.value?.shotId, motionPrompt: motionPrompt.value }))
@@ -128,7 +128,7 @@ const selectedImpact = computed(() => quoteImpact(quote.value, scope.value))
 const promptValid = computed(() => confirmation.value?.operation !== 'redo' || Boolean(motionPrompt.value.trim()))
 const confirmable = computed(() => isCurrentQuote(quote.value, quoteContext.value) && finiteCredits(selectedImpact.value.cost) != null && canAct(currentShot.value, confirmation.value?.operation) && (confirmation.value?.operation !== 'retry' || quote.value.can_retry))
 const labels = productionLabels, money = creditText
-const canAct = (shot, operation) => productionActionAllowed(props.status, shot, operation, locked.value)
+const canAct = (shot, operation) => productionActionAllowed(props.status, shot, operation, locked.value || !props.production.enabled)
 const warningText = (warning) => typeof warning === 'string' ? warning : warning?.summary || warning?.message || warning?.code || '请检查镜头衔接。'
 const tone = (status) => ({ success: 'text-emerald-700 dark:text-emerald-300', failed: 'text-red-700 dark:text-red-300', blocked: 'text-amber-700 dark:text-amber-300', stale: 'text-amber-700 dark:text-amber-300', running: 'text-blue-700 dark:text-blue-300' }[status] || '')
 function resetDialog() { confirmation.value = null; quote.value = null; modalError.value = ''; quoting.value = false; quoteEpoch++ }

@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { buildShotAction, creditText, dependencyText, finiteCredits, isCurrentQuote, productionActionAllowed, productionCounts, productionError, productionRows, quoteImpact } from '../src/components/agent/production.js'
+import { buildShotAction, creditText, dependencyText, finiteCredits, isCurrentQuote, productionActionAllowed, productionCounts, productionError, productionRows, quoteImpact, startProductionCost } from '../src/components/agent/production.js'
 
 const plan = { shots: [
   { shot_id: 's03', order: 3, duration_sec: 15, depends_on: [], summary: '独立场景', motion: { model_id: 'demo-video', mode: 'i2v' } },
@@ -73,6 +73,8 @@ test('buttons require both idle review state and server permission, never infer 
   assert(productionActionAllowed('production_attention', row, 'retry'))
   assert(productionActionAllowed('awaiting_video_review', { can_redo: true }, 'redo'))
   assert(!productionActionAllowed('producing', row, 'retry'))
+  assert(!productionActionAllowed('awaiting_video_review', row, 'retry'))
+  assert(!productionActionAllowed('production_attention', { can_redo: true }, 'unknown'))
   assert(!productionActionAllowed('production_attention', row, 'redo'))
   assert(!productionActionAllowed('production_attention', row, 'retry', true))
   assert(!productionActionAllowed('production_attention', { status: 'failed' }, 'retry'))
@@ -81,4 +83,11 @@ test('error summaries remain display text and include diagnostic codes without e
   assert.equal(productionError({ code: 'SUBMISSION_UNKNOWN', summary: '<script>do not retry</script>' }), '<script>do not retry</script> · SUBMISSION_UNKNOWN')
   assert.equal(productionError('临时故障'), '临时故障')
   assert.equal(productionError(null), '')
+})
+
+test('starting after plan correction authorizes only remaining video costs and optional repair allowance', () => {
+  assert.equal(startProductionCost({ video_credits: 120, remaining_credits: 15 }, 5), 20)
+  assert.equal(startProductionCost({ remaining_credits: 0 }, 0), 0)
+  assert.equal(startProductionCost({ video_credits: 120 }, 0), null)
+  assert.equal(startProductionCost({ remaining_credits: 15 }, -1), null)
 })
