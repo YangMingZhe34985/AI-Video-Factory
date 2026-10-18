@@ -10,7 +10,7 @@ from app.agent.production_plan import PlanModel, ProductionPlan, ShotPlan, promp
 from app.agent.recovery import invoke_once
 from app.agent.story_spec import StyleGuide
 from app.api import AppError
-from app.models import AgentRun, ModelRegistry
+from app.models import AgentRun, ModelRegistry, ToolInvocation
 from app.skills import build_default_registry
 from app.skills.budget import estimate_model_cost
 from app.skills.spec import ToolContext, ToolSpec
@@ -121,9 +121,26 @@ def write_plan_prompts(state, registry=None, shot_ids=None):
         digest = sha256(json.dumps(payload, sort_keys=True, ensure_ascii=False).encode()).hexdigest()[:24]
         ctx = ToolContext(role="director", budget_scope=run.run_id, budget_limit=run.request["budget_limit"],
             idempotency_key=f"{run.run_id}:prompts:{plan['plan_version']}:{shot['shot_id']}:{digest}")
-        output = invoke_once(registry, SPEC.name, payload, ctx)["output"]
+        try:
+            previous_call = ToolInvocation.query.filter_by(idempotency_key=ctx.idempotency_key).first()
+            if (previous_call and previous_call.status == "rejected"
+                    and previous_call.error_code == "BUDGET_EXCEEDED"
+                    and previous_call.budget_scope == run.run_id
+                    and previous_call.input_payload == payload):
+                # A budget rejection happened before the provider was called.
+                # Registry may safely re-evaluate it after the budget is repaired.
+                output = registry.invoke(SPEC.name, payload, ctx)["output"]
+            else:
+                output = invoke_once(registry, SPEC.name, payload, ctx)["output"]
+        except AppError as error:
+            if error.code != "BUDGET_EXCEEDED":
+                raise
+            # Keep prompts already paid for in this pass. A later retry replays
+            # their ledger entries and only writes the remaining shots.
+            return {"plan": plan, "prompt_issues": [{"code": error.code,
+                    "message": error.message, "shot_id": shot["shot_id"]}]}
         shot["first_frame"]["prompt"] = output["first_frame_prompt"]
         if shot["end_frame"]:
             shot["end_frame"]["prompt"] = output["end_frame_prompt"] or ""
         shot["motion"]["prompt"] = output["motion_prompt"]
-    return {"plan": plan}
+    return {"plan": plan, "prompt_issues": []}
