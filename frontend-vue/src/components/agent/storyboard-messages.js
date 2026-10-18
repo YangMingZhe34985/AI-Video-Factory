@@ -1,12 +1,12 @@
 // Local i18n messages for the story-board review (StoryboardEditor).
 export default {
   zh: {
-    title: '分镜板', subtitle: '审核 A · 版本 {version} · 只生成预览图片，视频在分镜确认后生产',
+    title: '分镜板', subtitle: '审核 A · 版本 {version} · 先审核预览图片，再单独确认视频生产费用',
     stepCharacters: '角色定妆', stepStoryboard: '分镜关键帧', stepApproved: '分镜确认',
     status: { planning: '规划中', previewing: '预览生成中', awaiting_characters: '等待确认角色', awaiting_storyboard: '等待确认分镜', storyboard_approved: '分镜已确认' },
     conflict: '服务器上的计划已更新，你正在编辑旧版本。', conflictReload: '刷新为最新版本（放弃本地修改）',
     submitted: '已提交 · 服务器预计本次图片费用 {cost} credits',
-    approvedNote: '分镜已确认，尚未提交任何视频生成任务。视频生产将在下一阶段开放。',
+    approvedNote: '分镜已确认。视频生产开启后，可在生产看板确认费用并开始生成。',
     duration: '时长', target: '目标 {n} 秒', tolerance: '容差 ±{n} 秒', seconds: '{n} 秒', durationBar: '镜头时长分布',
     previewSpent: '预览已花', videoEstimate: '视频预计 · 按秒', totalSpent: '累计已花 · 含规划',
     serverEstimate: '待服务器估算', costNote: '本地估算仅供编辑参考，模型能力、预算与时长以服务器校验为准。', demoNote: 'Mock 模式：单价与素材均为演示数据。',
@@ -46,12 +46,12 @@ export default {
     applyShot: '应用到计划', currentModel: '{id}（当前值，需服务器校验）', generationFailed: '生成失败',
   },
   en: {
-    title: 'Storyboard', subtitle: 'Review A · version {version} · preview images only; video is produced after approval',
+    title: 'Storyboard', subtitle: 'Review A · version {version} · review preview images first, then confirm video production cost separately',
     stepCharacters: 'Characters', stepStoryboard: 'Keyframes', stepApproved: 'Approved',
     status: { planning: 'Planning', previewing: 'Generating previews', awaiting_characters: 'Review characters', awaiting_storyboard: 'Review storyboard', storyboard_approved: 'Storyboard approved' },
     conflict: 'The plan was updated on the server; you are editing an old version.', conflictReload: 'Reload latest (discard local edits)',
     submitted: 'Submitted · server estimate for these images: {cost} credits',
-    approvedNote: 'Storyboard approved. No video generation has been submitted; video production opens in the next phase.',
+    approvedNote: 'Storyboard approved. Once video production is enabled, confirm the cost and start generation on the production board.',
     duration: 'Duration', target: 'target {n}s', tolerance: 'tolerance ±{n}s', seconds: '{n}s', durationBar: 'Shot durations',
     previewSpent: 'Previews spent', videoEstimate: 'Video estimate · per second', totalSpent: 'Total spent · incl. planning',
     serverEstimate: 'server estimate', costNote: 'Local estimates are for editing only; the server validates models, budget and duration.', demoNote: 'Mock mode: prices and assets are demo data.',

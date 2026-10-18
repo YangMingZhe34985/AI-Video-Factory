@@ -309,6 +309,7 @@ C-Gate 评审结论：通过。
 - D0 契约已由 Codex 完成（95d9909）。实现时请从 `storyboard_approved` 接续，消费已批准计划版本的逐镜头模型（含 `story_model_overrides`），不要回退到 RequestSpec 默认选型。
 - `agent_shot_tasks` 已为 `video` / `tail_frame` 预留 `target_type`；尾帧依赖与局部修复只处理受影响目标，额外费用需在界面显式确认（与审核 A 的“过期不自动重做”一致）。
 - **D5 集成注意**：`StoryboardEditor.vue` 的模板与样式已整体重写（脚本逻辑、props、事件、`data-testid` 不变），新增文案放在 `storyboard-messages.js`（zh/en）。D5 接线请基于合入后的版本，新文案同样走本地 i18n；生产看板组件可复用该文件中的 `.status-pill`、`.step`、`.notice-*`、`.state-*` 样式约定，视觉统一由我在 D-Gate 处理。
+  - `agent-v2/D5` 对 `StoryboardEditor.vue` 的两处文案改动（副标题、分镜已确认提示）已按 D5 的新措辞写入 `storyboard-messages.js` 的 `subtitle` / `approvedNote`（zh/en）。合并时该文件冲突直接取 `feat/agent-v2` 版本即可。
 - Prompt Smith 现在会补全缺失的风格前缀；若 D 阶段增加新的提示词校验，建议同样优先在代码中修复可确定的格式问题，避免已计费的结果直接失败。
 需要用户决定：无新增。
 
