@@ -255,3 +255,38 @@ def test_content_repair_then_rate_limit_preserves_revised_prompt_and_two_repair_
     assert payloads[1]["prompt"] == payloads[2]["prompt"] != payloads[0]["prompt"]
     assert ToolInvocation.query.filter_by(tool_name="repair_motion_prompt", budget_scope=run.run_id).count() == 1
     assert len(run.snapshot["production_repairs"]) == 2
+
+
+def test_registry_rejection_is_not_an_unknown_submission(app_ctx, inline_jobs, monkeypatch):
+    from app.agent import production_actions as actions
+    from app.skills import registry as registry_module
+    run, version, registry = prepared(2)
+    real = registry_module.BudgetGuard
+    calls = []
+
+    class RejectFirst:
+        @staticmethod
+        def check(*args, **kwargs):
+            calls.append(args)
+            if len(calls) == 1:
+                raise AppError("BUDGET_EXCEEDED", "Injected budget rejection before any Job", 402)
+            return real.check(*args, **kwargs)
+
+        def __getattr__(self, name):
+            return getattr(real, name)
+
+    monkeypatch.setattr(registry_module, "BudgetGuard", RejectFirst())
+    assert settle(run, registry) == "production_attention"
+    tasks = latest_tasks(run, version)
+    assert tasks["s02"].status == "success"
+    failed = tasks["s01"]
+    assert failed.status == "failed" and failed.job_id is None
+    assert failed.error["category"] == "permanent"
+    assert failed.error["submission_state"] == "not_submitted" and failed.error["code"] == "BUDGET_EXCEEDED"
+    rejected = ToolInvocation.query.filter_by(tool_name="animate_shot", budget_scope=run.run_id, status="rejected").one()
+    assert rejected.job_id is None
+    # The shot stays explicitly redoable instead of being frozen as unknown.
+    run.status = "production_attention"
+    db.session.commit()
+    offer = actions.quote(run, {"shot_id": "s01", "base_version": version.version, "operation": "redo"})
+    assert offer["estimated_credits"]["only"] is not None
