@@ -832,6 +832,7 @@ AGENT_STORY_V2_ENABLED 与 AGENT_STORY_PRODUCTION_ENABLED 均默认 false。已�
 - 幂等键：{run}:production:{version}:{target_type}:{shot_id}:{attempt}:{inputs_hash前12位}。成功输入相同则复用；未知结果禁止新 key 重交。
 - 编译/批准元数据保存在 run.snapshot.production；至少包含 plan_version、approved_version、status、repair_budget_credits。worker 保存 checkpoint 时必须保留此权威数据及 production_action_receipts、production_repairs。任务与回执是重启恢复依据，不依赖进程内 Future。
 - begin 时重新检查全部剩余视频费用与显式修复额度；每个 ToolRegistry.invoke 再次检查同一 Run 预算。已完成图片不重复计费，已批准视频模型不得退回旧服务器默认策略。
+- 本地尾帧提取失败或提帧文件丢失时，可对 blocked 子镜头执行 retry_shot；源视频须已成功，免费修复提帧后继续原计划，不重交源视频。报价包含仍需首次生成的后续视频，不能将整个动作显示为免费。
 - 依赖失败只阻塞其后代；其他就绪镜头继续完成。缺失本地下载先恢复原任务的下载，不重新提交模型。
 
 ## D.3 Skill 与服务端绑定
@@ -874,7 +875,7 @@ FailureInfo：{category,code,summary,stage,submission_state,provider_task_id,rec
 - affected_shot_ids 包含当前镜头与真实 tail_frame 依赖的传递闭包；kept_shot_ids 为其中可保留的已完成下游；continuation_shot_ids 列明原计划尚未生成而将继续的镜头，其费用包含在报价中。
 - quote_id 绑定计划版本、相关任务/工件、输入及当前报价；执行前重新计算，一旦变化返回 PRODUCTION_QUOTE_EXPIRED。它是乐观并发凭证，不替代 owner、预算和审批。
 - cascade：新计划版本、仅重做报价范围；其他镜头成功结果按哈希复用。only：只重做当前，明确保留旧下游及其来源版本/工件，并记录连贯性风险已被接受；cancel：不建版本、不启动 Job、不产生费用。
-- only/cascade 的报价包含原计划将继续的未完成镜头费用；范围外失败或未知提交任务仍保留失败记录，不自动重交。旧 attempt/版本不覆盖。生产看板始终展示保留/重做影响，不把保留的旧下游伪装成使用了新尾帧。
+- only/cascade 的报价包含原计划将继续的未完成镜头费用；范围外失败或未知提交任务仍保留失败记录，不自动重交。连续 only 重做应保留相同产物的最初来源版本，不能改成复制任务所在版本。旧 attempt/版本不覆盖。生产看板始终展示保留/重做影响，不把保留的旧下游伪装成使用了新尾帧。
 
 ## D.6 Run 生产视图
 
