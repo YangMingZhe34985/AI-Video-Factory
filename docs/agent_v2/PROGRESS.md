@@ -587,3 +587,20 @@ W-Gate 结论：通过。
 验证：静态核对默认 Skill 清单、报告源码链接及文件行号；复核图编排、费用与恢复语义；git check-ignore 确认报告被忽略，git ls-files 确认未跟踪；git diff --check 通过。没有启动应用、连接真实 MySQL/Redis、重跑应用回归或进行付费调用。历史测试证据保持上一条 Claude 记录的实际口径。
 未完成 / 下一步：私人报告已经交付；功能开发停在当前阶段，Phase F 需用户另行安排。
 需要对方或用户决定：无新增；私人资料不要使用 git add -f 纳入版本库。
+
+## 2026-10-18 · Claude · V0 Agent v3 契约
+状态：完成，分支 `agent-v3/V0`，已合入本地 `feat/agent-v2`；未推送。
+背景：用户指出 v2 是“多角色 LLM 编排的工作流”（`graph_v2.route` 按 `recipe_hint` 走五条写死的分支；每个“Agent”只是一次结构化调用；skills 目录实为 ToolSpec），要求做真正的多 Agent 系统，但不能为了展示协作而强行复杂化。这一偏离源自 v2 方案的设计取舍，不是实现缺陷。
+完成内容：
+- DECISIONS D-029（采用 v3 的总边界）、D-030（真实测试范围：`deepseek-v4.1-flash` 文本、`qwen3.7-plus` 多模态且多图一次调用、少量图片生成、禁止视频生成）、D-031（Codex 承担主要实现，Claude 负责契约/Gate/验收/美化；经典路径按生产意图触发并落到系列 + 模板，排在最后）。
+- 方案 r3：`docs/architecture/agent_v3_proposal_claude.md`。
+- 契约：`docs/agent_v3/CONTRACTS.md`（V.1–V.15）。主要内容：Tool / Skill / Agent 边界；生成工具禁止对 Agent 可见；`agent_chat` 函数调用与按回合幂等回放；SKILL.md 与 Blueprint；Agent Card、委派、退回、只由 Producer 提问；工作区；开放但受约束的 Plan IR、编译器与 dry-run；通用节点运行时；Plan Patch 与低风险自动授权；额度；API 与配置；测试不变量。
+- CLAUDE.md / AGENTS.md：当前工作改为 v3；第 4 条改为“工具调用必须受控、生成类只经批准计划执行”；第 5 条改为按 D-030 执行；分支可用 `agent-v3/<ID>`。
+- PLAN：新增“Agent v3”一节（V1–V8 与三次 Gate）。
+给 Codex（从 V1 开始）：
+- 先读 D-029 – D-031 与 v3 契约 V.1 – V.3、V.15。V1 不改任何 Agent 行为，经典、v1、v2 全量回归必须保持不变；`app.skills` 的 re-export 垫片要覆盖现有全部导入路径。
+- `qwen_chat` 的 tools 支持需要兼容 DashScope 兼容接口与 DeepSeek，一次返回多个 tool_calls 时要正确处理。V1 允许做 1–3 次真实函数调用冒烟（`deepseek-v4.1-flash`），用隔离库，并在 PROGRESS 记录次数与费用。
+- `analyze_images` 必须把多张图放在一次调用里（D-030）。
+- V2 与 V3 可以在 V1 合入后并行。Skill 内容从 v2 现有 INSTRUCTION 与契约迁移，不得编造未实测的能力。
+需要用户决定：无。
+
