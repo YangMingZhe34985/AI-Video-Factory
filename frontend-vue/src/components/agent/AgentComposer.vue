@@ -26,7 +26,7 @@
       <li v-for="item in items" :key="item.key" class="chip" :class="{ 'chip-error': item.error }">
         <span class="chip-thumb">
           <img v-if="item.kind === 'image'" :src="item.preview" alt="" />
-          <span v-else class="flex h-full w-full items-center justify-center bg-slate-800 text-white"><PhFilmStrip :size="16" /></span>
+          <span v-else class="flex h-full w-full items-center justify-center bg-slate-800 text-white"><PhFilmStrip v-if="item.kind === 'video'" :size="16" /><PhWaveform v-else-if="item.kind === 'audio'" :size="16" /><PhFileText v-else :size="16" /></span>
           <span v-if="item.progress !== null && !item.done && !item.error" class="chip-progress" :style="{ width: `${item.progress}%` }" />
         </span>
         <span class="min-w-0">
@@ -42,7 +42,7 @@
     </ul>
 
     <div class="composer-bar">
-      <input ref="fileEl" type="file" class="hidden" multiple :accept="ACCEPT" @change="onPick" />
+      <input ref="fileEl" type="file" class="hidden" multiple :accept="ATTACHMENT_ACCEPT" @change="onPick" />
       <button type="button" class="ghost-btn" :disabled="busy || items.length >= maxAttachments" @click="fileEl.click()">
         <PhPaperclip :size="16" /> <span>{{ t('attach') }}</span>
       </button>
@@ -71,9 +71,10 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { PhArrowRight, PhFilmStrip, PhPaperclip, PhSlidersHorizontal, PhX } from '@phosphor-icons/vue'
+import { PhArrowRight, PhFileText, PhFilmStrip, PhPaperclip, PhSlidersHorizontal, PhWaveform, PhX } from '@phosphor-icons/vue'
 import { uploadAgentAttachment } from '@/api/agent'
 import messages from './messages'
+import { ATTACHMENT_ACCEPT, attachmentKind, attachmentDescription, composerReady } from './attachments'
 
 const props = defineProps({
   busy: { type: Boolean, default: false },
@@ -83,8 +84,6 @@ const props = defineProps({
 const emit = defineEmits(['submit'])
 const { t } = useI18n({ useScope: 'local', messages })
 
-const ACCEPT = '.jpg,.jpeg,.png,.webp,.mp4,.mov,.mkv,.webm'
-const VIDEO_EXT = /\.(mp4|mov|mkv|webm)$/i
 const text = ref('')
 const budget = ref(100)
 const items = ref([])
@@ -93,39 +92,34 @@ const dragging = ref(false)
 const hint = ref('')
 const textEl = ref(null)
 const fileEl = ref(null)
-let counter = 0
+let counter = 0, disposed = false
 
 const textOk = computed(() => text.value.trim().length >= 2)
-const uploadsDone = computed(() => items.value.every((item) => item.done || item.error))
-const canSubmit = computed(() => textOk.value && uploadsDone.value && !props.busy && budget.value > 0)
-const blockedReason = computed(() => (textOk.value ? '' : t('textRequired')))
-
-function describe(attachment) {
-  const size = attachment.width && attachment.height ? `${attachment.width}×${attachment.height}` : ''
-  const duration = attachment.duration ? `${Math.round(attachment.duration)}s` : ''
-  return [size, duration].filter(Boolean).join(' · ')
-}
+const canSubmit = computed(() => composerReady(text.value, items.value, props.busy, budget.value))
+const blockedReason = computed(() => !textOk.value ? t('textRequired') : items.value.some((item) => item.error) ? t('attachmentFailed') : '')
 
 async function addFiles(files) {
   hint.value = ''
   for (const file of files) {
+    if (disposed || props.busy) return
     if (items.value.length >= props.maxAttachments) {
       hint.value = t('tooManyAttachments', { max: props.maxAttachments })
       break
     }
-    const isVideo = VIDEO_EXT.test(file.name) || file.type.startsWith('video/')
+    const kind = attachmentKind(file.name)
+    if (!kind) { hint.value = t('unsupportedAttachment'); continue }
     const item = {
-      key: `att-${++counter}`, name: file.name, kind: isVideo ? 'video' : 'image',
-      preview: isVideo ? '' : URL.createObjectURL(file), progress: null, done: false, error: '', attachment: null, meta: '',
+      key: `att-${++counter}`, name: file.name, kind,
+      preview: kind === 'image' ? URL.createObjectURL(file) : '', progress: null, done: false, error: '', attachment: null, meta: '',
     }
     items.value.push(item)
     const live = items.value[items.value.length - 1]
     try {
       const attachment = await uploadAgentAttachment(file, (percent) => { live.progress = percent })
-      if (!items.value.includes(live)) continue
+      if (disposed || !items.value.includes(live)) continue
       live.attachment = attachment
       live.kind = attachment.kind
-      live.meta = describe(attachment)
+      live.meta = attachmentDescription(attachment)
       live.done = true
     } catch (err) {
       live.error = err.response?.data?.error?.message || t('uploadFailed')
@@ -175,7 +169,7 @@ function reset() {
   hint.value = ''
   nextTick(autosize)
 }
-onBeforeUnmount(() => items.value.forEach((item) => item.preview && URL.revokeObjectURL(item.preview)))
+onBeforeUnmount(() => { disposed = true; items.value.forEach((item) => item.preview && URL.revokeObjectURL(item.preview)) })
 defineExpose({ fill, reset })
 </script>
 

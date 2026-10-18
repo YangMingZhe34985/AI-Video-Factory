@@ -10,7 +10,7 @@ export const reviseAgentShot = (id, shot, requestKey) => request.post(`/agent/ru
 export const answerAgentCard = (id, cardId, answers, useDefaults = false) =>
   request.post(`/agent/runs/${id}/actions`, { action: 'answer', card_id: cardId, answers, use_defaults: useDefaults })
 
-// CONTRACTS A.3: one file per request; images and videos.
+// CONTRACTS W.1: one validated image, video, audio or document per request.
 export const uploadAgentAttachment = (file, onProgress) => {
   const data = new FormData()
   data.append('file', file)
@@ -19,6 +19,9 @@ export const uploadAgentAttachment = (file, onProgress) => {
     onUploadProgress: (event) => onProgress?.(event.total ? Math.round((event.loaded / event.total) * 100) : null),
   })
 }
+
+// CONTRACTS W.3: authoritative, side-effect-free transform quote.
+export const quoteAgentTransform = (id, plan, signal) => request.post(`/agent/runs/${id}/transform-quote`, { plan }, { signal, timeout: 180000 })
 
 export const listModels = () => request.get('/models')
 
