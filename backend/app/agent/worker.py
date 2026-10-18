@@ -135,7 +135,7 @@ class AgentWorker:
         previous_status = row.status
         row.snapshot = AgentWorker._merged_snapshot(row, values)
         row.status = values.get("status", "needs_attention")
-        row.error = error
+        row.error = error or values.get("production_error")
         row.command = None
         db.session.commit()
         if previous_status != row.status:

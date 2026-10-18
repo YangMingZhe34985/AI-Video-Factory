@@ -270,7 +270,7 @@ def build_graph(checkpointer, registry=None):
     builder.add_conditional_edges("production_v2_tick", lambda s: {
         "producing": "production_v2_wait", "production_attention": "production_v2_review",
         "awaiting_video_review": "production_v2_review", "awaiting_storyboard": "story_v2_review",
-        "videos_approved": END}[s["status"]])
+        "videos_approved": END, "storyboard_approved": END}[s["status"]])
     builder.add_edge("production_v2_wait", "production_v2_tick")
     builder.add_edge("production_v2_review", "production_v2_tick")
     return builder.compile(checkpointer=checkpointer)

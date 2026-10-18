@@ -112,7 +112,7 @@ def remaining_video_cost(run, version):
     total = 0.0
     for shot in version.plan["shots"]:
         task = tasks.get(shot["shot_id"])
-        if task and (usable_artifact(task) or task.status == "running"):
+        if task and (usable_artifact(task) or task.status in {"running", "failed", "stale", "cancelled"}):
             continue
         data = video_inputs(run, version, shot)
         if data and shot["shot_id"] not in forced:
