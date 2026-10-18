@@ -86,6 +86,8 @@
 
             <UnderstandingCard v-if="requestSpec" :spec="requestSpec" :attachments="attachments" :assumptions="assumptions" />
 
+            <ResearchCard v-if="researchDossier" :dossier="researchDossier" />
+
             <ClarificationCard v-if="pendingCard && selected.status === 'awaiting_input'" :card="pendingCard" :disabled="actionDisabled" @submit="answer" />
 
             <details v-if="answeredCards.length" class="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm dark:border-slate-700 dark:bg-slate-900">
@@ -164,6 +166,7 @@ import DefaultLayout from '@/layouts/DefaultLayout.vue'
 import AgentComposer from '@/components/agent/AgentComposer.vue'
 import RunStepper from '@/components/agent/RunStepper.vue'
 import UnderstandingCard from '@/components/agent/UnderstandingCard.vue'
+import ResearchCard from '@/components/agent/ResearchCard.vue'
 import ClarificationCard from '@/components/agent/ClarificationCard.vue'
 import SimplePlanEditor from '@/components/agent/SimplePlanEditor.vue'
 import ShotPlanEditor from '@/components/agent/ShotPlanEditor.vue'
@@ -185,6 +188,7 @@ let requestKey = null, requestPayload = null, revisionKey = null, revisionPayloa
 const pick = (run, key) => run?.[key] ?? run?.snapshot?.[key] ?? null
 const isV2 = computed(() => (selected.value?.schema_version ?? selected.value?.request?.schema_version) === 2)
 const requestSpec = computed(() => pick(selected.value, 'request_spec'))
+const researchDossier = computed(() => pick(selected.value, 'research_dossier'))
 const pendingCard = computed(() => pick(selected.value, 'pending_card'))
 const attachments = computed(() => pick(selected.value, 'attachments') || [])
 const results = computed(() => pick(selected.value, 'results') || [])
