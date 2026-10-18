@@ -541,6 +541,7 @@ import ToggleSwitch from '@/components/common/ToggleSwitch.vue'
 import WorkflowJobWizard from '@/components/workflow/WorkflowJobWizard.vue'
 import { useWorkflowStore, WORKFLOW_PATHS } from '@/stores/workflow'
 import { useModelStore } from '@/stores/models'
+import { supportsTaskType } from '@/utils/modelCapabilities'
 import { useTemplateStore } from '@/stores/templates'
 import { useSeriesStore } from '@/stores/series'
 import { useToggleResizablePanel } from '@/composables/useResizablePanel'
@@ -636,13 +637,13 @@ const savingI2IConfig = ref(false)
 // Only show flash-speed I2V models for I2I test (NOT main i2v models)
 const i2iTestModels = computed(() =>
   withFallbackModel(
-    modelStore.models.filter((m) => m.task_type === 'image_to_video'),
+    modelStore.models.filter((m) => supportsTaskType(m, 'image_to_video')),
     { model_id: 'wan2.6-i2v-flash', display_name: 'Wan 2.6 I2V Flash' }
   )
 )
 const i2iTestImageModels = computed(() =>
   withFallbackModel(
-    modelStore.models.filter((m) => m.task_type === 'text_to_image'),
+    modelStore.models.filter((m) => supportsTaskType(m, 'text_to_image')),
     { model_id: 'wan2.7-image', display_name: 'Wan 2.7 Image' }
   )
 )

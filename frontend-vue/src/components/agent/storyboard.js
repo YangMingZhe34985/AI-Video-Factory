@@ -14,7 +14,7 @@ export function normalizeStoryRules(rules = {}) {
 
 export function matchesModel(value, model) {
   const requested = norm(label(value))
-  const family = norm(model.model_id?.split(/[-_](?:t2v|i2v|r2v|image)(?:[-_]|$)/i)[0])
+  const family = norm(model.capabilities?.family || model.model_id?.split(/[-_](?:t2v|i2v|r2v|image)(?:[-_]|$)/i)[0])
   return [norm(model.model_id), norm(model.display_name), family].includes(requested)
     || (/[a-z]$/.test(requested) && family.startsWith(requested))
 }
@@ -27,19 +27,36 @@ export function eligibleModels(models, mode, spec = {}) {
     const imageOnly = matches.length > 0 && matches.every((model) => model.task_type === 'text_to_image')
     return spec.deliverable === 'image' ? !video : imageOnly !== video
   }
+  const matches = (value, model) => {
+    const exact = /系列|\b(?:family|series)\b/i.test(value) ? [] : models.filter((item) =>
+      [norm(item.model_id), norm(item.display_name)].includes(norm(label(value))))
+    return exact.length ? exact.some((item) => item.model_id === model.model_id) : matchesModel(value, model)
+  }
   const preferences = (spec.constraints?.model_preferences || []).filter(applies)
   const exclusions = (spec.constraints?.model_exclusions || []).filter(applies)
   return models.filter((model) => model.enabled !== false && model.capabilities?.agent_selectable
     && model.capabilities?.modes?.includes(mode)
-    && preferences.every((value) => matchesModel(value, model))
-    && !exclusions.some((value) => matchesModel(value, model)))
+    && preferences.every((value) => matches(value, model))
+    && !exclusions.some((value) => matches(value, model)))
 }
 
-export function priceFor(models, modelId, quantity, expectedUnit) {
-  const pricing = models.find((model) => model.model_id === modelId)?.capabilities?.pricing
-  if (!pricing || pricing.unit !== expectedUnit || !Number.isFinite(pricing.credits_per_unit)
-    || pricing.credits_per_unit < 0 || !Number.isFinite(quantity) || quantity < 0) return null
-  return round(pricing.credits_per_unit * quantity)
+export function priceFor(models, modelId, quantity, expectedUnit, params = {}) {
+  const model = models.find((item) => item.model_id === modelId)
+  const pricing = model?.capabilities?.pricing
+  if (!pricing || pricing.unit !== expectedUnit || !Number.isFinite(quantity) || quantity < 0) return null
+  const effective = { ...model.default_params, ...params }
+  const rates = pricing.resolution_rates
+  const rate = rates == null ? pricing.credits_per_unit : rates[effective.resolution]
+  if (!Number.isFinite(rate) || rate < 0 || (rates != null && expectedUnit !== 'second')) return null
+  if (expectedUnit === 'second') {
+    const basis = pricing.billing_basis || 'output_seconds'
+    if (!['output_seconds', 'input_plus_output_seconds'].includes(basis)) return null
+    const count = effective.n_outputs ?? 1
+    const incoming = effective.input_video_seconds ?? 0
+    if (!Number.isFinite(count) || count <= 0 || !Number.isFinite(incoming) || incoming < 0 || quantity <= 0) return null
+    return round(rate * (quantity * count + (basis === 'input_plus_output_seconds' ? incoming : 0)))
+  }
+  return round(rate * quantity)
 }
 
 export function previewTargets(plan) {
@@ -78,7 +95,7 @@ export function targetCost(targets, models, previews = {}) {
 }
 
 export function videoCost(plan, models) {
-  const values = (plan?.shots || []).map((shot) => priceFor(models, shot.motion?.model_id, shot.duration_sec, 'second'))
+  const values = (plan?.shots || []).map((shot) => priceFor(models, shot.motion?.model_id, shot.duration_sec, 'second', shot.motion?.params || {}))
   return values.some((value) => value === null) ? null : round(values.reduce((sum, value) => sum + value, 0))
 }
 

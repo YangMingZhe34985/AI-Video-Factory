@@ -13,7 +13,7 @@ def test_seeds_complete_and_preserve_operator_values(app_ctx):
                 "pricing", "quality_tier", "agent_selectable", "notes"}
     for seed in DEFAULT_MODELS:
         model = ModelService.get_model(seed["model_id"])
-        assert set(model.capabilities) == expected
+        assert expected <= set(model.capabilities)
         assert model.capabilities["modes"]
         assert "演示" in model.capabilities["notes"]
         if set(model.capabilities["modes"]) & {"i2i", "i2v", "r2v", "image_understanding"}:

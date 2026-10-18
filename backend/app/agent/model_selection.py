@@ -36,7 +36,7 @@ def _matches(value, model):
     label = _label(value)
     if ModelService.canonical_model_id(label) == model.model_id or _normal(label) == _normal(model.display_name):
         return True
-    family = re.split(r"[-_](?:t2v|i2v|r2v|image)(?:[-_]|$)", model.model_id, flags=re.I)[0]
+    family = ModelService.model_family(model)
     prefix, name = _normal(label), _normal(family)
     return name == prefix or (name.startswith(prefix) and prefix[-1:].isalpha())
 
@@ -70,12 +70,19 @@ def default_model_id(mode):
 def candidates_for_request(spec, mode, *, use_default=True):
     requested, excluded = constraints_for_mode(spec, mode)
     task_type = MODES[mode][0]
-    models = [item for item in ModelRegistry.query.filter_by(task_type=task_type, enabled=True).order_by(ModelRegistry.model_id)
-              if (item.capabilities or {}).get("agent_selectable")
+    catalog = ModelRegistry.query.order_by(ModelRegistry.model_id).all()
+    models = [item for item in catalog if item.enabled
+              and ModelService.supports_task_type(item, task_type) and (item.capabilities or {}).get("agent_selectable")
               and mode in (item.capabilities or {}).get("modes", [])]
+    def matches(value, item):
+        explicit_family = re.search(r"系列|\b(?:family|series)\b", value, re.I)
+        exact = [] if explicit_family else [model.model_id for model in catalog
+            if ModelService.canonical_model_id(_label(value)) == model.model_id
+            or _normal(_label(value)) == _normal(model.display_name)]
+        return item.model_id in exact if exact else _matches(value, item)
     for value in requested:
-        models = [item for item in models if _matches(value, item)]
-    models = [item for item in models if not any(_matches(value, item) for value in excluded)]
+        models = [item for item in models if matches(value, item)]
+    models = [item for item in models if not any(matches(value, item) for value in excluded)]
     if use_default and not requested:
         models = [item for item in models if item.model_id == default_model_id(mode)]
     return models
@@ -106,7 +113,7 @@ def video_policy_for_request(spec):
 def validate_generation_model(model, mode, params=None, reference_count=0):
     """Freeze effective parameters and validate catalog plus provider schema."""
     capabilities = model.capabilities or {}
-    if (not model.enabled or model.task_type != MODES[mode][0] or not capabilities.get("agent_selectable")
+    if (not model.enabled or not ModelService.supports_task_type(model, MODES[mode][0]) or not capabilities.get("agent_selectable")
             or mode not in capabilities.get("modes", [])):
         raise AppError("MODEL_CAPABILITY_MISMATCH", f"Model {model.model_id} cannot perform {mode}", 422)
     node_config = WorkflowService.get_node(MODES[mode][1]).config or {}
@@ -136,8 +143,11 @@ def validate_generation_model(model, mode, params=None, reference_count=0):
         width, height = map(int, effective["size"].split("*"))
         divisor = gcd(width, height)
         ratio = f"{width // divisor}:{height // divisor}" if divisor else None
-    if ratio and ratio not in capabilities.get("aspect_ratios", []):
+    dynamic_size = effective.get("size") and (model.parameter_schema or {}).get("size", {}).get("format") == "image_size"
+    if ratio and not dynamic_size and ratio not in capabilities.get("aspect_ratios", []):
         errors.append("aspect ratio is not supported by the model capability catalog")
+    if mode == "i2i" and effective.get("prompt_extend_mode") == "agent":
+        errors.append("agent prompt extension is not available with reference images")
     maximum = (capabilities.get("reference_images") or {}).get("max", 0)
     if reference_count > maximum or (mode in {"i2i", "i2v", "r2v"} and reference_count < 1):
         errors.append("reference image count is not supported")
