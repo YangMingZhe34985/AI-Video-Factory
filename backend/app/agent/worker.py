@@ -101,7 +101,7 @@ class AgentWorker:
                         and snapshot.values.get("status") == "storyboard_approved"):
                     # Resume the successor of the completed C approval without
                     # replaying creative/preview work or altering historical runs.
-                    config = graph.update_state(config, {"production_command": command}, as_node="story_v2_apply")
+                    graph.update_state(config, {"production_command": command}, as_node="story_v2_apply")
                 value = None
             # Clear inbox only AFTER graph/checkpoint succeeds. If killed here,
             # the persisted checkpoint determines whether to consume it again.

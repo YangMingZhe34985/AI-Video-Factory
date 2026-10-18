@@ -36,6 +36,15 @@ def public_production(run):
             error = {**error, "category": "permanent", "stage": "local", "submission_state": "unknown",
                      "provider_task_id": None, "recovery_action": "stop"}
         unsafe = bool(error and error.get("category") == "submit_unknown")
+        can_retry = False
+        if editable and task and not unsafe:
+            from app.agent.production_repair import classify_job_failure, repair_decision
+            if task.status == "success" and not artifact and task.job_id:
+                from app.models import Job
+                failure = classify_job_failure(Job.query.filter_by(job_id=task.job_id).one())
+                can_retry = failure.get("recovery_action") == "recover_read" and failure.get("stage") == "download"
+            elif run.status == "production_attention" and task.status in {"failed", "stale"}:
+                can_retry = repair_decision(run, task, automatic=False)["action"] in {"recover_read", "retry_submit", "rewrite_prompt"}
         try:
             cost = shot_cost(run, shot)
         except AppError:
@@ -46,8 +55,8 @@ def public_production(run):
             "preview_url": f"/api/artifacts/{artifact.artifact_id}/preview" if artifact else None,
             "download_url": f"/api/artifacts/{artifact.artifact_id}/download" if artifact else None,
             "error": error, "estimated_credits": cost,
-            "repair_count": sum(1 for item in repairs.values() if item.get("shot_id") == sid),
-            "can_retry": editable and (run.status == "production_attention" or (task and task.status == "success" and not artifact)) and status in {"failed", "stale"} and not unsafe,
+            "repair_count": sum(1 for item in repairs.values() if item.get("shot_id") == sid and item.get("action") in {"recover_read", "retry_submit", "rewrite_prompt"}),
+            "can_retry": can_retry,
             "can_redo": editable and status in {"success", "failed", "stale"} and not unsafe,
             "retained": sid in metadata.get("retained_sources", {})})
     spent = BudgetGuard.spent(run.run_id)

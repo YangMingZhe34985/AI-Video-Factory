@@ -89,10 +89,10 @@ def test_one_invalid_shot_preserves_independent_work_then_returns_to_editable_pl
     run_id, board = approved(client)
     registry = build_default_registry()
     original = registry.get("animate_shot")
-    rejected = board["plan"]["shots"][0]["motion"]["prompt"]
+    rejected = board["plan"]["shots"][0]["shot_id"]
 
     def handler(data, ctx):
-        if data.prompt == rejected:
+        if db.session.get(AgentShotTask, ctx.shot_task_id).target_id == rejected:
             raise AppError("INVALID_INPUT", "Injected unsupported parameter", 422)
         return original.handler(data, ctx)
 
