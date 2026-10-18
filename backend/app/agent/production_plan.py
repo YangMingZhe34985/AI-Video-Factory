@@ -5,7 +5,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.agent.model_selection import select_for_request
+from app.agent.model_selection import candidates_for_request, constraints_for_mode, select_for_request
 from app.skills.budget import estimate_model_cost
 
 
@@ -81,7 +81,19 @@ def normalized_plan(raw):
     return plan
 
 
-def estimate_production_plan(plan, story, request_spec):
+def select_plan_model(request_spec, mode, model_id, *, run=None, slot=None):
+    """Only authenticated review edits may replace an unspecified server default."""
+    overrides = (run.snapshot or {}).get("story_model_overrides", {}) if run is not None else {}
+    requested, _excluded = constraints_for_mode(request_spec, mode)
+    if slot and overrides.get(slot) == model_id and not requested:
+        candidate = next((item for item in candidates_for_request(request_spec, mode, use_default=False)
+                          if item.model_id == model_id), None)
+        if candidate is not None:
+            return candidate
+    return select_for_request(request_spec, mode, model_id)
+
+
+def estimate_production_plan(plan, story, request_spec, *, run=None):
     """Price one planned attempt, not already incurred cost or possible retries."""
     preview, video = 0.0, 0.0
     for character in story.get("characters", []):
@@ -89,11 +101,12 @@ def estimate_production_plan(plan, story, request_spec):
             preview += estimate_model_cost(select_for_request(request_spec, "t2i"), {"n": 1})
     for shot in plan["shots"]:
         # The video adapter remains i2v; bridge capability is checked separately.
-        model = select_for_request(request_spec, "i2v", shot["motion"]["model_id"])
+        model = select_plan_model(request_spec, "i2v", shot["motion"]["model_id"], run=run, slot=f"{shot['shot_id']}:motion")
         video += estimate_model_cost(model, {**shot["motion"]["params"], "duration": shot["duration_sec"], "n_outputs": 1})
-        for frame in (shot["first_frame"], shot.get("end_frame")):
+        for field in ("first_frame", "end_frame"):
+            frame = shot.get(field)
             if frame and frame["method"] == "generate":
-                model = select_for_request(request_spec, frame["image_mode"], frame["model_id"])
+                model = select_plan_model(request_spec, frame["image_mode"], frame["model_id"], run=run, slot=f"{shot['shot_id']}:{field}")
                 preview += estimate_model_cost(model, {"n": 1})
     return {"preview_credits": round(preview, 6), "video_credits": round(video, 6),
             "total_credits": round(preview + video, 6)}
