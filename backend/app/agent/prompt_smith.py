@@ -66,13 +66,23 @@ def _mock(data):
 def _run(data, _ctx):
     try:
         result = ShotPrompts.model_validate(structured_call(INSTRUCTION, data, ShotPrompts, lambda: _mock(data), role="prompt_smith"))
-        for key, value in (("first_frame", result.first_frame_prompt), ("end_frame", result.end_frame_prompt)):
+        prefix = data.style.prompt_prefix.strip()
+        for key in ("first_frame", "end_frame"):
+            field = f"{key}_prompt"
+            value = (getattr(result, field) or "").strip()
             frame = getattr(data.shot, key)
             generated = frame is not None and frame.method == "generate"
-            if generated and (not value or not value.startswith(data.style.prompt_prefix)):
-                raise ValueError("Generated image prompts must begin with the style prefix")
+            if generated and not value:
+                raise ValueError("Generated image prompts cannot be empty")
             if not generated and value:
                 raise ValueError("Inherited or user images cannot have a generation prompt")
+            # A paid, otherwise valid prompt that merely omits or reformats the
+            # shared prefix is repaired in code rather than failing the shot.
+            if generated and not value.startswith(prefix):
+                value = f"{prefix}{value}"
+                if len(value) > 8000:
+                    raise ValueError("Prompt exceeds the length limit after adding the style prefix")
+                setattr(result, field, value)
         return result
     except (ValidationError, ValueError) as error:
         raise AppError("PROMPT_VALIDATION_FAILED", "Prompt Smith returned invalid shot prompts", 500) from error

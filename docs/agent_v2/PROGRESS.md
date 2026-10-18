@@ -288,3 +288,28 @@ C0：CONTRACTS C 章定稿（C.1–C.13）；DECISIONS D-012–D-014；PLAN 展�
 协作边界：主目录当前在 Claude 的 agent-v2/C-Gate；不修改该工作树。C-Gate、界面美化与 D-Gate 留 Claude。D5 只新增功能组件和最小接线，集成时保留 Claude 后续变更。
 测试：本轮仅 Mock、隔离 SQLite/存储；不改真实 .env，不进行付费调用、真实库迁移、推送或 PR。
 下一步：D1 依赖调度、D2 媒体 Skill、D3 局部修复、D5 独立组件并行；D4 接入审核/级联动作，最终统一回归并追加完成记录。
+
+## 2026-10-18 · Claude · C-Gate 评审 + 分镜板美化
+状态：完成，分支 `agent-v2/C-Gate`，已合入本地 `feat/agent-v2`。所有 `agent-v2/*` 分支无未合并提交。
+C-Gate 评审结论：通过。
+- 提示词：Creative（用户情节只补全不改写、角色外观锁定、只复用 Research 选定候选、最多 3 个非技术问题）、Director（只写结构不写提示词、衔接规则、按能力拆分、参考图上限时拆交叉镜头而不丢身份）、Prompt Smith（首帧只写静态、动作只写动态、尾帧承接）均与 C 章一致；所有外部内容都作为数据传入，不进系统提示词。
+- 代码边界：Plan Check 纯代码、逐镜头问题可编辑；审核命令带请求键收据与版本校验，入队用条件更新防并发；预览图走 ToolRegistry 图片 Skill；私有预览按 Run 所有者鉴权（`is_private_agent_job`、工件列表按 Run 所有者过滤）。D-015 / D-016 合理。
+- 修复（1 处）：`prompt_smith._run` 原先在真实 LLM 返回的首帧/尾帧提示词没有逐字以 `style.prompt_prefix` 开头时直接判为 `PROMPT_VALIDATION_FAILED`（已计费、不重试，该镜头卡死）。现改为代码补上前缀；空提示词、继承帧带提示词、超长仍然拒绝。原“无效响应计费且不重复调用”测试改用空提示词，新增“缺前缀自动补全且只调用一次”测试。
+- 测试：Codex 交付代码完整回归 **729 passed**（17 分 16 秒）；修复后 story / plan_versions 相关 141 passed（含新增 1 项，合计 730）；`node --test tests/storyboard.test.js` 15 passed；`npm run build` 通过。
+分镜板美化（`StoryboardEditor.vue`，逻辑与事件不变）：
+- 新增 `storyboard-messages.js`，分镜板全部界面文案接入 zh/en（原先在英文界面下是硬编码中文）。本地预检与服务器返回的 `plan_issues` 文案仍为中文（来自 `storyboard.js` 与后端），未改。
+- 头部：图标、状态胶囊（审核中琥珀 / 生成中蓝色转圈 / 已确认绿色）、审核步骤条（角色定妆 → 分镜关键帧 → 分镜确认；没有需要生成的角色时省略第一步）。
+- 概览：时长条按场景着色、标出目标时长刻度与容差余量，有问题的镜头红框；三项费用卡片。故事与风格折叠为卡片，风格用标签展示。
+- 角色卡：竖版定妆图、来源与状态标签；镜头改为响应式卡片网格（16:9 关键帧、编号与时间段角标、衔接方式彩色标签 + 图标、角色列表）。网格按容器宽度自适应，不依赖视口断点。
+- 底部操作栏吸底；有未保存修改时只显示“撤销 / 保存修改”，否则显示“重做过期预览 / 确认分镜”。重做与放弃的确认从页面底部的内联块改为居中模态框（原先在中部镜头点“重做”，确认块出现在页面最底部）。编辑抽屉分“画面 / 时长与模型 / 提示词”三组，顶部显示当前关键帧，保存按钮吸底。
+- 文案修正：角色审核阶段关键帧原显示“排队中”，改为“角色确认后生成”；角色审核提示按状态区分（有修改 / 有失败或过期 / 可以确认），不再总是提示“请先重做失败或过期的定妆图”。
+- 隔离 Mock 实测（临时 SQLite、端口 5056 / 5175、鉴权开启、`AGENT_STORY_V2_ENABLED=true`）：一句话长片 → awaiting_characters → 确认角色 → 关键帧 → 改 s01 时长（版本 3，关键帧不过期，符合输入哈希）→ 改 s02 画面（版本 4，s02 过期）→ 模态框确认重做（约 2 credits）→ 中文界面确认分镜 → storyboard_approved，步骤条全绿、无视频提交、无控制台错误。Mock 关键帧为 1×1 白图，缩略图显示为空白属正常。进程已停止，`.claude/launch.json` 已删除。
+已知未处理：移动端整页横向溢出来自全局侧边栏布局（此前交接已记录），分镜板内部无溢出。
+给 Codex（D0 及 Phase D）：
+- D0 契约已由 Codex 完成（95d9909）。实现时请从 `storyboard_approved` 接续，消费已批准计划版本的逐镜头模型（含 `story_model_overrides`），不要回退到 RequestSpec 默认选型。
+- `agent_shot_tasks` 已为 `video` / `tail_frame` 预留 `target_type`；尾帧依赖与局部修复只处理受影响目标，额外费用需在界面显式确认（与审核 A 的“过期不自动重做”一致）。
+- **D5 集成注意**：`StoryboardEditor.vue` 的模板与样式已整体重写（脚本逻辑、props、事件、`data-testid` 不变），新增文案放在 `storyboard-messages.js`（zh/en）。D5 接线请基于合入后的版本，新文案同样走本地 i18n；生产看板组件可复用该文件中的 `.status-pill`、`.step`、`.notice-*`、`.state-*` 样式约定，视觉统一由我在 D-Gate 处理。
+  - `agent-v2/D5` 对 `StoryboardEditor.vue` 的两处文案改动（副标题、分镜已确认提示）已按 D5 的新措辞写入 `storyboard-messages.js` 的 `subtitle` / `approvedNote`（zh/en）。合并时该文件冲突直接取 `feat/agent-v2` 版本即可。
+- Prompt Smith 现在会补全缺失的风格前缀；若 D 阶段增加新的提示词校验，建议同样优先在代码中修复可确定的格式问题，避免已计费的结果直接失败。
+需要用户决定：无新增。
+
