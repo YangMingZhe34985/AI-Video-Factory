@@ -379,3 +379,15 @@ def test_classic_failed_dependency_path_is_terminal_attention(app_ctx, client):
     assert result["item"]["progress"]["failed"] == 1
     assert result["children"][0]["state"] == "attention"
     assert result["children"][0]["stage"] == "path_failed"
+
+
+def test_agent_helper_job_progress_ignores_skipped_dag_nodes(app_ctx, client):
+    agent = run("alice", "helper", status="awaiting_input")
+    row = job("helper", status="success", config={"current_run": {"run_id": "jr_h", "enabled_nodes": ["reverse_prompts"]}})
+    link(row, agent)
+    for key, status in (("reverse_prompts", "success"), ("submit_i2v", "skipped"), ("submit_t2v", "skipped")):
+        db.session.add(JobNodeRun(job_id=row.id, node_key=key, input_snapshot={"run_id": "jr_h"}, status=status))
+    db.session.commit()
+    item = next(item for item in data(client.get("/api/task-center?source=agent", headers=token("alice")))["items"]
+                if item["id"] == agent.run_id)
+    assert item["progress"] == {"unit": "workflow_nodes", "completed": 1, "failed": 0, "total": 1}

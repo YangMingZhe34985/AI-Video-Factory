@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { buildShotAction, creditText, dependencyText, finiteCredits, isCurrentQuote, productionActionAllowed, productionCounts, productionError, productionRows, quoteImpact, startProductionCost } from '../src/components/agent/production.js'
+import { buildShotAction, creditText, exceedsBudget, dependencyText, finiteCredits, isCurrentQuote, productionActionAllowed, productionCounts, productionError, productionRows, quoteImpact, startProductionCost } from '../src/components/agent/production.js'
 
 const plan = { shots: [
   { shot_id: 's03', order: 3, duration_sec: 15, depends_on: [], summary: '独立场景', motion: { model_id: 'demo-video', mode: 'i2v' } },
@@ -104,4 +104,13 @@ test('blocked tail-frame children can retry only when the server explicitly perm
   assert(productionActionAllowed('production_attention', { status: 'blocked', can_retry: true }, 'retry'))
   assert(!productionActionAllowed('production_attention', { status: 'blocked', can_retry: false }, 'retry'))
   assert(!productionActionAllowed('producing', { status: 'blocked', can_retry: true }, 'retry'))
+})
+
+
+test('redo options above the remaining budget are flagged, unknown budgets are not', () => {
+  assert.equal(exceedsBudget(30, 25), true)
+  assert.equal(exceedsBudget(15, 25), false)
+  assert.equal(exceedsBudget(25, 25), false)
+  assert.equal(exceedsBudget(30, null), false)
+  assert.equal(exceedsBudget(null, 10), false)
 })

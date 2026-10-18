@@ -1,6 +1,6 @@
 export default {
   zh: {
-    title: '视频变换计划', operation_reference: '多模态参考生成', operation_edit: '编辑原视频', operation_extend: '延长原视频',
+    title: '视频变换计划', secondsBar: '计费秒数', costLabel: '服务器报价', secondsUsed: '已用 {used} / {max} 秒上限', inputShort: '输入 {value}s', outputShort: '输出 {value}s', inputLimit: '输入视频上限 15 秒', extendLegend: '主源 {source}s → 最终 {final}s', operation_reference: '多模态参考生成', operation_edit: '编辑原视频', operation_extend: '延长原视频',
     hint: '素材固定。修改提示词、模型或参数后，服务器会重新核验报价；确认后才开始生成。',
     prompt: '生成要求', model: '视频模型', unavailable: '当前模型不可用', duration: '最终整段时长（秒）', resolution: '分辨率',
     fullOutput: '生成的是完整新视频，最终时长等于输出时长；不会自动拼接原片。',
@@ -20,7 +20,7 @@ export default {
     mock: 'Mock 测试产物，不代表真实模型画质；占位文件可能无法播放。', download: '下载视频', downloading: '正在下载…', downloadFailed: '下载失败，请重试。',
   },
   en: {
-    title: 'Video transformation plan', operation_reference: 'Multimodal reference', operation_edit: 'Edit source video', operation_extend: 'Extend source video',
+    title: 'Video transformation plan', secondsBar: 'Billable seconds', costLabel: 'Server quote', secondsUsed: '{used} / {max} s limit used', inputShort: 'Input {value}s', outputShort: 'Output {value}s', inputLimit: 'Input video limit 15 s', extendLegend: 'Source {source}s → final {final}s', operation_reference: 'Multimodal reference', operation_edit: 'Edit source video', operation_extend: 'Extend source video',
     hint: 'References are fixed. Prompt, model and parameter edits require a fresh server quote before generation.',
     prompt: 'Generation instructions', model: 'Video model', unavailable: 'Current model unavailable', duration: 'Final full-video duration (seconds)', resolution: 'Resolution',
     fullOutput: 'This generates a complete new video. Output duration is the final duration; the source is not automatically concatenated.',
