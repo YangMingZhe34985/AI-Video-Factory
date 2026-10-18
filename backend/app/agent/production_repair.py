@@ -169,7 +169,17 @@ def repair_decision(run, task, *, failure=None, automatic=True):
         return {**result, "action": "stop", "reason": "CONTENT_REWRITE_LIMIT_EXCEEDED"}
     if action == "recover_read":
         return result
-    cost = _finite(task.estimated_cost)
+    from app.agent.production_plan import select_plan_model
+    version = versions.get_version(run, task.plan_version)
+    shot = next(item for item in version.plan["shots"] if item["shot_id"] == task.target_id)
+    try:
+        model = select_plan_model((run.snapshot or {}).get("request_spec", {}), "i2v",
+                                  shot["motion"]["model_id"], run=run, slot=f"{task.target_id}:motion")
+        cost = estimate_model_cost(model, {**shot["motion"]["params"], "duration": shot["duration_sec"], "n_outputs": 1})
+    except AppError as error:
+        return {**result, "action": "replan", "reason": error.code,
+                "failure": {**failure, "category": "invalid_parameters", "code": error.code,
+                            "summary": error.message, "recovery_action": "replan"}}
     if action == "rewrite_prompt":
         cost += estimate_model_cost(resolve_agent_model("prompt_smith"), {})
     result["estimated_cost"] = round(cost, 6)
