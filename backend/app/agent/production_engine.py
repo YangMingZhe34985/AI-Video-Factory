@@ -71,14 +71,29 @@ def _inputs(run, version, shot, task=None):
     return data
 
 
-def _local_failure(error):
+def _local_failure(error, *, not_submitted=False):
     invalid = error.code in {"INVALID_INPUT", "INVALID_REFERENCE", "INVALID_PRODUCTION_PLAN",
         "MODEL_CAPABILITY_MISMATCH", "MODEL_SELECTION_UNSATISFIED", "KEYFRAME_BRIDGE_UNAVAILABLE",
         "MODEL_PRICE_CHANGED", "REPAIR_BUDGET_EXCEEDED"}
+    if not invalid and not_submitted:
+        # The ledger proves no Job was launched (e.g. a budget or permission
+        # rejection), so this is a definite stop, not an unknown submission
+        # that would block the shot across versions and explicit redo.
+        return {"category": "permanent", "code": error.code, "summary": error.message, "stage": "local",
+                "submission_state": "not_submitted", "provider_task_id": None, "recovery_action": "stop"}
     return {"category": "invalid_parameters" if invalid else "submit_unknown",
         "code": error.code, "summary": error.message, "stage": "local" if invalid else "submit",
         "submission_state": "not_submitted" if invalid else "unknown", "provider_task_id": None,
         "recovery_action": "replan" if invalid else "stop"}
+
+
+def _never_launched(previous):
+    """Structured ledger evidence that no provider Job exists for this key."""
+    if previous is None:
+        return True  # Rejected before the Registry recorded or ran anything.
+    if previous.status != "rejected" or previous.job_id is not None:
+        return False
+    return Job.query.filter(Job.config["skill"]["invocation_id"].as_string() == previous.invocation_id).first() is None
 
 
 def _submit(run, task, data, registry):
@@ -110,7 +125,8 @@ def _submit(run, task, data, registry):
             versions.update_task(run, task, status="running", invocation_id=previous.invocation_id,
                                  job_id=previous.job.job_id)
         else:
-            versions.update_task(run, task, status="failed", error=_local_failure(error))
+            versions.update_task(run, task, status="failed",
+                                 error=_local_failure(error, not_submitted=_never_launched(previous)))
             event(run, "shot_failed", task=task)
     if task.status == "failed":
         _finish_repairs(run, task)
