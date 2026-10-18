@@ -1,6 +1,7 @@
 """Validated Intake output shared by v2 routing and plan generation."""
 
 from typing import Literal
+import re
 from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -45,7 +46,7 @@ class ResearchNeed(StrictModel):
 class TransformIntent(StrictModel):
     operation: Literal["reference", "edit", "extend"]
     source_attachment_id: str | None = None
-    additional_duration_sec: float | None = Field(default=None, gt=0, le=29, allow_inf_nan=False)
+    additional_duration_sec: float | None = Field(default=None, gt=0, le=29, allow_inf_nan=False, strict=True)
     reference_urls: list[str] = Field(default_factory=list, max_length=1)
 
     @model_validator(mode="after")
@@ -142,6 +143,7 @@ def validate_request_spec(raw: dict | RequestSpec, attachments: list[dict], *, s
         raise ValueError("Model preferences and exclusions must preserve the user's original wording")
     if spec.transform and spec.transform.reference_urls:
         text = source_text if url_source_text is None else url_source_text
-        if text is None or any(url not in text for url in spec.transform.reference_urls):
+        literal_urls = {value.rstrip(".,;!?") for value in re.findall(r'https?://[^\s<>"，。！？；）)]+', text or "")}
+        if text is None or any(url not in literal_urls for url in spec.transform.reference_urls):
             raise ValueError("Reference URLs must occur in the original user text")
     return spec

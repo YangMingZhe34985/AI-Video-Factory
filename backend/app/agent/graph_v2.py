@@ -107,11 +107,26 @@ def build_graph(checkpointer, registry=None):
             if decision.get("action") != "approve" or not decision.get("plan"):
                 raise AppError("APPROVAL_REQUIRED", "Transform approval requires the complete quoted plan", 409)
             raw = decision["plan"]
-            spec = transform_approval_spec(state["request_spec"], state["plan"], raw)
-            plan = validate_transform_plan(raw, spec, run=row, require_quote=True)
+            from app.agent.transform_plan import execution_hash
+            frozen = (row.snapshot or {}).get("transform") or {}
+            frozen_plan = frozen.get("plan") or {}
+            replay = (frozen.get("approved") and frozen.get("plan_hash") == raw.get("plan_hash")
+                      and frozen.get("quote_id") == raw.get("quote_id")
+                      and execution_hash(raw) == frozen.get("plan_hash")
+                      and execution_hash(frozen_plan) == frozen.get("plan_hash"))
+            if replay:
+                # A relational approval can commit before this node checkpoints.
+                # Its immutable receipt survives a crash and any later billing.
+                spec, plan = row.snapshot["request_spec"], frozen_plan
+            else:
+                spec = transform_approval_spec(state["request_spec"], state["plan"], raw)
+                plan = validate_transform_plan(raw, spec, run=row, require_quote=True)
             update = {"request_spec": spec, "plan": plan, "plan_issues": [], "approved": True,
                       "status": "producing", "shots": {}, "transform_error": None, **receipt}
-            update.update(_publish_understanding({**state, **update}))
+            if replay:
+                update["video_model_policy"] = row.snapshot.get("video_model_policy")
+            else:
+                update.update(_publish_understanding({**state, **update}))
             from app.agent.transform_policy import approve
             approve(row, plan)
             update["transform"] = row.snapshot["transform"]

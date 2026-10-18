@@ -163,6 +163,20 @@ def transform_director(state, registry):
     result = invoke_once(registry, SPEC.name, data.model_dump(mode="json"), ctx)["output"]
     plan, issues = result["plan"], []
     if plan:
+        # User durations are requirements for the initial draft. Only a later
+        # explicit edit at the quote/approval boundary may change them.
+        requested = spec.target_duration_sec
+        if requested is None and source_seconds is not None:
+            if spec.transform.operation == "extend":
+                requested = ceil(source_seconds + (spec.transform.additional_duration_sec or 5))
+            elif spec.transform.operation == "edit":
+                requested = ceil(source_seconds)
+        if requested is not None:
+            plan["params"] = {**plan.get("params", {}), "duration": requested}
+        if (source_seconds is not None and spec.target_duration_sec is None
+                and spec.transform.operation in {"edit", "extend"}):
+            note = f"原片实测 {source_seconds:g} 秒；生成最终整段 {requested} 秒，按整数秒向上取整，不拼接原片。"
+            plan["assumptions"] = list(dict.fromkeys([note, *plan.get("assumptions", [])]))[:10]
         try:
             plan = validate_transform_plan(plan, spec, run=run)
         except AppError as error:
