@@ -5,6 +5,7 @@
     "version": "v1.0.0"
   },
   "nav": {
+    "taskCenter": "Task center",
     "dashboard": "Dashboard",
     "workflow": "Workflow",
     "templates": "Templates",

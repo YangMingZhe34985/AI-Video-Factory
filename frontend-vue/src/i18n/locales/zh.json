@@ -5,6 +5,7 @@
     "version": "v1.0.0"
   },
   "nav": {
+    "taskCenter": "任务中心",
     "dashboard": "仪表板",
     "workflow": "工作流",
     "templates": "模板",
