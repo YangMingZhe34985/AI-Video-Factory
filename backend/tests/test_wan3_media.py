@@ -214,3 +214,50 @@ def test_missing_pdf_dependency_is_service_error_not_bad_user_file(app_ctx, monk
     with pytest.raises(AppError) as error: upload_path(path)
     assert error.value.code == "MEDIA_TOOL_UNAVAILABLE" and error.value.status_code == 503
     assert Job.query.count() == Artifact.query.count() == 0
+
+
+def make_video_with_audio(root, *, audio_duration, audio_delay=0):
+    path = root / "with-audio.mp4"
+    result = subprocess.run([VideoCompressionService.resolve_ffmpeg(), "-y", "-nostdin", "-v", "error",
+        "-f", "lavfi", "-i", "color=c=blue:s=320x240:r=24:d=2", "-itsoffset", str(audio_delay),
+        "-f", "lavfi", "-i", f"sine=frequency=440:sample_rate=48000:duration={audio_duration}",
+        "-map", "0:v:0", "-map", "1:a:0", "-c:v", "libx264", "-pix_fmt", "yuv420p",
+        "-c:a", "aac", str(path)], capture_output=True, timeout=30)
+    assert result.returncode == 0, result.stderr
+    return path
+
+
+@pytest.mark.parametrize("audio_duration,audio_delay", [(10, 0), (1, 3)])
+def test_video_rejects_audio_endpoint_after_picture_and_old_cache(app_ctx, audio_duration, audio_delay):
+    from app.services.file_fingerprint import memoized
+    path = make_video_with_audio(StorageService.root(), audio_duration=audio_duration, audio_delay=audio_delay)
+    # A successful pre-fix check must not bypass the stronger audio validation.
+    memoized(path, "wan3-verified-video-v1", lambda _: {"duration_sec": 2.0})
+    with pytest.raises(AppError) as error:
+        Wan3MediaService.inspect(path, "video")
+    assert error.value.code == "INVALID_TRANSFORM_MEDIA"
+    assert "audio extends beyond" in error.value.payload["reason"]
+
+
+@pytest.mark.parametrize("audio_duration,audio_delay", [(2, 0), (1, 0), (1, 0.5)])
+def test_video_accepts_aac_padding_and_short_or_delayed_audio(app_ctx, audio_duration, audio_delay):
+    path = make_video_with_audio(StorageService.root(), audio_duration=audio_duration, audio_delay=audio_delay)
+    result = Wan3MediaService.inspect(path, "video")
+    assert result["duration_sec"] == 2.0
+
+
+@pytest.mark.parametrize("progress", ["", "progress=end\n", "out_time_us=2000000\nprogress=continue\n",
+    "out_time_us=NaN\nprogress=end\n", "out_time_us=inf\nprogress=end\n",
+    "out_time_us=-1\nprogress=end\n", "out_time_us=0\nprogress=end\n",
+    "out_time_us=2000000\nout_time_us=N/A\nprogress=end\n"])
+def test_video_requires_reliable_complete_audio_endpoint(app_ctx, monkeypatch, progress):
+    from app.services.media_probe_service import MediaProbeService
+    path = make_video_with_audio(StorageService.root(), audio_duration=2)
+    original = MediaProbeService._run
+    def decode(source, *, audio=False, decode=False):
+        return ("", progress) if audio else original(source, audio=audio, decode=decode)
+    monkeypatch.setattr(MediaProbeService, "_run", staticmethod(decode))
+    with pytest.raises(AppError) as error:
+        Wan3MediaService.inspect(path, "video")
+    assert error.value.code == "INVALID_TRANSFORM_MEDIA"
+    assert "reliable complete endpoint" in error.value.payload["reason"]

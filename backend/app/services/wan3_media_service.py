@@ -90,7 +90,8 @@ class Wan3MediaService:
     @classmethod
     def inspect(cls, value, kind):
         source = cls.path(value, kind)
-        result = memoized(source, "wan3-verified-" + kind + "-v1", lambda path: cls._inspect(path, kind))
+        version = "v2" if kind == "video" else "v1"
+        result = memoized(source, "wan3-verified-" + kind + "-" + version, lambda path: cls._inspect(path, kind))
         return dict(result)
 
     @classmethod
@@ -162,7 +163,17 @@ class Wan3MediaService:
         frames = re.findall(r"\bn:\s*\d+\s+pts:\s*(-?\d+).*?\bduration:\s*(\d+)", text)
         duration = cls._duration([(int(pts) * scale, int(length) * scale) for pts, length in frames])
         if metadata["has_audio"]:
-            MediaProbeService._run(path, audio=True, decode=True)
+            _, progress = MediaProbeService._run(path, audio=True, decode=True)
+            try:
+                audio_ends = [int(value) / 1_000_000 for value in re.findall(r"^out_time_us=(.*)$", progress, re.MULTILINE)]
+            except (ValueError, OverflowError) as error:
+                raise invalid("Reference video audio has no reliable complete endpoint") from error
+            if (not audio_ends or "progress=end" not in progress or audio_ends[-1] <= 0
+                    or not all(math.isfinite(value) and value >= 0 for value in audio_ends)):
+                raise invalid("Reference video audio has no reliable complete endpoint")
+            # Decode progress preserves delayed audio's endpoint, including AAC padding.
+            if max(audio_ends) > duration + max(0.1, 2 / fps):
+                raise invalid("Reference video audio extends beyond its picture; align the tracks before retrying")
         return {"duration_sec": duration, "width": width, "height": height, "fps": fps}
 
     @classmethod
