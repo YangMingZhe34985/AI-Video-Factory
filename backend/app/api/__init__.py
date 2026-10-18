@@ -120,6 +120,7 @@ def register_blueprints(app):
     from .dashboard import bp as dashboard_bp
     from .dashboard import health_bp
     from .jobs import bp as jobs_bp
+    from .task_center import bp as task_center_bp
     from .models import bp as models_bp
     from .prompts import bp as prompts_bp
     from .prompts import global_bp as global_prompts_bp
@@ -131,6 +132,7 @@ def register_blueprints(app):
     app.register_blueprint(health_bp)
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(jobs_bp)
+    app.register_blueprint(task_center_bp)
     app.register_blueprint(global_prompts_bp)
     app.register_blueprint(prompts_bp)
     app.register_blueprint(models_bp)

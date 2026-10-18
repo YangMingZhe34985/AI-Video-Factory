@@ -21,6 +21,7 @@ export const NAV_ITEMS = [
   { to: '/templates', icon: 'PhFolder', labelKey: 'nav.templates' },
   { to: '/prompts', icon: 'PhChatText', labelKey: 'nav.prompts' },
   { to: '/models', icon: 'PhCube', labelKey: 'nav.models' },
+  { to: '/task-center', icon: 'PhBriefcase', labelKey: 'nav.taskCenter' },
   { to: '/jobs', icon: 'PhBriefcase', labelKey: 'nav.jobs' },
   { to: '/workflow', icon: 'PhGitMerge', labelKey: 'nav.workflow' },
   { to: '/artifacts', icon: 'PhImage', labelKey: 'nav.artifacts' },

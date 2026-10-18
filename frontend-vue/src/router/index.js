@@ -3,6 +3,11 @@ import { useAuthStore } from '@/stores/auth'
 
 const routes = [
   {
+    path: '/task-center',
+    name: 'TaskCenter',
+    component: () => import('@/views/TaskCenterView.vue'),
+  },
+  {
     path: '/agent-studio',
     name: 'AgentStudio',
     component: () => import('@/views/AgentStudioView.vue'),
