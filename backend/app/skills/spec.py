@@ -29,6 +29,7 @@ class ToolContext:
     previous: "ToolInvocation | None" = None
     # Server-only linkage; public Skill schemas never accept this field.
     preview_task_id: int | None = None
+    shot_task_id: int | None = None
 
 
 @dataclass(frozen=True)

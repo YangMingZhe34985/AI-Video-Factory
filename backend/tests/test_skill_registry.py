@@ -30,6 +30,7 @@ def test_registry_exposes_all_tools_with_schemas(app_ctx):
         "analyze_video",
         "animate_shot",
         "download_reference",
+        "extract_frame",
         "fetch_page",
         "generate_image",
         "generate_video",

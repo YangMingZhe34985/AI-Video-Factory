@@ -370,6 +370,9 @@ for _seed in DEFAULT_MODELS:
     if _seed["model_id"] == "wan2.7-image":
         _seed["capabilities"]["modes"].append("i2i")
         _seed["capabilities"]["reference_images"] = {"max": 1}
+    if _seed["model_id"] == "wan2.7-i2v":
+        _seed["capabilities"]["modes"].append("first_last_frame")
+        _seed["capabilities"]["reference_images"] = {"max": 2}
 
 DEFAULT_MODEL_BY_ID = {model["model_id"]: model for model in DEFAULT_MODELS}
 

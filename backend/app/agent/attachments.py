@@ -43,12 +43,12 @@ def attachment_for_owner(artifact_id: str, owner_id: str, *, run_id: str | None 
 
 
 def is_private_agent_job(job: Job) -> bool:
-    return job.strategy == "agent_upload" or bool((job.config or {}).get("agent_story_preview"))
+    return job.strategy == "agent_upload" or any((job.config or {}).get(key) for key in ("agent_story_preview", "agent_story_production"))
 
 
 def require_upload_job_owner(job: Job, owner_id: str) -> None:
     """Keep classic artifacts public while protecting Agent uploads/previews."""
-    preview = (job.config or {}).get("agent_story_preview")
+    preview = (job.config or {}).get("agent_story_preview") or (job.config or {}).get("agent_story_production")
     if preview:
         from app.models import AgentRun
         run = AgentRun.query.filter_by(run_id=preview.get("run_id"), owner_id=owner_id).first()
@@ -68,10 +68,11 @@ def validate_job_attachment_sources(data: dict, owner_id: str) -> None:
     if data.get("source_video_path"):
         target = StorageService.resolve(data["source_video_path"]).resolve()
         # Download receipts also contain private bytes before artifact registration.
-        if target.is_relative_to(StorageService.root() / "agent" / "references"):
+        if any(target.is_relative_to(StorageService.root() / "agent" / child) for child in ("references", "frames")):
             raise AppError("ATTACHMENT_NOT_FOUND", "Reference image requires its owning Agent run", 404)
         candidates = Artifact.query.join(Job).filter(or_(Job.strategy == "agent_upload",
-            Job.config["agent_story_preview"]["run_id"].as_string().is_not(None)),
+            Job.config["agent_story_preview"]["run_id"].as_string().is_not(None),
+            Job.config["agent_story_production"]["run_id"].as_string().is_not(None)),
             func.lower(Artifact.file_path).endswith(target.name.lower(), autoescape=True)).all()
         for artifact in candidates:
             if StorageService.resolve(artifact.file_path).resolve() == target:

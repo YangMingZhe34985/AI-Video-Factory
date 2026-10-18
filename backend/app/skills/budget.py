@@ -122,7 +122,11 @@ def estimate_nodes_cost(node_keys, sample_count: int = 1, *, node_models=None, n
             policy = scope_policy(ctx.budget_scope)
             selected = (node_models or {}).get(key) or (config.get("node_models") or {}).get(key)
             mode = {"submit_t2v": "t2v", "submit_i2v": "i2v", "submit_r2v_flash": "r2v"}[key]
-            model_id = select_video_model(policy, mode, selected).model_id if policy else model_id
+            if ctx.shot_task_id is not None and mode == "i2v":
+                from app.agent.production_policy import model_for_context
+                model_id = model_for_context(ctx, selected).model_id
+            else:
+                model_id = select_video_model(policy, mode, selected).model_id if policy else model_id
         model = ModelService.get_model(model_id, require_enabled=True)
         param_node_key = "submit_i2i_test_i2v" if key == "poll_i2i_test_image" else key
         params = {**(node_config.get("model_params") or {}),

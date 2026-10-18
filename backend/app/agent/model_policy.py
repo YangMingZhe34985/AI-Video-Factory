@@ -168,6 +168,10 @@ def select_video_model(policy: dict, mode: str, requested: str | None = None):
 
 
 def validate_job_policy(job, policy=None):
+    if (job.config or {}).get("agent_story_production"):
+        from app.agent.production_policy import validate_job
+        validate_job(job)
+        return
     enabled = set((job.node_overrides or {}).get("enabled_nodes") or [])
     if not any(node in enabled for _task, node, _default in VIDEO_MODES.values()):
         return

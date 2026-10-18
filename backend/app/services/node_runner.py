@@ -1314,6 +1314,12 @@ class NodeRunner:
                 "first_frame_image artifact is required before submit_i2v",
                 400,
             )
+        last_frame = ArtifactService.latest_for_job(job, "last_frame_image")
+        if (job.config or {}).get("animation_mode") == "first_last_frame" and not last_frame:
+            raise AppError("DEPENDENCY_MISSING", "last_frame_image artifact is required", 422)
+        if (job.config or {}).get("agent_story_production"):
+            from app.agent.model_policy import validate_job_policy
+            validate_job_policy(job)
         model = self._model_for_any(job, node, ["main_i2v", "i2v"], "DEFAULT_I2V_MODEL")
         adapter, payload, response = self._adapter_payload(
             model,
@@ -1321,6 +1327,7 @@ class NodeRunner:
                 "prompt": prompt.content,
                 "prompt_version": prompt.version,
                 "first_frame_image": first_frame.file_path,
+                **({"last_frame_image": last_frame.file_path} if last_frame else {}),
                 "negative_prompt": self._negative_prompt(job),
             },
             job=job,
