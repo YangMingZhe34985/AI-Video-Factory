@@ -70,6 +70,9 @@ def process_event(event_id, expected_phase=None):
         if task:
             task.queue_attempts += 1
             code = getattr(error, "status_code", None)
+            if (job.config or {}).get("agent_story_production"):
+                from app.agent.production_repair import failure_evidence
+                task.queue_data = {**(task.queue_data or {}), "failure_detail": failure_evidence(error, phase)}
             # A transport failure or server error after POST may have billed already.
             if phase == "submit" and code != 429:
                 fail(task, str(error), unknown=not (isinstance(code, int) and 400 <= code < 500))
@@ -92,6 +95,8 @@ def process_event(event_id, expected_phase=None):
         return
     task.response_payload = response
     task.error_message = None
+    if (job.config or {}).get("agent_story_production") and task.queue_data:
+        task.queue_data = {key: value for key, value in task.queue_data.items() if key != "failure_detail"}
     reason = inactive_reason(task)
     if reason:
         if phase == "submit":

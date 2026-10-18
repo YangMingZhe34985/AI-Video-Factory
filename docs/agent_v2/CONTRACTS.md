@@ -832,16 +832,19 @@ AGENT_STORY_V2_ENABLED 与 AGENT_STORY_PRODUCTION_ENABLED 均默认 false。已�
 - 幂等键：{run}:production:{version}:{target_type}:{shot_id}:{attempt}:{inputs_hash前12位}。成功输入相同则复用；未知结果禁止新 key 重交。
 - 编译/批准元数据保存在 run.snapshot.production；至少包含 plan_version、approved_version、status、repair_budget_credits。worker 保存 checkpoint 时必须保留此权威数据及 production_action_receipts、production_repairs。任务与回执是重启恢复依据，不依赖进程内 Future。
 - begin 时重新检查全部剩余视频费用与显式修复额度；每个 ToolRegistry.invoke 再次检查同一 Run 预算。已完成图片不重复计费，已批准视频模型不得退回旧服务器默认策略。
+- 本地尾帧提取失败或提帧文件丢失时，可对 blocked 子镜头执行 retry_shot；源视频须已成功，免费修复提帧后继续原计划，不重交源视频。报价包含仍需首次生成的后续视频，不能将整个动作显示为免费。
 - 依赖失败只阻塞其后代；其他就绪镜头继续完成。缺失本地下载先恢复原任务的下载，不重新提交模型。
 
 ## D.3 Skill 与服务端绑定
 
-ToolContext 追加 shot_task_id:int|null，仅由服务器设置，公共 Skill JSON 不接受。生成任务必须属于当前 Run、当前已批准版本，输入哈希与冻结镜头/参考工件完全一致。
+ToolContext 追加 shot_task_id:int|null，仅由服务器设置，公共 Skill JSON 不接受。生成任务必须属于当前 Run、当前已批准版本，输入哈希与冻结镜头/参考工件完全一致。唯一提示词例外是已预留的 production_repairs 合规改写：绑定同一 Run/镜头/版本/replacement_task_id，且只允许使用回执中的 motion_prompt。
 - animate_shot 保留输入 first_frame_artifact_id、last_frame_artifact_id|null、prompt、model_id、params。无尾帧时 i2v；有尾帧时要求 AGENT_ENABLE_KEYFRAME_BRIDGE 和 first_last_frame 能力，服务商必须真正传递尾帧。按 params.duration 秒计费，不增加另一张视频费用。
 - extract_frame 输入 {video_artifact_id,position:"first"|"last",timestamp_sec?:number|null}，输出 {artifact_id,source_artifact_id,position,timestamp_sec}；零 credits 的 WRITE Skill，经 ToolRegistry.invoke，限制角色 production/system。仅接收归属正确的工件 ID，不能传任意路径/网址；校验文件并用持久收据重放。
 - 提帧使用本地媒体服务；Mock 可仅对固定 Mock 视频哨兵提供有效 PNG 替身，但必须另用有效 MP4 验证真实 FFmpeg 首/尾帧行为，不把该替身当成真实视频质量验证。
 - Job 启动前写 agent_story_production={run_id,plan_version,shot_id,task_id}；生产/提帧工件的预览、下载、引用、复制均受 Run 归属保护。无该标记的经典 Job 保持原权限行为。
 - 冻结的审核选型同样适用于预算报价、Job 重启恢复、MQ 提交；不能只放宽整个 budget_scope。
+- 公共 Skill / Job 重跑入口不能替代生产动作授权（D-022）：生产 Job 派发与恢复需要服务端内部许可，绑定 Job 与执行参数；请求体不能提供该许可。未授权重交返回 UNSAFE_RETRY(409)，经典无标记 Job 不受影响。
+- 私有 Job 的提示词不再同步到公共模板；公共提示词/作业列表及显式 Job 提示词按归属保护。agent_workspace 和含私有 Job 的模板禁止公开打包/下载和无 Job 范围的提示词聚合，包含历史 ZIP 与历史同步提示词；其他经典模板包保持原行为（D-022）。
 
 ## D.4 失败分类与修复
 
@@ -853,7 +856,7 @@ FailureInfo：{category,code,summary,stage,submission_state,provider_task_id,rec
 - invalid_parameters：标记 replan，返回分镜规划/审核域供修正并再次确认；执行层不静默换模型、改变时长或整片重做。
 - 其他错误停止该镜头；不使全部独立镜头失败。
 - 单镜头自动修复次数 <= AGENT_MAX_SHOT_AUTO_REPAIRS（硬上限 2），额外费用 <= AGENT_MAX_SHOT_REPAIR_CREDITS；所有镜头共享 start_production 显式授权的 repair_budget_credits（默认 0）。免费恢复也有次数上限；额度和内容改写次数跨计划版本累计。
-- 修复回执位于 snapshot.production_repairs，以失败 task.id 为 key，包含 action/category/status/reserved_credits/replacement_task_id/motion_prompt；先持久预留，重复 tick 不重复修订/提交。未经授权的新付费调用停止并展示原因。
+- 修复回执位于 snapshot.production_repairs，以失败 task.id 为 key，包含 action/category/status/reserved_credits/replacement_task_id/motion_prompt；先持久预留，重复 tick 不重复修订/提交。未经授权的新付费调用停止并展示原因。显式手动 retry 以报价授权单次费用，不受自动额度/次数上限限制；仍遵守 Run 预算、未知提交停止及每镜头内容改写一次上限。
 - 内部边界：production_repair 提供 classify_job_failure、repair_decision、claim_repair、rewrite_motion_prompt、recover_read、record_repair；实际新 video task/提交由调度器负责。经典失败 Agent 与 D 修复不能同时作用于同一个生产 Job。
 
 ## D.5 动作与报价
@@ -863,18 +866,18 @@ FailureInfo：{category,code,summary,stage,submission_state,provider_task_id,rec
 | action | 状态 | 追加字段 |
 |---|---|---|
 | start_production | storyboard_approved | plan_version, repair_budget_credits（默认0） |
-| retry_shot | production_attention | shot_id, base_version, quote_id |
+| retry_shot | production_attention；awaiting_video_review 仅允许免费恢复已完成视频的下载 | shot_id, base_version, quote_id |
 | redo_shot | production_attention / awaiting_video_review | shot_id, base_version, quote_id, scope:"only" / "cascade" / "cancel", motion_prompt? |
 | review_plan | production_attention | plan_version |
 | approve_videos | awaiting_video_review | plan_version |
 
 所有版本均必须是当前版本。启动/审核再次校验图片或视频完整性和模型约束；review_plan 进入现有 awaiting_storyboard，保留旧产物，修改后重新审核 A、再显式开始生产。不自动抹除已完成无关镜头。
 只读报价：POST /api/agent/runs/<id>/production/quote，body={shot_id,base_version,operation:"redo"|"retry",motion_prompt?}，不启动任务或改版本。
-返回 {quote_id,base_version,shot_id,affected_shot_ids,kept_shot_ids,estimated_credits:{only,cascade},can_retry,reason,warnings}：
-- affected_shot_ids 包含当前镜头与真实 tail_frame 依赖的传递闭包；kept_shot_ids 为其中可保留的已完成下游。
+返回 {quote_id,base_version,shot_id,affected_shot_ids,kept_shot_ids,continuation_shot_ids?,estimated_credits:{only,cascade},can_retry,reason,warnings}：
+- affected_shot_ids 包含当前镜头与真实 tail_frame 依赖的传递闭包；kept_shot_ids 为其中可保留的已完成下游；continuation_shot_ids 列明原计划尚未生成而将继续的镜头，其费用包含在报价中。
 - quote_id 绑定计划版本、相关任务/工件、输入及当前报价；执行前重新计算，一旦变化返回 PRODUCTION_QUOTE_EXPIRED。它是乐观并发凭证，不替代 owner、预算和审批。
 - cascade：新计划版本、仅重做报价范围；其他镜头成功结果按哈希复用。only：只重做当前，明确保留旧下游及其来源版本/工件，并记录连贯性风险已被接受；cancel：不建版本、不启动 Job、不产生费用。
-- 旧 attempt/版本不覆盖。生产看板始终展示保留/重做影响，不把保留的旧下游伪装成使用了新尾帧。
+- only/cascade 的报价包含原计划将继续的未完成镜头费用；范围外失败或未知提交任务仍保留失败记录，不自动重交。连续 only 重做应保留相同产物的最初来源版本，不能改成复制任务所在版本。旧 attempt/版本不覆盖。生产看板始终展示保留/重做影响，不把保留的旧下游伪装成使用了新尾帧。
 
 ## D.6 Run 生产视图
 

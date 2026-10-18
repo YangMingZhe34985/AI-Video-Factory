@@ -184,7 +184,7 @@ docs/agent_v2/
 周 6       E1 E2 E3 E4 ─► E-Gate ─► F1 F3（F2 待批准）
 ```
 
-额度分配建议：Claude 的投入集中在 P0-3、各章契约（A/B/C/D 共 4 次）、A5、A7（含界面美化，用户指定）、C1、C4、C6、D1，以及 5 次阶段评审；其他任务及后续分工调整以 `docs/agent_v2/PLAN.md` 为准。
+当前分工：用户指定 C1–C7 与 D0–D5 由 Codex 完成，Claude 保留 A5、A7、B5、界面美化及阶段评审。D0–D5 已完成 Mock 验收，D-Gate 待 Claude 接手；后续调整以 `docs/agent_v2/PLAN.md` 为准。
 
 ---
 

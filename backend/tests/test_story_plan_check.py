@@ -137,18 +137,23 @@ def test_preview_remaining_override_avoids_double_reserving_spent_previews(app_c
     assert remaining["estimates"]["preview_credits"] == 0
 
 
-def test_bridge_requires_both_flag_and_capability(app_ctx):
+@pytest.mark.parametrize("enabled,capable", [(False, False), (False, True), (True, False), (True, True)])
+def test_bridge_requires_both_flag_and_capability(app_ctx, enabled, capable):
     run, state = planned()
     shot = state["plan"]["shots"][1]
     shot["transition_in"] = "keyframe_bridge"
     shot["motion"]["mode"] = "first_last_frame"
     shot["end_frame"] = deepcopy(shot["first_frame"])
-    app_ctx.config["AGENT_ENABLE_KEYFRAME_BRIDGE"] = True
-    assert "KEYFRAME_BRIDGE_UNAVAILABLE" in {issue["code"] for issue in check(run, state)["issues"]}
+    app_ctx.config["AGENT_ENABLE_KEYFRAME_BRIDGE"] = enabled
     model = select_for_request(state["request_spec"], "i2v")
-    model.capabilities = {**model.capabilities, "modes": [*model.capabilities["modes"], "first_last_frame"], "reference_images": {"max": 2}}
+    modes = [mode for mode in model.capabilities["modes"] if mode != "first_last_frame"]
+    model.capabilities = {**model.capabilities, "modes": [*modes, *(["first_last_frame"] if capable else [])],
+                          "reference_images": {"max": 2}}
     db.session.commit()
-    assert check(run, state)["issues"] == []
+    before = ToolInvocation.query.count()
+    issues = check(run, state)["issues"]
+    assert [issue["code"] for issue in issues] == ([] if enabled and capable else ["KEYFRAME_BRIDGE_UNAVAILABLE"])
+    assert ToolInvocation.query.count() == before
 
 
 def test_prompt_smith_writes_each_shot_with_style_and_identity_and_replays(app_ctx):

@@ -463,13 +463,17 @@ class JobService:
         return artifacts
 
     @staticmethod
-    def list_jobs(params: dict) -> dict:
+    def list_jobs(params: dict, *, owner_id: str | None = None) -> dict:
         page = max(int(params.get("page") or 1), 1)
         per_page = min(
             max(int(params.get("perPage") or params.get("per_page") or params.get("limit") or 20), 1),
             500,
         )
         query = Job.query
+        if owner_id is not None:
+            from app.agent.private_views import hidden_job_ids
+            query = query.filter(~Job.id.in_(hidden_job_ids(owner_id)))
+        visible_query = query
 
         status = (params.get("status") or "").strip()
         if status:
@@ -511,7 +515,7 @@ class JobService:
             "partial_success",
         ]
         status_counts = {
-            status_key: Job.query.filter(Job.status == status_key).count()
+            status_key: visible_query.filter(Job.status == status_key).count()
             for status_key in statuses
         }
         jobs = (

@@ -83,10 +83,11 @@ class AgentWorker:
                     # the inbox is cleared. Its checkpoint receipt prevents rebilling.
                     self._save(row, snapshot.values, None)
                     return
-                if kind in {"tasks", "analysis", "previews"}:
+                if kind in {"tasks", "analysis", "previews", "production_tasks"}:
                     value = Command(resume={"action": "poll"})
                 elif command and command["action"] in {"approval": {"approve", "reject"}, "delivery": {"deliver", "revise"},
                                                        "clarify": {"answer"},
+                                                       "production_review": {"retry_shot", "redo_shot", "review_plan", "approve_videos"},
                                                        "characters": {"approve_characters", "regenerate", "reject"},
                                                        "storyboard": {"edit_plan", "regenerate", "regenerate_stale", "approve_storyboard", "reject"}}.get(kind, set()):
                     value = Command(resume=command)
@@ -96,6 +97,11 @@ class AgentWorker:
             else:
                 # Continue the latest checkpoint after a crash. In particular,
                 # never replay an approval against a later interrupt.
+                if (version == 2 and command and command.get("action") == "start_production"
+                        and snapshot.values.get("status") == "storyboard_approved"):
+                    # Resume the successor of the completed C approval without
+                    # replaying creative/preview work or altering historical runs.
+                    graph.update_state(config, {"production_command": command}, as_node="story_v2_apply")
                 value = None
             # Clear inbox only AFTER graph/checkpoint succeeds. If killed here,
             # the persisted checkpoint determines whether to consume it again.
@@ -117,7 +123,8 @@ class AgentWorker:
     def _merged_snapshot(row, values):
         # These receipts commit with relational plan/task writes, independently
         # of graph checkpoints; never drop them on a crash or an inbox retry.
-        preserved = {key: row.snapshot[key] for key in ("plan_operations", "story_action_receipts", "story_model_overrides")
+        preserved = {key: row.snapshot[key] for key in ("plan_operations", "story_action_receipts", "story_model_overrides",
+                     "production", "production_action_receipts", "production_repairs")
                      if key in (row.snapshot or {})}
         return {**dict(values), **preserved}
 
@@ -128,7 +135,7 @@ class AgentWorker:
         previous_status = row.status
         row.snapshot = AgentWorker._merged_snapshot(row, values)
         row.status = values.get("status", "needs_attention")
-        row.error = error
+        row.error = error or values.get("production_error")
         row.command = None
         db.session.commit()
         if previous_status != row.status:

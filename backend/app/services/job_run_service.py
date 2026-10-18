@@ -36,7 +36,7 @@ class JobRunService:
         force: bool = False,
         restart: bool = False,
     ) -> dict:
-        job = cls._prepare(job_id, run_type, node_key)
+        job = cls._prepare(job_id, run_type, node_key, force=force, restart=restart)
         from app.models import JobDispatch
         # Queue ownership survives admission being switched off during drain.
         if current_app.config.get("MQ_ENABLED", False) or JobDispatch.query.filter_by(job_id=job.id).first():
@@ -65,7 +65,7 @@ class JobRunService:
         restart: bool = False,
     ) -> dict:
         """Run synchronously in the caller's thread (tests and scripts)."""
-        job = cls._prepare(job_id, run_type, node_key)
+        job = cls._prepare(job_id, run_type, node_key, force=force, restart=restart)
         if restart and run_type == "run_full":
             cls._begin_restart(job)
         return cls._dispatch(job_id, run_type, node_key, force)
@@ -91,10 +91,12 @@ class JobRunService:
         return bool(thread and thread.is_alive())
 
     @classmethod
-    def _prepare(cls, job_id: str, run_type: str, node_key: str | None) -> Job:
+    def _prepare(cls, job_id: str, run_type: str, node_key: str | None, *, force=False, restart=False) -> Job:
         if run_type not in RUN_TYPES:
             raise AppError("INVALID_INPUT", f"Unknown run type: {run_type}", 400)
         job = JobService.get_job(job_id)
+        from app.agent.production_policy import validate_dispatch
+        validate_dispatch(job, run_type, node_key, force, restart)
         if run_type == "run_from":
             cls.validate_start_node(job, node_key or "")
         elif run_type == "run_node":

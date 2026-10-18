@@ -94,8 +94,13 @@ def pin_model(
         owner = AgentRun.query.filter_by(run_id=ctx.budget_scope).first()
         if owner and (owner.request or {}).get("schema_version") == 2:
             raise AppError("INVALID_AGENT_STATE", "Understanding must finish before video generation", 409)
-    model = (select_video_model(policy, capability, model_id) if policy
-             else model_guard.effective_model(capability, node_key, model_id))
+    if ctx and ctx.shot_task_id is not None and capability == "i2v":
+        from app.agent.production_policy import model_for_context
+        model = model_for_context(ctx, model_id)
+        policy = {**(policy or {}), "source": "user", "allowed_model_ids": [model.model_id]}
+    else:
+        model = (select_video_model(policy, capability, model_id) if policy
+                 else model_guard.effective_model(capability, node_key, model_id))
     if policy:
         job_config["video_model_policy"] = policy
     supplied = model_guard.validate_params(model, params or {})
@@ -127,6 +132,11 @@ def resolve_artifact(artifact_id: str, image_only: bool = False, ctx: ToolContex
                 artifact = reference_for_run(artifact.artifact_id, run)
             elif (artifact.job.config or {}).get("skill", {}).get("budget_scope") != run.run_id:
                 raise AppError("ATTACHMENT_NOT_FOUND", "Artifact is not part of this run", 404)
+    if ctx:
+        from app.services.storage_service import StorageService
+        path = StorageService.resolve(artifact.file_path)
+        if not path.resolve().is_relative_to(StorageService.root()) or not path.is_file():
+            raise AppError("ATTACHMENT_NOT_FOUND", "Artifact file is unavailable", 404)
     if image_only and not str(artifact.mime_type or "").startswith("image/"):
         raise AppError(
             "INVALID_INPUT",
@@ -153,6 +163,8 @@ def launch(
     # succeeded are skipped, so nothing paid is submitted twice.
     if ctx.previous is not None and ctx.previous.job is not None:
         job = ctx.previous.job
+        from app.agent.production_policy import reject_manual_dispatch
+        reject_manual_dispatch(job)
         from app.agent.model_policy import validate_job_policy
         validate_job_policy(job)
         JobRunService.start(job.job_id, "run_full")
@@ -174,6 +186,9 @@ def launch(
             raise AppError("INVALID_REFERENCE", "Invalid preview task linkage", 422)
         config["agent_story_preview"] = {"run_id": preview.run_id, "plan_version": preview.plan_version,
                                          "target_type": preview.target_type, "target_id": preview.target_id}
+    if ctx.shot_task_id is not None:
+        from app.agent.production_policy import job_marker
+        config["agent_story_production"] = job_marker(ctx)
     job = JobService.create_job(
         {
             "template_id": template.template_id,
@@ -190,7 +205,12 @@ def launch(
         invocation = ToolInvocation.query.filter_by(invocation_id=ctx.invocation_id).one()
         invocation.job = job
         db.session.commit()
-    JobRunService.start(job.job_id, "run_full")
+    if ctx.shot_task_id is not None:
+        from app.agent.production_policy import authorized_job_dispatch
+        with authorized_job_dispatch(job, "run_full"):
+            JobRunService.start(job.job_id, "run_full")
+    else:
+        JobRunService.start(job.job_id, "run_full")
     return job
 
 

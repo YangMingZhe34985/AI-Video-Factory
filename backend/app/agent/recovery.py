@@ -52,11 +52,24 @@ def recover_job(job: Job, scope: str) -> None:
         node.ended_at = utc_now()
     job.status = "pending"
     db.session.commit()
-    JobRunService.start(job.job_id, "run_full")
+    from app.agent.production_policy import authorized_job_dispatch
+    with authorized_job_dispatch(job, "run_full"):
+        JobRunService.start(job.job_id, "run_full")
 
 
 def invoke_once(registry, name, data, ctx):
     """Replay completed side effects, never use Registry's paid failure retry implicitly."""
+    if name == "extract_frame":
+        # Free local extraction owns a durable artifact + output receipt; an
+        # interrupted handler may safely reconstruct that receipt.
+        return registry.invoke(name, data, ctx)
+    if ctx.shot_task_id is not None:
+        from app.agent.production_policy import validate_submission
+        spec = registry.get(name)
+        parsed = registry._validate_input(spec, data)
+        registry._authorize(spec, ctx)
+        ctx.tool_name = name
+        validate_submission(parsed, ctx)
     previous = ToolInvocation.query.filter_by(idempotency_key=ctx.idempotency_key).first()
     if previous:
         spec = registry.get(name)

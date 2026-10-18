@@ -35,8 +35,35 @@ def public_view(run):
         row.estimated_cost for row in ToolInvocation.query.filter_by(budget_scope=run.run_id, tool_name="generate_image")
         if row.status != "rejected"))
     return {"story": version.story_package, "plan": version.plan, "plan_version": version.version,
-            "plan_issues": version.check.get("issues", []), "estimates": estimates,
+            "plan_issues": _review_issues(run, version), "estimates": estimates,
             "previews": preview_view(run, version), "story_rules": rules()}
+
+
+def _review_issues(run, version):
+    """Re-project only the budget issue when returning from production to review.
+
+    Immutable checks still describe their original draft. Once this version's
+    actual previews are ready, the production estimator can prove which exact
+    video inputs are reusable without making speculative draft assumptions.
+    """
+    issues = deepcopy(version.check.get("issues", []))
+    if run.status != "awaiting_storyboard" or not (run.snapshot or {}).get("production"):
+        return issues
+    from app.agent.production_state import remaining_video_cost
+    try:
+        require_previews(run, version, "all")
+        remaining = remaining_video_cost(run, version)
+    except AppError:
+        return issues
+    issues = [item for item in issues if item["code"] != "BUDGET_EXCEEDED"]
+    try:
+        BudgetGuard.check(run.run_id, run.request["budget_limit"], remaining)
+    except AppError as error:
+        if error.code != "BUDGET_EXCEEDED":
+            raise
+        issues.append({"code": "BUDGET_EXCEEDED", "shot_id": None,
+                       "message": "剩余预算不足以支付尚需生成的视频，请调整分镜或预算。"})
+    return issues
 
 
 def missing_prompt_issues(plan):
@@ -124,10 +151,15 @@ def validate_command(run, command, *, review_status=None):
         require_previews(run, version, "all")
         checked = check_plan(version.plan, version.story_package, run.snapshot["request_spec"], run=run, preview_credits=0)
         checked["issues"].extend(missing_prompt_issues(checked["plan"]))
+        cost = checked["estimates"]["video_credits"]
+        if (run.snapshot or {}).get("production"):
+            from app.agent.production_state import remaining_video_cost
+            cost = remaining_video_cost(run, version)
+            checked["issues"] = [item for item in checked["issues"] if item["code"] != "BUDGET_EXCEEDED"]
         if checked["issues"]:
             raise AppError("INVALID_PRODUCTION_PLAN", "分镜仍有问题，请修改后再确认。", 422,
                            payload={"plan_issues": checked["issues"]})
-        BudgetGuard.check(run.run_id, run.request["budget_limit"], checked["estimates"]["video_credits"])
+        BudgetGuard.check(run.run_id, run.request["budget_limit"], cost)
     elif action == "approve_characters":
         require_previews(run, version, "characters")
         characters = {item["character_id"]: item for item in version.story_package["characters"]}

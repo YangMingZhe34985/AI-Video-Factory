@@ -6,7 +6,7 @@ from werkzeug.exceptions import RequestEntityTooLarge
 
 from app.agent.clarify import resolve_answers
 from app.agent.attachments import attachment_for_owner, describe_attachment, invalid_attachment, upload_attachment
-from app.agent.protocol import CreateRun, RunAction, validate_plan, validate_request, validate_shot
+from app.agent.protocol import CreateRun, ProductionQuote, RunAction, validate_plan, validate_request, validate_shot
 from app.agent.plan_spec import shot_cost
 from app.agent.release import ensure_admission
 from app.agent.monitoring import run_metrics
@@ -92,6 +92,8 @@ def serialize(row):
                       results=snapshot.get("results", []))
         from app.agent.story_actions import public_view
         result.update(public_view(row))
+        from app.agent.production_view import public_production
+        result["production"] = public_production(row)
         result["summary"] = {"steps_total": total,
                              "steps_success": sum(shot.get("status") == "success" for shot in shots),
                              "steps_failed": sum(shot.get("terminal", False) and shot.get("status") != "success" for shot in shots)}
@@ -168,6 +170,9 @@ def approved_plan(row, edited):
 def action(run_id):
     data = parse(RunAction)
     row = get_run(run_id)
+    from app.agent.production_actions import PRODUCTION_ACTIONS
+    if data.action in PRODUCTION_ACTIONS:
+        return production_action(row, data)
     from app.agent.story_actions import STORY_ACTIONS, REVIEW_STATUSES
     if data.action in STORY_ACTIONS or (data.action == "reject" and row.status in REVIEW_STATUSES):
         return story_action(row, data)
@@ -263,3 +268,47 @@ def _admit_story_action(row, data):
     db.session.commit()
     db.session.refresh(row)
     return api_success({**serialize(row), "action_estimated_credits": estimate}, 202)
+
+
+@bp.post("/runs/<run_id>/production/quote")
+def production_quote(run_id):
+    from app.agent.production_actions import quote
+    return api_success(quote(get_run(run_id), parse(ProductionQuote).model_dump(mode="json", exclude_none=True)))
+
+
+def production_action(row, data):
+    """Admit one production command; effects belong to the graph worker only."""
+    from copy import deepcopy
+    from hashlib import sha256
+    from app.agent.plan_versions import _lock_run
+    from app.agent.production_actions import command_payload, receipt_fingerprint, validate_command
+    try:
+        row = _lock_run(row)
+        command = command_payload(data)
+        key = command["request_key"]
+        fingerprint = receipt_fingerprint(command)
+        snapshot = deepcopy(row.snapshot or {})
+        receipts = snapshot.setdefault("production_action_receipts", {})
+        receipt = receipts.get(key)
+        if receipt:
+            if receipt["inputs_hash"] != fingerprint:
+                raise AppError("IDEMPOTENCY_KEY_CONFLICT", "操作标识已用于其他内容。", 409)
+            db.session.commit()
+            return api_success({**serialize(row), "action_estimated_credits": receipt.get("estimated_cost", 0)}, 202)
+        if row.command is not None:
+            raise AppError("INVALID_AGENT_STATE", "已有操作等待处理。", 409)
+        expected = row.status
+        estimate = validate_command(row, command)
+        command["command_id"] = "production:" + sha256(key.encode()).hexdigest()
+        receipts[key] = {"inputs_hash": fingerprint, "command_id": command["command_id"],
+                         "estimated_cost": estimate, "status": "queued"}
+        changed = AgentRun.query.filter_by(id=row.id, status=expected).filter(AgentRun.command.is_(None)).update(
+            {"command": command, "snapshot": snapshot}, synchronize_session=False)
+        if not changed:
+            raise AppError("INVALID_AGENT_STATE", "另一个操作已更新此任务。", 409)
+        db.session.commit()
+        db.session.refresh(row)
+        return api_success({**serialize(row), "action_estimated_credits": estimate}, 202)
+    except Exception:
+        db.session.rollback()
+        raise

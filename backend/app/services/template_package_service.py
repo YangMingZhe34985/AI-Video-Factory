@@ -35,6 +35,7 @@ class TemplatePackageService:
     @staticmethod
     def create_package(template_id: str) -> dict:
         template = PromptService.get_template(template_id)
+        TemplatePackageService._require_public_template(template)
         selected_prompts = TemplatePackageService._select_prompts(template)
         selected_video = TemplatePackageService._select_video(template)
 
@@ -77,6 +78,17 @@ class TemplatePackageService:
         }
 
     @staticmethod
+    def _require_public_template(template) -> None:
+        from app.agent.attachments import is_private_agent_job
+        from app.skills.job_backed import AGENT_TEMPLATE_ID
+        # Template ZIPs are public, shared caches. Owner authentication cannot
+        # make private inputs safe to place in them. The fixed internal template
+        # remains private even after its Jobs are deleted (old ZIPs may remain).
+        if template.template_id == AGENT_TEMPLATE_ID or any(is_private_agent_job(job)
+                for job in Job.query.filter_by(template_id=template.id).yield_per(100)):
+            raise AppError("TEMPLATE_PACKAGE_NOT_FOUND", "Template package is not available", 404)
+
+    @staticmethod
     def package_path(template_id: str) -> Path:
         safe_id = TemplatePackageService._safe_file_part(template_id)
         return (
@@ -89,8 +101,9 @@ class TemplatePackageService:
 
     @staticmethod
     def get_package_path(template_id: str) -> Path:
-        PromptService.get_template(template_id)
-        package_path = TemplatePackageService.package_path(template_id)
+        template = PromptService.get_template(template_id)
+        TemplatePackageService._require_public_template(template)
+        package_path = TemplatePackageService.package_path(template.template_id)
         if not package_path.exists():
             raise AppError(
                 "TEMPLATE_PACKAGE_NOT_FOUND",

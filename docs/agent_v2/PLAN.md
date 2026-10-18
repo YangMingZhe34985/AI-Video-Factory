@@ -60,12 +60,12 @@
 
 | ID | 任务 | 负责 | 依赖 | 状态 |
 |---|---|---|---|---|
-| D0 | D 章契约、显式授权、失败与级联确认 | Codex | C1–C7 | 完成（本条提交） |
-| D1 | 任务编译、依赖调度、worker恢复与共用MQ | Codex | D0 D2 | 进行中 |
-| D2 | extract_frame、animate_shot首尾帧、审核选型与工件保护 | Codex | D0 | 进行中 |
-| D3 | 失败分类、免费恢复、有界局部自动修复 | Codex | D0 D1 | 进行中 |
-| D4 | 生产动作、只读报价、重做级联确认、审核B | Codex | D1 D3 | 待开始 |
-| D5 | 生产看板功能及Mock联调（视觉美化由Claude负责） | Codex | D0 D4 | 进行中（独立组件） |
+| D0 | D 章契约、显式授权、失败与级联确认 | Codex | C1–C7 | 完成（95d9909；补充 D-020–D-022） |
+| D1 | 任务编译、依赖调度、worker恢复与共用MQ | Codex | D0 D2 | 完成（c40b81f、677c158；集成 920 passed） |
+| D2 | extract_frame、animate_shot首尾帧、审核选型与工件保护 | Codex | D0 | 完成（fc8faac、e3f6d00、8440fbb；集成 920 passed） |
+| D3 | 失败分类、免费恢复、有界局部自动修复 | Codex | D0 D1 | 完成（9adaa00、aa81b3c、66eb0e1；集成 920 passed） |
+| D4 | 生产动作、只读报价、重做级联确认、审核B | Codex | D1 D3 | 完成（018d0df、ecc761e、9d64e63；集成 920 passed） |
+| D5 | 生产看板功能及Mock联调（视觉美化由Claude负责） | Codex | D0 D4 | 完成（c15a7d0；29项前端回归、构建与Mock浏览器验收） |
 | D-Gate | 阶段评审 | Claude | D0–D5 | 待开始 |
 
 ## Phase E–F
