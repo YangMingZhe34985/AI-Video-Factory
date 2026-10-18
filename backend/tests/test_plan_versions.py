@@ -214,13 +214,29 @@ def test_expected_hash_invalidates_only_changed_attempt(app_ctx):
     assert versions.latest_task(row, 1, "keyframe", "s02").status == "pending"
 
 
-@pytest.mark.parametrize("kind,target", [("video", "s01"), ("character", "missing"), ("end_frame", "s02")])
+@pytest.mark.parametrize("kind,target", [("invalid_target", "s01"), ("character", "missing"),
+    ("end_frame", "s02"), ("video", "missing"), ("tail_frame", "missing")])
 def test_unknown_targets_rejected(app_ctx, kind, target):
     row = run()
     save(row)
     with pytest.raises(AppError):
         versions.create_task(row, 1, kind, target, INPUTS)
     assert AgentShotTask.query.count() == 0
+
+
+@pytest.mark.parametrize("kind,inputs", [
+    ("video", {"first_frame_artifact_id": "frame", "last_frame_artifact_id": None,
+               "prompt": "Approved motion", "model_id": "wan2.7-i2v", "params": {"duration": 5}}),
+    ("tail_frame", {"video_artifact_id": "video", "position": "last", "timestamp_sec": None}),
+])
+def test_production_target_types_are_persisted_for_existing_shots(app_ctx, kind, inputs):
+    row = run()
+    save(row)
+    task = versions.create_task(row, 1, kind, "s01", inputs)
+    assert task.target_type == kind and task.target_id == "s01" and task.status == "pending"
+    assert versions.latest_task(row, 1, kind, "s01").id == task.id
+    assert versions.create_task(row, 1, kind, "s01", inputs).id == task.id
+    assert AgentShotTask.query.count() == 1 and ToolInvocation.query.count() == 0
 
 
 def test_cross_run_artifact_job_and_invocation_rejected(app_ctx, h):
