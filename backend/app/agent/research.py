@@ -227,7 +227,8 @@ def resolve(state):
         if len(candidates) == 1 or len(popular) == 1:
             chosen = candidates[0] if len(candidates) == 1 else popular[0]
             entity["selected_candidate_id"] = chosen["candidate_id"]
-            assumptions.append(f"{entity['name']}：采用检索候选 {chosen['candidate_id']}；来源与热度判断仍可能不完整。")
+            # User-facing: number candidates as the dossier card does, not by internal ID.
+            assumptions.append(f"{entity['name']}：采用检索到的候选 {candidates.index(chosen) + 1}；来源与热度判断仍可能不完整。")
             continue
         recommended = entity["recommended_candidate_id"] or candidates[0]["candidate_id"]
         questions.append({"question_id": question_id, "text": f"{entity['name']} 使用哪一种参考形象？"[:200],
