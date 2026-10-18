@@ -19,6 +19,10 @@ VIDEO_MODES = {
     "i2v": ("image_to_video", "submit_i2v", "DEFAULT_I2V_MODEL"),
     "r2v": ("reference_to_video", "submit_r2v_flash", "DEFAULT_R2V_FLASH_MODEL"),
 }
+BASE_VIDEO_MODES = dict(VIDEO_MODES)
+TRANSFORM_MODES = {"omni_reference", "video_edit", "video_extend"}
+VIDEO_MODES.update({mode: ("reference_to_video", "submit_r2v_flash", "DEFAULT_R2V_FLASH_MODEL")
+                    for mode in TRANSFORM_MODES})
 VIDEO_TASKS = {item[0] for item in VIDEO_MODES.values()}
 _REQUEST = re.compile(r"使用|采用|选用|指定|选择|限定|只用|必须|要求|想用|用|\b(?:use|using|with|choose|only|prefer|require|model|avoid|exclude)\b", re.I)
 _NEGATIVE = re.compile(r"(?:不(?:要|想|能|应|允许|需要)?(?:使用|采用|选用|用)|别用|避免|排除|\b(?:not|don['’]t)(?:\s+(?:use|using|choose))?\b|\b(?:avoid|exclude)\b)", re.I)
@@ -152,7 +156,8 @@ def candidates(policy: dict, mode: str):
     ids = policy["allowed_model_ids"] if policy["source"] == "user" else [policy["defaults"][mode]]
     return [model for model in ModelRegistry.query.filter(ModelRegistry.model_id.in_(ids),
                                       ModelRegistry.enabled.is_(True)).order_by(ModelRegistry.model_id)
-            if ModelService.supports_task_type(model, task_type)]
+            if ModelService.supports_task_type(model, task_type)
+            and (mode not in TRANSFORM_MODES or mode in (model.capabilities or {}).get("modes", []))]
 
 
 def select_video_model(policy: dict, mode: str, requested: str | None = None):
@@ -174,14 +179,14 @@ def validate_job_policy(job, policy=None):
         validate_job(job)
         return
     enabled = set((job.node_overrides or {}).get("enabled_nodes") or [])
-    if not any(node in enabled for _task, node, _default in VIDEO_MODES.values()):
+    if not any(node in enabled for _task, node, _default in BASE_VIDEO_MODES.values()):
         return
     config = job.config or {}
     scope = (config.get("skill") or {}).get("budget_scope")
     policy = policy or (scope_policy(scope) if scope else None) or config.get("video_model_policy")
     if not policy:
         return
-    for mode, (_task, node, _default) in VIDEO_MODES.items():
+    for mode, (_task, node, _default) in BASE_VIDEO_MODES.items():
         if node in enabled:
             model_id = (config.get("node_models") or {}).get(node)
             if not model_id:

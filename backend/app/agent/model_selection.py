@@ -21,7 +21,10 @@ MODES = {
     "i2v": ("image_to_video", "submit_i2v", "DEFAULT_I2V_MODEL"),
     "r2v": ("reference_to_video", "submit_r2v_flash", "DEFAULT_R2V_FLASH_MODEL"),
 }
-VIDEO_MODES = {"t2v", "i2v", "r2v"}
+TRANSFORM_MODES = {"omni_reference", "video_edit", "video_extend"}
+MODES.update({mode: ("reference_to_video", "submit_r2v_flash", "DEFAULT_R2V_FLASH_MODEL")
+              for mode in TRANSFORM_MODES})
+VIDEO_MODES = {"t2v", "i2v", "r2v"} | TRANSFORM_MODES
 
 
 def _normal(value):
