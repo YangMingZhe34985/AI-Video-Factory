@@ -863,15 +863,15 @@ FailureInfo：{category,code,summary,stage,submission_state,provider_task_id,rec
 | action | 状态 | 追加字段 |
 |---|---|---|
 | start_production | storyboard_approved | plan_version, repair_budget_credits（默认0） |
-| retry_shot | production_attention | shot_id, base_version, quote_id |
+| retry_shot | production_attention；awaiting_video_review 仅允许免费恢复已完成视频的下载 | shot_id, base_version, quote_id |
 | redo_shot | production_attention / awaiting_video_review | shot_id, base_version, quote_id, scope:"only" / "cascade" / "cancel", motion_prompt? |
 | review_plan | production_attention | plan_version |
 | approve_videos | awaiting_video_review | plan_version |
 
 所有版本均必须是当前版本。启动/审核再次校验图片或视频完整性和模型约束；review_plan 进入现有 awaiting_storyboard，保留旧产物，修改后重新审核 A、再显式开始生产。不自动抹除已完成无关镜头。
 只读报价：POST /api/agent/runs/<id>/production/quote，body={shot_id,base_version,operation:"redo"|"retry",motion_prompt?}，不启动任务或改版本。
-返回 {quote_id,base_version,shot_id,affected_shot_ids,kept_shot_ids,estimated_credits:{only,cascade},can_retry,reason,warnings}：
-- affected_shot_ids 包含当前镜头与真实 tail_frame 依赖的传递闭包；kept_shot_ids 为其中可保留的已完成下游。
+返回 {quote_id,base_version,shot_id,affected_shot_ids,kept_shot_ids,continuation_shot_ids?,estimated_credits:{only,cascade},can_retry,reason,warnings}：
+- affected_shot_ids 包含当前镜头与真实 tail_frame 依赖的传递闭包；kept_shot_ids 为其中可保留的已完成下游；continuation_shot_ids 列明原计划尚未生成而将继续的镜头，其费用包含在报价中。
 - quote_id 绑定计划版本、相关任务/工件、输入及当前报价；执行前重新计算，一旦变化返回 PRODUCTION_QUOTE_EXPIRED。它是乐观并发凭证，不替代 owner、预算和审批。
 - cascade：新计划版本、仅重做报价范围；其他镜头成功结果按哈希复用。only：只重做当前，明确保留旧下游及其来源版本/工件，并记录连贯性风险已被接受；cancel：不建版本、不启动 Job、不产生费用。
 - only/cascade 的报价包含原计划将继续的未完成镜头费用；范围外失败或未知提交任务仍保留失败记录，不自动重交。旧 attempt/版本不覆盖。生产看板始终展示保留/重做影响，不把保留的旧下游伪装成使用了新尾帧。

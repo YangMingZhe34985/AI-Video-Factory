@@ -53,7 +53,8 @@ class RunAction(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     action: Literal["approve", "reject", "deliver", "resume", "revise", "answer",
-                    "approve_characters", "regenerate", "regenerate_stale", "edit_plan", "approve_storyboard"]
+                    "approve_characters", "regenerate", "regenerate_stale", "edit_plan", "approve_storyboard",
+                    "start_production", "retry_shot", "redo_shot", "review_plan", "approve_videos"]
     plan: dict | None = None
     shot: RemixShotSpec | None = None
     request_key: str | None = Field(default=None, min_length=1, max_length=128)
@@ -67,8 +68,39 @@ class RunAction(BaseModel):
     base_version: int | None = Field(default=None, ge=1, strict=True)
     plan_version: int | None = Field(default=None, ge=1, strict=True)
 
+    shot_id: str | None = Field(default=None, pattern=r"^s[0-9]{2,3}$")
+    quote_id: str | None = Field(default=None, min_length=1, max_length=128)
+    scope: Literal["only", "cascade", "cancel"] | None = None
+    motion_prompt: str | None = Field(default=None, min_length=1, max_length=8000)
+    repair_budget_credits: float | None = Field(default=None, ge=0, allow_inf_nan=False, strict=True)
+
     @model_validator(mode="after")
     def _revision_input(self):
+        production_fields = {
+            "start_production": {"plan_version", "repair_budget_credits"},
+            "retry_shot": {"shot_id", "base_version", "quote_id"},
+            "redo_shot": {"shot_id", "base_version", "quote_id", "scope", "motion_prompt"},
+            "review_plan": {"plan_version"}, "approve_videos": {"plan_version"},
+        }
+        if self.action in production_fields:
+            allowed = {"action", "request_key"} | production_fields[self.action]
+            if self.model_fields_set - allowed:
+                raise ValueError("Production action includes unrelated fields")
+            if not self.request_key:
+                raise ValueError("Production action requires request_key")
+            required = production_fields[self.action] - {"motion_prompt", "repair_budget_credits"}
+            if any(getattr(self, name) is None for name in required):
+                raise ValueError("Missing required production action fields")
+            if self.action == "start_production" and self.repair_budget_credits is None:
+                self.repair_budget_credits = 0.0
+            if self.motion_prompt is not None:
+                self.motion_prompt = self.motion_prompt.strip()
+                if not self.motion_prompt:
+                    raise ValueError("Motion prompt cannot be blank")
+            return self
+        if any(getattr(self, key) is not None for key in
+               ("shot_id", "quote_id", "scope", "motion_prompt", "repair_budget_credits")):
+            raise ValueError("Only production actions accept production fields")
         if (self.action == "answer") != (self.card_id is not None):
             raise ValueError("Only answer requires a card_id")
         if self.action != "answer" and (self.answers or self.use_defaults):
@@ -90,6 +122,20 @@ class RunAction(BaseModel):
             raise ValueError("edit_plan requires a plan")
         if (self.action == "approve_storyboard") != (self.plan_version is not None):
             raise ValueError("Only approve_storyboard requires plan_version")
+        return self
+
+
+class ProductionQuote(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    shot_id: str = Field(pattern=r"^s[0-9]{2,3}$")
+    base_version: int = Field(ge=1, strict=True)
+    operation: Literal["redo", "retry"]
+    motion_prompt: str | None = Field(default=None, min_length=1, max_length=8000)
+
+    @model_validator(mode="after")
+    def _retry_inputs(self):
+        if self.operation == "retry" and self.motion_prompt is not None:
+            raise ValueError("Retry preserves the original motion prompt")
         return self
 
 
