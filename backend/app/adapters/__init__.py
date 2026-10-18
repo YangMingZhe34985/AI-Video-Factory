@@ -6,6 +6,7 @@ from app.adapters.dashscope_t2v import DashScopeT2VAdapter
 from app.adapters.mock import MockAdapter, MockChatAdapter, MockImageAdapter, MockVideoAdapter
 from app.adapters.qwen_chat import QwenChatAdapter
 from app.adapters.dashscope_qwen_image import DashScopeQwenImageAdapter
+from app.adapters.dashscope_wan3 import DashScopeWan3Adapter
 
 
 ADAPTERS = {
@@ -15,6 +16,7 @@ ADAPTERS = {
     "mock_video": MockVideoAdapter,
     "qwen_chat": QwenChatAdapter,
     "dashscope_qwen_image": DashScopeQwenImageAdapter,
+    "dashscope_wan3": DashScopeWan3Adapter,
     "dashscope_t2v": DashScopeT2VAdapter,
     "dashscope_image": DashScopeImageAdapter,
     "dashscope_multimodal_sync": DashScopeMultimodalSyncAdapter,
