@@ -5,7 +5,7 @@ export const productionLabels = {
   failed: '失败 · 待处理', blocked: '被上游阻塞', stale: '待重做', cancelled: '已取消',
 }
 export const recoveryLabels = {
-  retry: '可局部重试', retry_local: '可恢复本地处理', retry_same_task: '查询原任务结果',
+  retry: '可局部重试', retry_submit: '确认未受理，可局部重试', recover_read: '免费恢复原任务查询或下载', retry_local: '可恢复本地处理', retry_same_task: '查询原任务结果',
   rewrite_prompt: '改写动作提示词后重做', revise_plan: '需要修改计划',
   return_to_director: '需要修改计划', replan: '返回分镜修改', manual_review: '需要人工核实', stop: '已停止自动修复',
 }
@@ -46,11 +46,12 @@ export function dependencyText(row) {
   return '独立镜头；关键帧就绪后可与其他无依赖镜头并行'
 }
 export function quoteImpact(quote, scope) {
-  if (!quote?.shot_id || !['only', 'cascade'].includes(scope)) return { shots: [], retained: [], cost: null }
+  if (!quote?.shot_id || !['only', 'cascade'].includes(scope)) return { shots: [], retained: [], continuing: [], cost: null }
   const descendants = [...new Set((quote.affected_shot_ids || []).filter((id) => id !== quote.shot_id))]
   return {
     shots: scope === 'cascade' ? [quote.shot_id, ...descendants] : [quote.shot_id],
     retained: scope === 'only' ? [...new Set((quote.kept_shot_ids || []).filter((id) => id !== quote.shot_id))] : [],
+    continuing: [...new Set(quote.continuation_shot_ids || [])].filter((id) => id !== quote.shot_id && (scope !== 'cascade' || !descendants.includes(id))),
     cost: finiteCredits(quote.estimated_credits?.[scope]),
   }
 }
@@ -59,7 +60,7 @@ export function isCurrentQuote(quote, context) {
 }
 export function productionActionAllowed(status, row, operation, disabled = false) {
   if (disabled) return false
-  if (operation === 'retry') return status === 'production_attention' && Boolean(row?.can_retry)
+  if (operation === 'retry') return reviewStatuses.has(status) && Boolean(row?.can_retry)
   return operation === 'redo' && reviewStatuses.has(status) && Boolean(row?.can_redo)
 }
 export function buildShotAction(quote, context, scope, operation) {

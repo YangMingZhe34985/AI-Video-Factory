@@ -83,9 +83,10 @@
             <template v-if="confirmation.operation === 'redo'">
               <label class="choice"><input v-model="scope" type="radio" value="only" name="redo-scope" /><span><strong>只重做此镜头 · {{ money(onlyImpact.cost) }} credits</strong><span class="mt-1 block text-xs text-slate-500">{{ onlyImpact.retained.length ? `保留 ${onlyImpact.retained.join('、')} 的旧视频，可能不再与新上游画面连贯。` : '没有需要保留的下游视频。' }}</span></span></label>
               <label v-if="cascadeImpact.shots.length > 1" class="choice"><input v-model="scope" type="radio" value="cascade" name="redo-scope" /><span><strong>连带重做尾帧依赖链 · {{ money(cascadeImpact.cost) }} credits</strong><span class="mt-1 block text-xs text-slate-500">{{ cascadeImpact.shots.join(' → ') }}；其他独立镜头保留。</span></span></label>
-              <p class="text-sm">本次执行：{{ selectedImpact.shots.join('、') }} · 预计新增 {{ money(selectedImpact.cost) }} credits。旧版本和旧素材保留。</p>
+              <p class="text-sm">重做范围：{{ selectedImpact.shots.join('、') }} · 预计新增 {{ money(selectedImpact.cost) }} credits。旧版本和旧素材保留。</p>
             </template>
             <p v-else class="text-sm">本次局部恢复预计 {{ money(onlyImpact.cost) }} credits。{{ quote.can_retry ? '' : '当前不允许重试，请按失败原因处理。' }}</p>
+            <p v-if="selectedImpact.continuing.length" class="notice">原计划未生成的 {{ selectedImpact.continuing.join('、') }} 也将继续执行，费用已包含在本次报价中。</p>
             <div class="flex flex-wrap gap-3"><button type="button" class="primary-btn" :disabled="locked || !confirmable" @click="submitShot">{{ confirmation.operation === 'retry' ? '确认局部重试' : '确认重做范围与费用' }}</button><button type="button" class="secondary-btn" :disabled="locked" @click="cancelDialog">取消，不生成</button></div>
           </div>
         </template>

@@ -30,8 +30,8 @@ test('tail dependencies are explained as serial and independent scenes as parall
   assert.match(dependencyText({ shot_id: 's04', depends_on: [], motion: { mode: 'first_last_frame' } }), /首尾两端关键帧就绪/)
 })
 test('quotes drive cascade costs and IDs, preserving only server-declared completed downstream clips', () => {
-  assert.deepEqual(quoteImpact(quote, 'cascade'), { shots: ['s01', 's02'], retained: [], cost: 30 })
-  assert.deepEqual(quoteImpact(quote, 'only'), { shots: ['s01'], retained: ['s02'], cost: 15 })
+  assert.deepEqual(quoteImpact(quote, 'cascade'), { shots: ['s01', 's02'], retained: [], continuing: [], cost: 30 })
+  assert.deepEqual(quoteImpact(quote, 'only'), { shots: ['s01'], retained: ['s02'], continuing: [], cost: 15 })
   assert.deepEqual(quoteImpact({ ...quote, kept_shot_ids: [] }, 'only').retained, [])
   assert.deepEqual(quoteImpact({ ...quote, affected_shot_ids: ['s02'] }, 'cascade').shots, ['s01', 's02'])
 })
@@ -73,7 +73,8 @@ test('buttons require both idle review state and server permission, never infer 
   assert(productionActionAllowed('production_attention', row, 'retry'))
   assert(productionActionAllowed('awaiting_video_review', { can_redo: true }, 'redo'))
   assert(!productionActionAllowed('producing', row, 'retry'))
-  assert(!productionActionAllowed('awaiting_video_review', row, 'retry'))
+  assert(productionActionAllowed('awaiting_video_review', row, 'retry'))
+  assert(!productionActionAllowed('awaiting_video_review', { can_retry: false }, 'retry'))
   assert(!productionActionAllowed('production_attention', { can_redo: true }, 'unknown'))
   assert(!productionActionAllowed('production_attention', row, 'redo'))
   assert(!productionActionAllowed('production_attention', row, 'retry', true))
@@ -90,4 +91,11 @@ test('starting after plan correction authorizes only remaining video costs and o
   assert.equal(startProductionCost({ remaining_credits: 0 }, 0), 0)
   assert.equal(startProductionCost({ video_credits: 120 }, 0), null)
   assert.equal(startProductionCost({ remaining_credits: 15 }, -1), null)
+})
+
+test('quotes disclose ungenerated continuation separately from redo scope without double-listing a cascade', () => {
+  const withContinuation = { ...quote, continuation_shot_ids: ['s02', 's03', 's03'] }
+  assert.deepEqual(quoteImpact(withContinuation, 'only').continuing, ['s02', 's03'])
+  assert.deepEqual(quoteImpact(withContinuation, 'cascade').continuing, ['s03'])
+  assert.equal(quoteImpact(withContinuation, 'only').cost, 15)
 })
