@@ -497,3 +497,34 @@ C-Gate 评审结论：通过。
 范围：新增video_transform(reference/edit/extend)，图片/视频/音频/文档/网页快照；旧Simple/remix/story语义不改。网页URL写入文本并冻结正文TXT；文档支持TXT/MD/PDF。输入全片不自动裁切，延长返回最终整段不拼接，费用I+G按秒。
 安全边界：先核验并冻结素材/价格，再显式审核；Registry、Job、MQ提交均复验，公共重跑不能绕过，未知提交停止。旧URL/no Workspace ID保持。本轮无付费，Mock/Stub+临时SQLite；不改真实.env。
 给Claude：请先看D-026/W章与W1–W4文件范围；Composer/AgentStudio仅新功能接线，ProductionBoard/StoryboardEditor/全局布局不动。最终交接会提供验收与提交。用户已明确授权完成后推送GitHub；仅推feat/agent-v2到现有origin，不强推main。清理只删除可证明冗余的根空package-lock.json，保留前端锁和未跟踪技术笔记。
+
+
+## 2026-10-18 · Codex · W1–W4 完成与交付验收
+状态：完成；W-Gate、MT-Gate及界面美化继续由Claude负责，未进入Phase F，未进行付费调用。
+分支与提交：W1/W2/W4独立分支已集成到agent-v2/W3；最终后端验收版本205d57b，审核说明修正1981a9b。交付分支为本地feat/agent-v2与现有origin同名分支；按用户授权普通推送，不更新main或强推。
+
+完成内容：
+- W1：受控图片/视频/音频/文档引用，上传新增WAV/MP3与TXT/MD/PDF；完整解码、真实时长、来源归属、格式/数量/尺寸/体积限制；PDF固定pypdf==6.21.1，在有界子进程检查真实页树。网页仅取用户原始文本中的完整URL，经SSRF安全抓取生成同Run私有正文TXT快照，不把活动网页交给模型。网页快照与文档共用一个file槽位；音频不宣称已转写，PDF不宣称已理解正文。
+- W2：独立video_transform配方支持reference/edit/extend；未指定仍采用服务器R2V默认，不支持则询问，不静默换型号。仅已接通的DashScope/Wan3协议可使用；显式系列约束继续有效。用户“再延长N秒”与最终输出G分开，G=ceil(S+N)，完整原片不自动裁切或重复拼接。输入I为全部实际参考视频秒数，I≤15、I+G≤30，G固定2–30整数；费用(I+G)×分辨率每秒credits，仍是演示估算。
+- 新只读transform-quote接口重新核验草稿、素材与当前价格，报价不新增Job/Invocation/Outbox。有效计划必须显式审批，即使有自动审批额度；失效/非法草稿保留可编辑，源文件变化或报价过期拒绝提交。
+- W3：transform_video只接收plan_hash，实际输入取服务端冻结回执；绑定Run、request_spec、素材摘要、模型/参数、单价、固定幂等key。复用旧R2V节点与共享MQ，NodeRunner和实际POST前均复验。未知提交停止，不自动重交；已有服务商ID只查询/下载恢复，不受之后价格、启用状态或源文件变化阻断，不重新收费。审批回执与checkpoint间隙恢复不新增授权或Job（D-027）。
+- 私有agent_transform Job/工件接入已有归属隔离；公开付费Skill、run-*与rerun不能绕过审批，公共工件列表也检查同Run作用域。审批后的队列提示词、参数、素材、provider/adapter漂移均拒绝。Agent默认不额外压缩保持。
+- W4：Composer接受音频/文档；审核显示最终整段、源片、追加、全部输入与计费秒数、每秒单价。时长/模型/分辨率/提示词修改后刷新权威报价，失败或未同步时禁审批；结果通过鉴权本地接口。初始规划说明与当前参数/报价明确分开，防止修改6秒后误读原始5秒说明。不改Claude全局布局与美化。
+- 审计新增D-028：真实2秒画面+10秒音轨会低估输入，现拒绝音轨终点超过画面加max(0.1,2/fps)秒；等长AAC尾部填充、较短及未越界延迟音轨允许。终点缺失/非法拒绝，video校验缓存升v2；不猜供应商音画不齐的实际账单规则、不裁音轨。
+- README中英文及backend README已更新入口、配方、按秒费用、旧URL、格式限制、灰度开关、启动/测试与恢复语义。全局AGENT_MAX_ATTACHMENTS默认8与Wan3每类型/总20上限分别说明。本轮无新迁移，head仍20261018_002。仅删除根目录无package.json对应的空package-lock.json；保留frontend锁、真实.env/storage与未跟踪用户技术笔记。
+
+测试与证据：
+- 完整基线9ca604f：82个测试文件分为3个互不重叠分片，共1264项，无跳过。结果381 passed / 423 passed+1 failed / 459 passed；唯一失败为旧API测试固定20个Skill，本轮新增网页快照和视频变换后应为22，已修正。
+- 最终后端205d57b：受影响9个测试文件完整复测233 passed / 132.07秒，包含上述失败用例、全部三种变换配方MQ/非MQ、媒体/适配器、网页快照、附件与Registry。新音轨边界比基线增加13例；按JUnit用例ID合并去重后共1277项全部有通过结果，无未解决失败。这是“全量基线+受影响复测”，不是声称最终版本又全量重跑一遍。
+- 全量警告45条：38条既有测试短JWT密钥提示，7条JUnit record_property/xunit2兼容提示；最终233项无警告。证据位于C:/Users/MingZheYang/AppData/Local/Temp/cinecrew-w-regression-7au4jeik/，含manifest、3份JUnit、final-affected.xml、acceptance-summary.json。
+- 前端63项测试及npm run build通过；最终说明文案修正后再次通过。无新增构建工具。
+- 浏览器验收：隔离SQLite/存储、Mock、鉴权开启、5087/5207，实际审核页最终5→6秒、Wan3→Prime、720P→480P；报价未同步及注入503时禁审批，重试后可审批。报价前后均4 Jobs/0 ApiTasks/3 Invocations；批准后成功，仅增加1 transform_video/1 ApiTask，生成16 credits，总账本3→19，使用最终6秒与Prime/480P。源MP4/WAV/TXT通过真实本地上传API进入Run。
+- 浏览器文件选择被Edge“允许访问文件URL”权限阻挡，未修改权限；预览/下载事件等待工具挂起后停止，因此不声称原生上传控件、浏览器下载或Mock视频播放已通过。400px仍有原全局260px侧栏限制，不把它算作本轮移动布局通过。证据目录C:/Users/MingZheYang/AppData/Local/Temp/cinecrew-w4-ui-20261018/，包含acceptance-summary.json、cleanup.json、报价截图、前后账本与HTTP记录；实际页面代码为9ca604f。本人预览/下载API均200，匿名均401，媒体GET后Job/Task/账本不变。URL澄清、手机及主题未在本轮浏览器重验；相关确定性功能有自动回归覆盖。自己启动的API PID38244与Vite PID8164已停止，5087/5207无监听。测试Edge标签1818573562因工具无法重新绑定，关闭未确认；未操作用户原标签。
+- 所有后端测试强制Mock/Stub、隔离SQLite/存储、阻断模型HTTP；未连接真实MySQL/Redis、未修改真实.env。使用Conda video-factory与已有FFmpeg7.1；pypdf仅装到临时测试PYTHONPATH，未修改用户全局Conda。用户启动新版前需安装更新后的backend/requirements.txt。
+
+给Claude / 下一步：
+1. 先读D-026/D-027/D-028与CONTRACTS W；W章取代M/T交接中“全模态/编辑/延长未开放”的历史限制。W-Gate重点审查冻结授权、已受理只读恢复、输入真实秒数与报价失效、公共重跑和素材所有权；可以复用本轮回归证据。
+2. 功能入口是transform_plan/director/media/policy/execution、capture_reference_page/transform_video、TransformPlanEditor/TransformResults；共享Job/Queue只加有标记分支，不新增第二套执行队列。Source媒体、server-only transform_hash不可从公共请求自行赋权。
+3. 美化与移动端全局侧栏仍由Claude负责；请沿用权威报价的禁审批逻辑，不在前端推算实际媒体秒数、精确排队位次或实时账单；初始规划说明不代表用户编辑后的参数。
+4. 默认模型不变，旧DASHSCOPE_API_BASE_URL路径保持且无workspace-id；智能时长-1、超限自动裁片/拼接、自动付费重做、ASR/PDF语义提取未开放。新模型旧URL真实账号可用性、质量及账单尚无付费验证，须用户另批。
+需要用户决定：本轮无新增阻塞；后续真实测试与实际单价另行安排。
