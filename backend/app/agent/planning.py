@@ -48,7 +48,7 @@ class CreativeInput(BaseModel):
 
 def resolve_agent_model(role: str | None = None, *, mode: str | None = None):
     """Resolve role configuration without weakening classic task-type guards."""
-    if role not in {None, "intake", "vision", "director", "research"}:
+    if role not in {None, "intake", "vision", "director", "research", "creative", "prompt_smith"}:
         raise ValueError(f"Unknown configured Agent role: {role}")
     model_id = (current_app.config.get(f"AGENT_{role.upper()}_MODEL") if role else None) or (
         current_app.config.get("AGENT_PLANNER_MODEL") or current_app.config["DEFAULT_PROMPT_REWRITE_MODEL"]
