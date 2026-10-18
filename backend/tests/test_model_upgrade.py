@@ -16,9 +16,9 @@ VIDEO_IDS = {"wan3.0-video", "wan3.0-video-prime"}
 def test_new_seeds_preserve_old_records_and_operator_prices(app_ctx):
     video = ModelService.get_model("wan3.0-video")
     assert (video.task_type, video.adapter_name) == ("text_to_video", "dashscope_wan3")
-    assert set(video.capabilities["modes"]) == {"t2v", "i2v", "first_last_frame", "r2v"}
+    assert set(video.capabilities["modes"]) == {"t2v", "i2v", "first_last_frame", "r2v", "omni_reference", "video_edit", "video_extend"}
     assert video.capabilities["reference_images"]["max"] == 10
-    assert not video.capabilities["provider_capabilities"]["reference_video"]["agent_enabled"]
+    assert video.capabilities["provider_capabilities"]["reference_video"]["agent_enabled"]
     chat = ModelService.get_model("deepseek-v4.1-flash")
     assert (chat.provider, chat.adapter_name, chat.task_type) == ("dashscope", "qwen_chat", "prompt_rewrite")
     assert chat.default_params["enable_thinking"] is False

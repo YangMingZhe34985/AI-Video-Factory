@@ -29,6 +29,7 @@ def test_registry_exposes_all_tools_with_schemas(app_ctx):
         "analyze_image",
         "analyze_video",
         "animate_shot",
+        "capture_reference_page",
         "compose_video",
         "download_reference",
         "extract_frame",
@@ -45,6 +46,7 @@ def test_registry_exposes_all_tools_with_schemas(app_ctx):
         "remix_shot",
         "rerun_node",
         "rewrite_prompt",
+        "transform_video",
         "web_search",
     ]
     for spec in registry.describe_all():

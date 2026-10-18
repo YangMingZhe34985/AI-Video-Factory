@@ -16,11 +16,15 @@ def invocation_key(run_id, plan_hash):
 
 
 def approve(run, plan):
-    from app.agent.transform_plan import validate_transform_plan
-    checked = validate_transform_plan(plan, (run.snapshot or {})["request_spec"], run=run, require_quote=True)
+    from app.agent.transform_plan import execution_hash, validate_transform_plan
     previous = (run.snapshot or {}).get("transform") or {}
-    if previous and previous.get("plan_hash") != checked["plan_hash"]:
+    if previous:
+        previous = _receipt(run)
+        if (execution_hash(plan) == previous["plan_hash"] and plan.get("plan_hash") == previous["plan_hash"]
+                and plan.get("quote_id") == previous["quote_id"]):
+            return deepcopy(previous)
         raise AppError("UNSAFE_RETRY", "An approved transform cannot be replaced by another paid attempt", 409)
+    checked = validate_transform_plan(plan, (run.snapshot or {})["request_spec"], run=run, require_quote=True)
     receipt = {"approved": True, "plan_hash": checked["plan_hash"], "quote_id": checked["quote_id"],
                "plan": deepcopy(checked), "invocation_key": invocation_key(run.run_id, checked["plan_hash"])}
     run.snapshot = {**(run.snapshot or {}), "transform": receipt}
@@ -104,6 +108,9 @@ def validate_job(job):
             or (config.get("node_models") or {}) != {"submit_r2v_flash": plan["model_id"]}
             or (config.get("node_model_params") or {}) != {"submit_r2v_flash": plan["params"]}):
         raise AppError("TRANSFORM_APPROVAL_MISMATCH", "Transform Job differs from its approved receipt", 409)
+    enabled = set((job.node_overrides or {}).get("enabled_nodes") or [])
+    if enabled != {"submit_r2v_flash", "poll_r2v_flash", "export_manifest"}:
+        raise AppError("TRANSFORM_APPROVAL_MISMATCH", "Transform workflow differs from approval", 409)
     from app.services.prompt_service import PromptService
     from app.services.job_run_state_service import JobRunStateService
     prompt = PromptService.get_active_for_template(job.template, "r2v_flash", job_id=job.id)

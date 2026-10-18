@@ -133,7 +133,7 @@ GENERATION_TASK_MODES = {
     "text_to_image": {"t2i", "i2i"}, "text_to_video": {"t2v"},
     "image_to_video": {"i2v"}, "reference_to_video": {"r2v", "omni_reference", "video_edit", "video_extend"},
 }
-LEGACY_TASK_MODES = {**GENERATION_TASK_MODES, "text_to_image": {"t2i"}, "video_understanding": {"text", "image_understanding", "video_understanding"},
+LEGACY_TASK_MODES = {**GENERATION_TASK_MODES, "reference_to_video": {"r2v"}, "text_to_image": {"t2i"}, "video_understanding": {"text", "image_understanding", "video_understanding"},
                      "text_to_text": {"text"}, "prompt_rewrite": {"text"}}
 
 QWEN3_IMAGE_PARAMETER_SCHEMA = {
