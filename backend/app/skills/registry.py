@@ -23,6 +23,12 @@ from app.utils.time_utils import as_utc, utc_now
 
 REPLAYABLE_STATUSES = {"pending", "running", "success", "partial_success"}
 TERMINAL_JOB_STATUSES = {"success", "partial_success", "failed", "cancelled"}
+DELIVERY_TOOLS = frozenset({"compose_video", "probe_media", "qc_video", "package_story"})
+
+
+def _delivery_module(name):
+    from importlib import import_module
+    return import_module(f"app.skills.tools.{name}")
 
 
 def idempotency_key_for(tool_name: str, data: BaseModel) -> str:
@@ -88,6 +94,10 @@ class ToolRegistry:
         if spec.name == "extract_frame":
             from app.skills.tools.extract_frame import validate_source
             validate_source(data, ctx)
+        if spec.name in DELIVERY_TOOLS:
+            from app.agent.delivery_policy import require_delivery_authorization
+            require_delivery_authorization(ctx, getattr(data, "plan_version", None))
+            _delivery_module(spec.name).validate_sources(data, ctx)
         if spec.permission == "external" or spec.name == "analyze_image":
             from app.agent.search.scope import require_run
             require_run(ctx, getattr(data, "run_id", None))
@@ -127,7 +137,7 @@ class ToolRegistry:
             )
 
     def _invoke_with_ledger(self, spec: ToolSpec, data: BaseModel, ctx: ToolContext) -> dict:
-        scoped = spec.permission == "external" or spec.name in {"analyze_image", "extract_frame"} or ctx.shot_task_id is not None
+        scoped = spec.permission == "external" or spec.name in {"analyze_image", "extract_frame"} | DELIVERY_TOOLS or ctx.shot_task_id is not None
         generated_key = idempotency_key_for(spec.name, data)
         if scoped:
             generated_key = f"{ctx.budget_scope}:tool:{hashlib.sha256(generated_key.encode()).hexdigest()[:32]}"
@@ -165,6 +175,11 @@ class ToolRegistry:
                 from app.skills.tools.extract_frame import cached_frame_is_valid
                 output_artifact = Artifact.query.filter_by(artifact_id=(invocation.output_payload or {}).get("artifact_id")).first()
                 recovering_download = not cached_frame_is_valid(output_artifact)
+            if spec.name in DELIVERY_TOOLS:
+                recovering_download = invocation.status in {"pending", "running"}
+                if invocation.status == "success":
+                    recovering_download = (spec.name in {"probe_media", "qc_video"}
+                        or not _delivery_module(spec.name).cached_output_is_valid(invocation))
             if invocation.status in REPLAYABLE_STATUSES and not recovering_download:
                 if scoped and invocation.status in {"pending", "running"} and invocation.job is None:
                     raise AppError("RECOVERY_REQUIRED", "Research call outcome is unknown; automatic repeat stopped", 409)
@@ -175,8 +190,8 @@ class ToolRegistry:
                          and (invocation.job.config or {}).get("agent_story_production")))):
                 raise AppError("UNSAFE_RETRY", "Failed production attempts require the repair policy and a new task", 409)
             if recovering_download:
-                # Only this free local tool has a durable byte receipt and atomic
-                # artifact/output commit. Paid external calls never re-enter here.
+                # Free local tools have durable receipts and atomic outputs.
+                # Paid external calls never re-enter this recovery branch.
                 ctx.previous = invocation
             elif invocation.status == "failed":
                 if invocation.input_payload != data.model_dump(mode="json"):
@@ -283,7 +298,7 @@ class ToolRegistry:
 
     @staticmethod
     def _check_scoped_replay(spec, invocation, data, ctx):
-        if spec.permission == "external" or spec.name in {"analyze_image", "extract_frame"} or ctx.shot_task_id is not None:
+        if spec.permission == "external" or spec.name in {"analyze_image", "extract_frame"} | DELIVERY_TOOLS or ctx.shot_task_id is not None:
             if (invocation.tool_name != spec.name or invocation.budget_scope != ctx.budget_scope
                     or invocation.input_payload != data.model_dump(mode="json")):
                 raise AppError("IDEMPOTENCY_KEY_CONFLICT", "Research key belongs to different input or Run", 409)

@@ -41,6 +41,7 @@ os.environ.update(
         "AGENT_ALLOWED_USERS": "",
         "AGENT_STORY_V2_ENABLED": "false",
         "AGENT_STORY_PRODUCTION_ENABLED": "false",
+        "AGENT_STORY_DELIVERY_ENABLED": "false",
         "AGENT_MAX_PARALLEL_SHOTS": "3",
         "AGENT_MAX_SHOT_AUTO_REPAIRS": "2",
         "AGENT_MAX_SHOT_REPAIR_CREDITS": "60",

@@ -11,10 +11,18 @@ from app.services.storage_service import StorageService
 
 class VideoCompressionService:
     @staticmethod
-    def compress_for_artifact(input_path: Path) -> tuple[Path, dict]:
+    def compress_for_job(input_path: Path, job) -> tuple[Path, dict]:
+        from app.agent.output_policy import compression_enabled
+        enabled = compression_enabled(job)
+        if enabled is None:
+            return VideoCompressionService.compress_for_artifact(input_path)
+        return VideoCompressionService.compress_for_artifact(input_path, enabled=enabled)
+
+    @staticmethod
+    def compress_for_artifact(input_path: Path, *, enabled: bool | None = None) -> tuple[Path, dict]:
         source = Path(input_path)
         metadata = {
-            "enabled": bool(current_app.config.get("VIDEO_COMPRESSION_ENABLED", True)),
+            "enabled": bool(current_app.config.get("VIDEO_COMPRESSION_ENABLED", True)) if enabled is None else enabled,
             "status": "disabled",
             "original_file_path": StorageService.relative_path(source),
             "compressed_file_path": None,

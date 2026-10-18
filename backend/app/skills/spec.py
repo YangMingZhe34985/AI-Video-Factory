@@ -30,6 +30,7 @@ class ToolContext:
     # Server-only linkage; public Skill schemas never accept this field.
     preview_task_id: int | None = None
     shot_task_id: int | None = None
+    delivery_version: int | None = None
 
 
 @dataclass(frozen=True)

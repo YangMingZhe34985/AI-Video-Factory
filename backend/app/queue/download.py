@@ -39,7 +39,7 @@ def _download_slot(task_id, token, adapter, relative, response, index):
                     image.verify()
         if "video" in spec["artifact_type"]:
             from app.services.video_compression_service import VideoCompressionService
-            selected, compression = VideoCompressionService.compress_for_artifact(downloaded)
+            selected, compression = VideoCompressionService.compress_for_job(downloaded, db.session.get(Job, task.job_id))
             if selected != downloaded:
                 original_file = downloaded
                 compression["original_file_path"] = StorageService.relative_path(target.with_name(target.stem + "_original" + target.suffix))
