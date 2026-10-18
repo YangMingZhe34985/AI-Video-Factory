@@ -1,7 +1,7 @@
 # Agent v2 契约
 
 > 跨任务接口的唯一来源。实现必须与此一致；修改契约前先在 `DECISIONS.md` 记录。
-> 章节状态：**A 已定稿（2026-10-17）**｜**B 已定稿（2026-10-18）**｜**C 已定稿（2026-10-18）**｜**D 已定稿（2026-10-18）**｜**E 已定稿（2026-10-18）**｜**M、T 已定稿（2026-10-18，M0）**｜F 待写。
+> 章节状态：**A 已定稿（2026-10-17）**｜**B 已定稿（2026-10-18）**｜**C 已定稿（2026-10-18）**｜**D 已定稿（2026-10-18）**｜**E 已定稿（2026-10-18）**｜**M、T 已定稿（2026-10-18，M0）**｜**W 已定稿（2026-10-18，W0）**｜F 待写。
 > 约定：所有 Schema 以 pydantic v2 实现，`extra="forbid"`，字符串去首尾空白；字段长度为上限。
 
 ---
@@ -1020,3 +1020,101 @@ qc:null|{passed,checks:[{code,passed,summary}],warnings:[]}, warnings:[]
 - /task-center独立页面：筛选/分页/数量摘要/阶段列表/详情子任务，跳转现有Agent或经典作业页继续操作。每5秒刷新，隐藏/卸载停止；失败保留旧数据并标记过期。无重排/取消/重试/清空按钮。
 - Codex只做现有设计语言下的功能接线；Claude负责美化与评审。新增task_center API/services/tests、TaskCenterView/api/components/tests、blueprint/router/NAV/i18n最小改动；不改ProductionBoard/DeliveryPanel/全局布局/MQ调度器/Agent图。
 - 双用户隔离、经典共享、父子去重、SQL分页/计数、旧版本排除、等待/未知/退避映射、无Redis可读、GET无新增Job/Outbox/调用均需Mock隔离回归。前端测试与build通过，交接声明未验证项。
+
+
+# W. Wan3 Agent 多模态参考、编辑与延长（W0–W4）
+
+本章取代M.1/M.3中“尚未接入”的本轮限制；旧URL与默认模型规则不变。所有新模式只在对应可执行能力确已登记时开放；只做Mock，不据此承诺真实效果。
+
+## W.1 输入与用途
+
+CreateRun仍只需text（必填）与可选attachment_ids，字段不增；网页URL写入原始文本。附件API保持multipart结构，新增kind=audio/file；video、image上传兼容A.3，不缩短旧remix允许的原片。
+- audio：WAV/MP3，单文件≤15MiB，完整解码、有效有限时长1–15秒；拒绝伪格式、截断、异常时间戳。
+- file：TXT/MD/PDF，≤100MiB且受MAX_CONTENT_LENGTH约束；UTF-8文本非空、禁止NUL等异常控制字符；PDF可靠解析、非加密、1–50页、限制处理资源。部署显式声明固定版本解析依赖；不依赖开发机偶然存在的工具。其他Office/Apple文档本轮明确不支持，不靠页数元数据伪装验证。
+- 上传新类型登记agent_attachment_audio / agent_attachment_document，沿用agent_upload_owner；meta.media含kind、width/height/duration/fps（不适用为null），可补page_count、有限text_excerpt和sha256。附件元信息只读，GET不重新完整解码。
+- RequestSpec.attachments及AttachmentAnalysis扩kind为image/video/audio/file；role增加transform_source/audio_ref/document_ref（图片/普通视频仍可content_ref/style_ref）。附件列表依旧完整覆盖原请求上传ID。
+- 文档正文是外部不可信资料；音频目前做完整解码/时长等信号检查，不假称已做语音识别或语义理解。需要语音具体内容而用户未提供时通过澄清解决。
+
+RequestSpec追加可选transform（旧配方为null），recipe_hint新增video_transform：
+```text
+transform: {operation: reference|edit|extend,
+            source_attachment_id: str|null,
+            additional_duration_sec: finite float|null (0<x<=29),
+            reference_urls: list[str] (<=1)}
+```
+reference至少一个有效附件或明确用户URL；edit/extend主源必须是上传视频且在计划reference_video中。additional_duration_sec仅extend，表示用户“再延长N秒”；target_duration_sec仍表示最终输出，冲突需澄清。reference_urls只能取原始用户文本实际出现的完整公开HTTP(S)URL，不从资料内容或LLM猜造。
+
+## W.2 网页快照与素材检验
+
+新capture_reference_page Skill：输入{run_id,url}，输出{attachment_id,description}；EXTERNAL权限、DIRECTOR/SYSTEM角色、0 credits、经Registry与Run来源白名单。复用逐跳SSRF/DNS固定/TLS/体积与超时保护；去脚本的非空正文保存私有TXT工件agent_reference_document，meta.reference.run_id绑定Run、meta.media.kind=file，记录来源/抓取时间/截断说明。不直接把活link交给服务商，审核页标注“网页正文快照”。Mock产生显式示意正文，不联网。成功回执恢复不重新抓取不同正文；缓存文件损坏/丢失明确停止，禁止悄悄换素材。
+
+公共素材引用：MediaReference={type:reference_image|reference_video|reference_audio|file, artifact_id:str}，仅这两个字段、有序、ID不重复。不能传路径、URL、OSS、客户端时长或first/last；首尾仍走原链路。
+- 只允许Run原上传ID或该Run的网页快照；他人/跨Run/任意经典工件拒绝。
+- image≤10：完整解码；PNG无透明；边240–8000、比例≤8、20MiB。
+- video≤5：MP4/MOV，完整验证视频及音轨；各1–15秒，合计≤15秒，≥16fps，边240–4096，比例≤8，100MiB/个。按实际媒体验证秒数计费，不用声明时长或简单帧差少算末帧。
+- audio≤5：各1–15秒、合计≤15秒，WAV/MP3，15MiB/个。
+- file≤1（包括网页快照）；总素材≤20。文档/网页要求prompt_extend=true。edit/extend主源视频在视频引用序列中排第一，其他参考视频也计入总输入费。
+- 默认使用全片，不裁切；原片超限、G不可行或素材组合无效时明确返回可读错误，不静默截短、丢附件、降分辨率或拆分付费任务。
+
+W1共享接口（agent/transform_media.py）：
+```text
+MediaReference (Pydantic strict schema)
+inspect_transform_media(refs, *, run, operation, source_artifact_id=None)
+  -> {manifest:[{artifact_id,type,sha256,size,mime_type,file_name,
+                 duration_sec,width,height,fps,page_count,source_url?}],
+      input_video_seconds:float, source_video_seconds:float|null}
+resolved_media(refs, *, run, expected_manifest) -> [{type,url:受管本地路径}]
+```
+inspect返回的manifest不含绝对路径；resolved_media必须重验同一归属/摘要/类型，不能重算后接受漂移。摘要/解码缓存遵循file_fingerprint按路径/大小/mtime/inode身份失效，不在GET执行这些操作。
+
+## W.3 计划、报价与按秒计费
+
+独立TransformPlan（不更改SimplePlan结构）：
+```text
+recipe: video_transform
+operation: reference|edit|extend
+title, model_id, prompt, params
+media: list[MediaReference]
+source_artifact_id: str|null
+assumptions: list[str], rationale: str
+manifest: list[dict] = []                  # 服务端核验后填充；客户端不得改变批准输入
+cost_breakdown: dict = {}                 # 下列服务端字段
+plan_hash: str = ""                       # 冻结执行内容+素材摘要的稳定哈希
+quote_id: str = ""                        # plan_hash+定价/费率/成本的稳定哈希
+estimated_cost: float = 0
+```
+operation对应capability mode=omni_reference / video_edit / video_extend。ModelService及Agent新增映射，保持真实Wan3 ID、R2V分类兼容；未指定仍使用DEFAULT_R2V_FLASH_MODEL/该节点配置。不支持新能力时给出选择题，明确确认换模型后才能继续，不拿泛r2v标签替代新模式许可。
+
+params.duration=G，固定整数2–30；-1禁用。S=主源实际完整时长，I=所有实际输入视频秒数合计，F=最终交付时长。原生编辑/延长生成完整输出，F=G，不再拼接原片。约束I≤15且I+G≤30；extend须G>S，用户只说“再延长N秒”时G=ceil(S+N)，取整差异写入assumptions；若不可行则需修改审核草稿，不偷偷裁片。edit未指定时长时可ceil(S)并说明，reference按需求/有效模型默认规划。
+
+cost_breakdown={input_video_seconds:I, source_video_seconds:S|null, output_video_seconds:G,
+  final_duration_seconds:G, extension_seconds:max(0,G-S)|null, n_outputs:1,
+  billable_seconds:I+G, credits_per_second:rate, estimated_cost:(I+G)*rate,
+  resolution, billing_basis:input_plus_output_seconds, demo:true}
+输入I不取整，不接受客户端填入params；模型须有有效second/input_plus_output_seconds定价，不得用固定旧常量漏计输入费。仍为演示credits，非精确人民币账单。冻结有效参数与当前定价；缺项/非有限/负数拒绝，不显示为零。只有查询/下载恢复不增加生成费用，新的生成不得复用旧额度。
+
+POST /api/agent/runs/<id>/transform-quote，body={plan:dict}；仅本人awaiting_approval的video_transform，data直接返回权威TransformPlan。纯重验报价，不新增Run/Job/ToolInvocation/Outbox、不调用LLM/服务商。初始已填manifest不得用篡改后的源文件覆盖；价格可重取，返回新quote_id。无效草稿仍可查看/编辑，报价失败不能开始生成。
+approve仍用原action结构{action:approve,plan:完整TransformPlan}；quote_id在plan内必填。API准入和图消费分别复验quote_id与原素材摘要，过期用TRANSFORM_QUOTE_EXPIRED(409)，源变用TRANSFORM_INPUT_CHANGED(409)。两处都通过后才授权，禁止auto-approve，即使AGENT_AUTO_APPROVE_CREDITS>0。审核模型改动沿用既有显式选择+硬约束语义；不许编辑后越过用户指定系列。
+
+## W.4 执行与恢复边界
+
+新transform_video Skill唯一生成输入={plan_hash:str}，执行明细从本Run批准快照取，不让公共请求重新带一套media。角色PRODUCTION/SYSTEM、需审批、额外server-only ToolContext.transform_hash，必须精确匹配Run已批准plan_hash和固定invocation key；公共Skill的approved=true不能替代它。Registry在预算/成功重放前都验证Run归属、完整输入、素材摘要与授权，跨Run/不同输入重用key拒绝。
+
+agent/transform_policy.py提供approve(run,plan)同步写snapshot.transform批准回执（不能只依赖随后checkpoint）；W2图在审核成功后调用；worker合并快照保留此回执。新私有标记job.config.agent_transform={run_id,plan_hash,...}，不冒充Story task。
+新transform_execution.nodes(registry)供W2图接线：transform_production、transform_collect、transform_wait、transform_delivery；after_collect(state)返回wait|delivery|end。单个生成结果沿用Run.results[{kind:video,artifact_id,preview_url,download_url}]，只暴露鉴权本地工件。
+
+复用submit_r2v_flash/poll_r2v_flash及原MQ/下载；有agent_transform标记时读取冻结typed media，无随机参考图回退。NodeRunner提交前与MQ实际POST前都核对模型/参数/报价/源摘要/真实时长；价格上升或模型/源变化停止，不能悄悄扩大已批准预算。非MQ/MQ同一成本与许可；实际wire payload沿用旧URL。
+公开Job run-*/rerun/patch、公共Skill与模板包不能绕过授权或泄漏新素材；所有私有查询/预览/下载沿用本人范围。Job落库、关联账本、外部POST与checkpoint之间崩溃均不创建第二Job或再次POST；无服务商任务号的不确定提交停止。已有任务的查询/下载恢复允许零新增模型费用；本轮不提供未报价的付费自动重做，失败显式需处理。默认Agent不额外压缩策略保持。
+
+## W.5 分工、文件范围与验收
+
+|任务|负责范围|验收|
+|---|---|---|
+|W0|Codex根：DECISIONS/CONTRACTS/PLAN/PROGRESS|契约先于实现；给Claude公开边界|
+|W1|Codex媒体：attachments.py、transform_media.py、wan3_media_service.py、capture_reference_page.py、dashscope_wan3.py、必要requirements及测试|有效MP4/MOV/WAV/MP3/PDF/TXT；边界/坏媒体/SSRF/跨Run/摘要漂移；适配器输入费用上限|
+|W2|Codex规划：request_spec/intake/intake_mock、transform_plan/director、model_selection/model_policy、graph_v2、protocol、api/agent最小接线及测试|三operation理解/澄清/可编辑审核；原配方兼容；权威报价及审批过期拒绝|
+|W3|Codex根：transform_policy/execution、transform_video、Registry/ToolContext/job_backed/budget、model_service能力、worker/recovery、NodeRunner/MQ及私有边界、相关测试|MQ/非MQ全流程；输入+输出费；已批后变更/越权/公开重跑拒绝；未知不重交、免费恢复|
+|W4|Codex前端功能：Composer/Understanding/AgentStudio/api、独立TransformPlanEditor/helper/messages/tests|新附件/文本URL；权威报价刷新/失效禁止审批；时长语义、鉴权结果、浏览器Mock验收；不改全局布局或美化|
+|W-Gate|Claude（后续审计/美化）|复用本轮证据，评审授权/计费/输入与交互|
+
+根负责最终README、仅证明冗余的文件清理、集成全量回归和提交推送。不得删除真实.env/storage/依赖、历史审计/旧工作流、Python空包文件或用户未跟踪笔记；已确认根package-lock.json为空且无根package.json/引用，可删，frontend锁文件保留。真实账号/质量/付费账单、MySQL/Redis部署不在本轮验证范围。

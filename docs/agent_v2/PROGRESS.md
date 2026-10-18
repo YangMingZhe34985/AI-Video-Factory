@@ -491,3 +491,9 @@ C-Gate 评审结论：通过。
 4. 首尾候选仍受 AGENT_ENABLE_KEYFRAME_BRIDGE 控制、默认关闭；未实测质量。五模型在真实账号与旧域名下的可用性、效果、时长和费用尚未付费验证。本轮不自动进入F、不更换默认模型；后续真实测试需用户单独批准。
 需要用户决定：本轮无新增阻塞项；真实单价与后续付费测试仍待明确安排。
 
+## 2026-10-18 · Codex · W0 完成，Wan3 Agent 贯通开始
+状态：D-026及W章已定稿，W1–W4按独立工作树并行推进。
+分支：W0从feat/agent-v2 @35edc68切出；后续媒体W1、规划W2、执行W3、功能界面W4均Codex负责。主目录留Claude；W-Gate和美化不抢占。
+范围：新增video_transform(reference/edit/extend)，图片/视频/音频/文档/网页快照；旧Simple/remix/story语义不改。网页URL写入文本并冻结正文TXT；文档支持TXT/MD/PDF。输入全片不自动裁切，延长返回最终整段不拼接，费用I+G按秒。
+安全边界：先核验并冻结素材/价格，再显式审核；Registry、Job、MQ提交均复验，公共重跑不能绕过，未知提交停止。旧URL/no Workspace ID保持。本轮无付费，Mock/Stub+临时SQLite；不改真实.env。
+给Claude：请先看D-026/W章与W1–W4文件范围；Composer/AgentStudio仅新功能接线，ProductionBoard/StoryboardEditor/全局布局不动。最终交接会提供验收与提交。用户已明确授权完成后推送GitHub；仅推feat/agent-v2到现有origin，不强推main。清理只删除可证明冗余的根空package-lock.json，保留前端锁和未跟踪技术笔记。
