@@ -13,7 +13,7 @@ from app.agent.model_selection import video_policy_for_request
 from app.agent.planning import SPECS
 from app.agent.recipes import complete_transition_draft, prepare_transition, validate_transition_plan
 from app.agent.simple_plan import approval_request_spec, validate_simple_plan
-from app.agent import research, simple_execution, story_graph, production_graph
+from app.agent import research, simple_execution, story_graph, production_graph, delivery_graph
 from app.agent.creative_v2 import creative_v2
 from app.agent.director_v2 import director_v2
 from app.api import AppError
@@ -22,7 +22,7 @@ from app.models import AgentRun
 from app.skills import build_default_registry
 
 
-class AgentStateV2(AgentState, IntakeState, ClarifyState, research.ResearchState, story_graph.StoryState, production_graph.ProductionState, total=False):
+class AgentStateV2(AgentState, IntakeState, ClarifyState, research.ResearchState, story_graph.StoryState, production_graph.ProductionState, delivery_graph.DeliveryState, total=False):
     results: list[dict]
 
 
@@ -174,6 +174,7 @@ def build_graph(checkpointer, registry=None):
     nodes = {
         **story_graph.nodes(registry),
         **production_graph.nodes(registry),
+        **delivery_graph.nodes(registry),
         "story_v2_creative": creative_story,
         "story_v2_creative_clarify": clarify_gate,
         "story_v2_director": direct_story,
@@ -270,7 +271,12 @@ def build_graph(checkpointer, registry=None):
     builder.add_conditional_edges("production_v2_tick", lambda s: {
         "producing": "production_v2_wait", "production_attention": "production_v2_review",
         "awaiting_video_review": "production_v2_review", "awaiting_storyboard": "story_v2_review",
+        "editing": "delivery_v2_tick", "delivery_attention": "delivery_v2_review",
         "videos_approved": END, "storyboard_approved": END}[s["status"]])
     builder.add_edge("production_v2_wait", "production_v2_tick")
     builder.add_edge("production_v2_review", "production_v2_tick")
+    builder.add_conditional_edges("delivery_v2_tick", lambda s: {"editing": "delivery_v2_wait",
+        "delivery_attention": "delivery_v2_review", "success": END}[s["status"]])
+    builder.add_edge("delivery_v2_wait", "delivery_v2_tick")
+    builder.add_edge("delivery_v2_review", "delivery_v2_tick")
     return builder.compile(checkpointer=checkpointer)

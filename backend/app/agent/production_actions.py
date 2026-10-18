@@ -364,6 +364,13 @@ def apply_command(run, payload, registry=None, *, review_status=None):
         status = "videos_approved"
         event(run, "videos_approved", key=key)
         update_production(run, status=status)
+        from app.agent import delivery
+        if delivery.enabled():
+            try:
+                status = delivery.begin_delivery(run, version)
+            except AppError as error:
+                delivery.update(run, stage="failed", error={"code": error.code, "message": error.message})
+                status = "delivery_attention"
     result = {"status": status, "plan_version": version.version, "plan": deepcopy(version.plan),
               "story_package": deepcopy(version.story_package)}
     _save_receipt(run, key, status="completed", result=result)
