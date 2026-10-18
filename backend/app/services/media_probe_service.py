@@ -1,5 +1,6 @@
 """Bounded local video probing and complete decode checks; never opens URLs."""
 
+from hashlib import sha256
 import math
 import re
 import subprocess
@@ -88,6 +89,25 @@ class MediaProbeService:
             "copy_compatible_metadata": complete and len(video_lines) == 1 and len(audio_lines) <= 1,
             "decoded": False, "mock": False, "duration_source": "container", "video_duration_verified": False}
 
+    @staticmethod
+    def _codec_parameters(path, codec):
+        if codec != "h264":
+            return None
+        try:
+            result = subprocess.run([VideoCompressionService.resolve_ffmpeg(), "-nostdin", "-hide_banner",
+                "-v", "error", "-protocol_whitelist", "file,pipe", "-format_whitelist", "mov,matroska,webm",
+                "-i", str(path), "-map", "0:v:0", "-frames:v", "1", "-an", "-c:v", "copy",
+                "-bsf:v", "h264_mp4toannexb", "-f", "h264", "pipe:1"], capture_output=True, timeout=60)
+            if result.returncode:
+                return None
+            units = [unit for unit in re.split(b"\x00\x00(?:\x00)?\x01", result.stdout)
+                     if unit and unit[0] & 31 in {7, 8}]
+            if {unit[0] & 31 for unit in units} != {7, 8}:
+                return None
+            return sha256(b"".join(len(unit).to_bytes(4, "big") + unit for unit in units)).hexdigest()
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+
     @classmethod
     def probe(cls, path, *, decode=False, mock_duration_sec=None):
         source = cls._path(path)
@@ -96,13 +116,17 @@ class MediaProbeService:
             if (not isinstance(mock_duration_sec, (int, float)) or isinstance(mock_duration_sec, bool)
                     or not math.isfinite(mock_duration_sec) or mock_duration_sec <= 0):
                 raise AppError("MEDIA_UNDECODABLE", "Mock media requires its approved demonstration duration", 422)
-            return {"duration_sec": float(mock_duration_sec), "width": 256, "height": 144, "fps": 25.0,
+            return {"duration_sec": float(mock_duration_sec), "container_duration_sec": float(mock_duration_sec), "width": 256, "height": 144, "fps": 25.0,
                 "video": {"codec": "mock", "profile": None, "pixel_format": "yuv420p", "time_base": None,
                           "sar": "1:1", "level": None}, "audio": None, "has_audio": False, "stream_count": 1,
                 "copy_compatible_metadata": False, "decoded": False, "mock": True,
                 "duration_source": "mock_approved_plan", "video_duration_verified": False}
         stderr, progress = cls._run(source, decode=decode)
         result = cls._metadata(stderr)
+        result["container_duration_sec"] = result["duration_sec"]
+        signature = cls._codec_parameters(source, result["video"]["codec"])
+        result["video"]["codec_parameters_hash"] = signature
+        result["copy_compatible_metadata"] = bool(result["copy_compatible_metadata"] and signature)
         if decode:
             times = [int(value) for value in re.findall(r"^out_time_us=(\d+)$", progress, re.MULTILINE)]
             frames = [int(value) for value in re.findall(r"^frame=(\d+)$", progress, re.MULTILINE)]
