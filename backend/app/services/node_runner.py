@@ -703,8 +703,12 @@ class NodeRunner:
         return task
 
     def _task_model(self, task: ApiTask) -> ModelRegistry:
-        # Disabling admission must not strand an already accepted MQ result.
-        return self._get_model(task.model_id, require_enabled=not bool(task.operation_key))
+        # Admission changes must not strand an already accepted result.
+        transform_read = bool(task.provider_task_id and (task.job.config or {}).get("agent_transform"))
+        if transform_read:
+            from app.agent.transform_policy import validate_job
+            validate_job(task.job)
+        return self._get_model(task.model_id, require_enabled=not (bool(task.operation_key) or transform_read))
 
     def _branch_tasks(self, job: Job, branch_key: str) -> list[ApiTask]:
         query = ApiTask.query.filter_by(job_id=job.id, branch_key=branch_key)
