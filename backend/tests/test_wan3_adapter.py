@@ -1,4 +1,5 @@
 """Offline Wan 3 payload and async tests, with no application database."""
+import os
 import base64
 import wave
 from pathlib import Path
@@ -17,7 +18,7 @@ from app.skills.tools.animate_shot import AnimateShotInput, validate_bridge
 @pytest.fixture
 def context(tmp_path):
     app = Flask(__name__)
-    app.config.update(MODEL_ADAPTER_MODE="mock", DASHSCOPE_API_KEY="offline-test-key", STORAGE_ROOT=str(tmp_path),
+    app.config.update(FFMPEG_BINARY=os.environ.get("FFMPEG_BINARY"), MODEL_ADAPTER_MODE="mock", DASHSCOPE_API_KEY="offline-test-key", STORAGE_ROOT=str(tmp_path),
                       DASHSCOPE_API_BASE_URL="https://dashscope.aliyuncs.com/api/v1", AGENT_ENABLE_KEYFRAME_BRIDGE=False)
     with app.app_context():
         yield app
@@ -103,8 +104,8 @@ def test_invalid_combinations_and_spoofed_duration(context, inputs):
     assert failure.value.code == "INVALID_INPUT"
 
 
-@pytest.mark.parametrize("url", ["https://assets.example/video.mp4", "oss://bucket/video.mp4", "video.mp4"])
-def test_video_reference_explicitly_unavailable(context, url):
+@pytest.mark.parametrize("url", ["https://assets.example/video.mp4", "oss://bucket/video.mp4"])
+def test_remote_video_reference_explicitly_unavailable(context, url):
     with pytest.raises(AppError) as failure:
         adapter().build_payload({"prompt": "向后延长视频1", "media": [{"type": "reference_video", "url": url}]}, {"duration": 5})
     assert failure.value.code == "WAN3_MEDIA_UNSUPPORTED"
@@ -132,7 +133,9 @@ def test_unverified_advanced_remote_media_unavailable(context, kind, url):
 
 def test_link_and_inline_image(context, tmp_path):
     link = {"type": "link", "url": "https://www.example.com/article"}
-    assert adapter().build_payload({"prompt": "根据网页创作", "media": [link]}, {})["input"]["media"] == [link]
+    with pytest.raises(AppError) as failure:
+        adapter().build_payload({"prompt": "根据网页创作", "media": [link]}, {})
+    assert failure.value.code == "WAN3_MEDIA_UNSUPPORTED"
     inline = "data:image/png;base64," + base64.b64encode(Path(picture(tmp_path)).read_bytes()).decode()
     assert adapter().build_payload({"prompt": "创作", "first_frame_image": inline}, {})["input"]["media"][0]["url"] == inline
 
