@@ -1,7 +1,7 @@
 <template>
   <section class="card min-w-0" data-testid="storyboard-editor">
     <header class="flex flex-wrap items-start justify-between gap-3">
-      <div><h3 class="font-semibold text-slate-900 dark:text-white">{{ plan.title || '分镜板' }}</h3><p class="mt-1 text-xs text-slate-500">审核 A · 版本 {{ baseVersion }} · 只生成预览图片，视频生产在下一阶段开放</p></div>
+      <div><h3 class="font-semibold text-slate-900 dark:text-white">{{ plan.title || '分镜板' }}</h3><p class="mt-1 text-xs text-slate-500">审核 A · 版本 {{ baseVersion }} · 先审核预览图片，再单独确认视频生产费用</p></div>
       <span class="tag">{{ statusText }}</span>
     </header>
     <div v-if="versionConflict" role="alert" class="mt-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-800 dark:bg-amber-950/50 dark:text-amber-300">
@@ -9,7 +9,7 @@
     </div>
     <p v-if="actionError" role="alert" class="mt-3 break-words text-sm text-red-600">{{ actionError }}</p>
     <p v-if="actionEstimate != null" role="status" class="mt-3 text-xs text-slate-500">操作已提交 · 服务器预计本次图片费用 {{ money(actionEstimate) }} credits。</p>
-    <p v-if="status === 'storyboard_approved'" class="mt-4 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300">分镜已确认。本阶段停在这里，未提交视频模型任务。</p>
+    <p v-if="status === 'storyboard_approved'" class="mt-4 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300">分镜已确认。视频生产开启后，可在生产看板确认费用并开始生成。</p>
     <div class="mt-5 flex flex-wrap items-baseline justify-between gap-2 text-sm">
       <span><strong class="tabular-nums">{{ format(check.total) }} 秒</strong> / 目标 {{ check.target }} 秒</span>
       <span :class="durationIssue ? 'text-red-600' : 'text-slate-500'">容差 ±{{ format(check.tolerance) }} 秒</span>
