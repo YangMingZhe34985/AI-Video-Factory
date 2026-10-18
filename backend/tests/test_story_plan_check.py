@@ -180,7 +180,7 @@ def test_single_shot_edit_rewrites_only_that_shot_across_new_version(app_ctx):
     for index, shot in enumerate(output["plan"]["shots"]):
         if shot["shot_id"] != edited_id: assert shot == old["shots"][index]
     assert "隐藏阶梯" in output["plan"]["shots"][1]["first_frame"]["prompt"]
-    assert write_plan_prompts(state, shot_ids=[]) == {"plan": state["plan"]}
+    assert write_plan_prompts(state, shot_ids=[]) == {"plan": state["plan"], "prompt_issues": []}
 
 
 def test_invalid_prompt_response_is_billable_and_never_automatically_repeated(app_ctx, monkeypatch):
@@ -249,3 +249,28 @@ def test_authenticated_model_override_does_not_relax_original_exclusions(app_ctx
     assert not [issue for issue in check(run, state)["issues"] if issue["code"] == "MODEL_CAPABILITY_MISMATCH"]
     state["request_spec"]["constraints"]["model_exclusions"] = ["wan2.6"]
     assert "MODEL_CAPABILITY_MISMATCH" in {issue["code"] for issue in check(run, state)["issues"]}
+
+
+
+def test_prompt_budget_failure_preserves_paid_partial_outputs_and_resumes_once(app_ctx):
+    from app.agent.planning import resolve_agent_model
+    from app.skills.budget import estimate_model_cost
+    run, state = planned()
+    price = estimate_model_cost(resolve_agent_model("prompt_smith"), {})
+    run.request = {**run.request, "budget_limit": BudgetGuard.spent(run.run_id) + 2 * price}
+    db.session.commit()
+    result = write_plan_prompts(state)
+    assert result["prompt_issues"] == [{"code": "BUDGET_EXCEEDED", "message": result["prompt_issues"][0]["message"], "shot_id": "s03"}]
+    assert all(shot["motion"]["prompt"] for shot in result["plan"]["shots"][:2])
+    assert result["plan"]["shots"][2]["motion"]["prompt"] == ""
+    assert ToolInvocation.query.filter_by(tool_name="write_shot_prompts", status="success").count() == 2
+    assert ToolInvocation.query.filter_by(tool_name="write_shot_prompts", status="rejected").count() == 1
+    assert write_plan_prompts(state) == result
+    state["plan"] = result["plan"]
+    run.request = {**run.request, "budget_limit": 500}
+    db.session.commit()
+    complete = write_plan_prompts(state)
+    assert complete["prompt_issues"] == []
+    assert complete["plan"]["shots"][:2] == result["plan"]["shots"][:2]
+    assert all(shot["motion"]["prompt"] for shot in complete["plan"]["shots"])
+    assert ToolInvocation.query.filter_by(tool_name="write_shot_prompts").count() == len(state["plan"]["shots"])
