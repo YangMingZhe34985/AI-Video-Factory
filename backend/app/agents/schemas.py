@@ -172,11 +172,12 @@ def finite_json(payload):
 def validate_payload(kind, payload):
     if kind not in WORKSPACE_KINDS:
         raise AppError("INVALID_WORKSPACE_KIND", "Unknown workspace kind", 422)
-    if kind == "patch":
-        raise AppError("AGENT_CAPABILITY_UNAVAILABLE", "Plan Patch validation is introduced in V5", 409)
     value = finite_json(payload)
     model = {"brief": RequirementBrief, "story": StoryPackage, "research_dossier": ResearchDossier,
              "plan_draft": PlanDraft, "critic_review": CriticReview}.get(kind)
+    if kind == "patch":
+        from app.plans.patch_schemas import PatchDraft
+        model = PatchDraft
     if model:
         try:
             value = model.model_validate(value).model_dump(mode="json")

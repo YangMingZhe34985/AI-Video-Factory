@@ -30,7 +30,8 @@
     "research",
     "creative",
     "director",
-    "critic"
+    "critic",
+    "repair"
   ],
   "limits": {
     "max_steps": 40,

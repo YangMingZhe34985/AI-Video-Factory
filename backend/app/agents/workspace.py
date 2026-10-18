@@ -108,6 +108,9 @@ def _validate_brief(payload, run):
         raise AppError("INVALID_WORKSPACE_PAYLOAD", "Brief must describe every uploaded attachment with its original kind", 422)
     text = (run.request or {}).get("text", "")
     constraints = payload["constraints"]
+    frozen = (run.snapshot or {}).get("v3_revision_constraints")
+    if frozen is not None and constraints != frozen:
+        raise AppError("REVISION_CONSTRAINT_CONFLICT", "Revision must preserve original hard constraints", 422)
     if any(not value or value not in text for value in constraints["model_preferences"] + constraints["model_exclusions"]):
         raise AppError("INVALID_WORKSPACE_PAYLOAD", "Model constraints must preserve the original user wording", 422)
     transform = payload.get("transform")
@@ -201,7 +204,12 @@ def write_workspace(key, kind, payload, ctx):
             _validate_brief(value, run)
         elif kind == "research_dossier":
             value = validate_payload(kind, _validate_research(value, run))
-        ids = validate_artifact_references(value, ctx, plan_refs=kind == "plan_draft")
+        elif kind == "patch":
+            if delegation.agent not in {"repair", "director"}:
+                raise AppError("TOOL_FORBIDDEN", "Only Repair and Director can write Patch drafts", 403)
+            from app.plans.patch_tools import validate_evidence
+            validate_evidence(value, ctx)
+        ids = validate_artifact_references(value, ctx, plan_refs=kind in {"plan_draft", "patch"})
         latest = AgentWorkspaceItem.query.filter_by(run_id=run.run_id, key=key).order_by(
             AgentWorkspaceItem.version.desc()).first()
         if latest and latest.kind != kind:

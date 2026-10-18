@@ -120,6 +120,11 @@ def _delegate(data, ctx):
     from app.agents.cards import get_catalog
     from app.agents.workspace import resolve_workspace_ref
     run, parent = _context(ctx)
+    from app.agents.repair_flow import active_flow
+    flow = active_flow(run)
+    if flow and (parent.agent != "producer" or ctx.idempotency_key not in {
+            f"{flow['flow_id']}:delegate:author", f"{flow['flow_id']}:delegate:review"}):
+        raise AppError("DELEGATION_FORBIDDEN", "Repair coordination uses server-assigned delegations only", 403)
     _lock_run(run)
     run, parent = _context(ctx)
     existing = AgentDelegation.query.filter_by(run_id=run.run_id, request_key=ctx.idempotency_key).first()
@@ -209,6 +214,11 @@ def _finish(data, ctx):
     elif data.kind != "completed" or data.outcome != "plan_submitted":
         raise AppError("AGENT_NOT_ACTIVE", "Submitted Producer may only acknowledge its submitted Plan", 409)
     output = data.model_dump(mode="json", exclude_none=True)
+    from app.agents.repair_flow import active_flow
+    flow = active_flow(_run)
+    if data.kind == "completed" and flow and delegation.id in {
+            flow.get("author_delegation_id"), flow.get("review_delegation_id")}:
+        raise AppError("PATCH_TOOL_REQUIRED", "Assigned Patch Agents complete through propose_patch or review_patch", 409)
     fields = set(output) - {"kind"}
     if data.kind in {"returned", "failed"}:
         if not data.reason or fields - {"reason", "suggestion"}:

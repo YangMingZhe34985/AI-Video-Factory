@@ -23,7 +23,9 @@
     "analyze_images",
     "check_plan",
     "instantiate_blueprint",
-    "request_preview"
+    "request_preview",
+    "propose_patch",
+    "review_patch"
   ],
   "can_delegate_to": [
     "creative",

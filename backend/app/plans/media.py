@@ -239,6 +239,12 @@ def package_story(data, ctx):
     temporary = target.with_suffix(".partial.zip")
     manifest = {"schema_version": 3, "run_id": run.run_id, "plan_version": version.version,
         "master_artifact_id": master.artifact_id, "source_artifact_ids": qc.inputs["video_artifact_ids"],
+        "retained_sources": [{"node_id": task.node_id, "source_task_id": task.state["source_task_id"],
+            "source_plan_version": task.state["source_plan_version"], "source_node_id": task.state["source_node_id"],
+            "artifact_ids": [key for key in task.artifact_ids if key in qc.inputs["video_artifact_ids"]],
+            "continuity_risk_accepted": bool(task.state.get("continuity_risk_accepted"))}
+            for task in tasks.values() if task.status == "success" and task.state.get("retained_by_only")
+            and set(task.artifact_ids).intersection(qc.inputs["video_artifact_ids"])],
         "costs": {"estimated_spent_credits": BudgetGuard.spent(run.run_id), "delivery_credits": 0},
         "demo_prices": True}
     try:

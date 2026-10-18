@@ -329,6 +329,20 @@ def production_quote(run_id):
     return api_success(quote(get_run(run_id), parse(ProductionQuote).model_dump(mode="json", exclude_none=True)))
 
 
+@bp.post("/runs/<run_id>/patch-quote")
+def plan_patch_quote(run_id):
+    from app.agents.api import PatchQuoteRequest
+    from app.plans.patches import quote_patch
+    row = get_run(run_id)
+    if row.request.get("schema_version") != 3:
+        raise AppError("INVALID_AGENT_STATE", "Patch quotes require a v3 Run", 409)
+    data = parse(PatchQuoteRequest)
+    record = (row.snapshot or {}).get("v3_patches", {}).get(data.patch_id)
+    if not record:
+        raise AppError("PATCH_NOT_FOUND", "Patch does not belong to this Run", 404)
+    return api_success(quote_patch(row, record, scope=data.scope)["quote"])
+
+
 def production_action(row, data):
     """Admit one production command; effects belong to the graph worker only."""
     from copy import deepcopy

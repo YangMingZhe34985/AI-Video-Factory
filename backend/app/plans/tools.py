@@ -158,6 +158,8 @@ def submit_plan(data, ctx):
             db.session.commit()
             return previous
         _assert_active(run, delegation)
+        if (run.snapshot or {}).get("v3_execution", {}).get("approved_version"):
+            raise AppError("PATCH_REQUIRED", "Approved plans can only change through a reviewed Patch", 409)
         item = resolve_workspace_ref(normalized["plan_ref"], ctx, expected_kind="plan_draft")
         latest = AgentPlanVersion.query.filter_by(run_id=run.run_id).order_by(AgentPlanVersion.version.desc()).first()
         version = (latest.version if latest else 0) + 1

@@ -159,6 +159,9 @@ def _recover_local_receipt(name, data, ctx, registry):
     elif name in {"instantiate_blueprint", "submit_plan"}:
         from app.plans.tools import recover_receipt
         output = recover_receipt(name, normalized, ctx)
+    elif name in {"propose_patch", "review_patch"}:
+        from app.plans.patch_tools import recover_receipt
+        output = recover_receipt(name, normalized, ctx)
     elif (name == "finish" and delegation.status == normalized.get("kind")
             and (delegation.output or {}).get("kind") == normalized.get("kind")):
         output = {"status": delegation.status, "output": delegation.output}
@@ -180,6 +183,71 @@ def _recover_local_receipt(name, data, ctx, registry):
         invocation.status = "success"
         invocation.finished_at = utc_now()
         db.session.commit()
+
+
+def complete_committed_turn(run, delegation):
+    """Close a proven local terminal turn before a new planning epoch starts."""
+    state = deepcopy(delegation.state or {})
+    pending = state.get("pending_turn")
+    if pending is None:
+        return
+    step = delegation.steps
+    turn = ToolInvocation.query.filter_by(idempotency_key=f"{run.run_id}:{delegation.id}:{step}",
+        tool_name="agent_llm_turn", budget_scope=run.run_id, delegation_id=delegation.id,
+        caller_agent=delegation.agent, status="success").first()
+    calls, cursor = pending.get("calls", []), pending.get("cursor")
+    if (delegation.status != "completed" or turn is None or not calls
+            or (turn.output_payload or {}).get("tool_calls") != calls
+            or type(cursor) is not int or not 0 <= cursor <= len(calls)):
+        raise AppError("RECOVERY_REQUIRED", "The old planning turn has no verified terminal receipt", 409)
+    registry = build_v3_registry()
+    terminal = None
+    for index in {cursor - 1, cursor} & set(range(len(calls))):
+        call = calls[index]
+        if call["name"] not in {"submit_plan", "finish"}:
+            continue
+        ctx = _context(run, delegation, suffix=f"tool:{index}")
+        data = registry.get(call["name"]).input_model.model_validate(call["arguments"]).model_dump(mode="json")
+        if call["name"] == "submit_plan":
+            from app.plans.tools import recover_receipt
+            proof = recover_receipt("submit_plan", data, ctx)
+            if (not proof or not proof.get("submitted") or (delegation.output or {}).get("outcome") != "plan_submitted"
+                    or (delegation.output or {}).get("plan_ref") != proof.get("plan_ref")):
+                continue
+        else:
+            if {key: value for key, value in data.items() if value is not None} != delegation.output:
+                continue
+            proof = {"status": "completed", "output": delegation.output}
+        _recover_local_receipt(call["name"], call["arguments"], ctx, registry)
+        receipt = ToolInvocation.query.filter_by(idempotency_key=ctx.idempotency_key, tool_name=call["name"],
+            budget_scope=run.run_id, delegation_id=delegation.id, caller_agent=delegation.agent,
+            status="success").first()
+        if receipt and receipt.input_payload == data and receipt.output_payload == proof:
+            if terminal is not None:
+                raise AppError("RECOVERY_REQUIRED", "The terminal planning receipt is ambiguous", 409)
+            terminal = (index, call, proof, ctx.idempotency_key)
+    if terminal is None:
+        raise AppError("RECOVERY_REQUIRED", "Cannot discard an unfinished planning turn", 409)
+    messages = state.get("messages", [])
+    assistant = next((i for i in range(len(messages) - 1, -1, -1)
+        if messages[i].get("role") == "assistant" and messages[i].get("tool_calls")), None)
+    if assistant is None:
+        raise AppError("RECOVERY_REQUIRED", "The original tool-call history is unavailable", 409)
+    index, terminal_call, output, key = terminal
+    for i, call in enumerate(calls):
+        replies = [item for item in messages[assistant + 1:] if item.get("role") == "tool"
+            and item.get("tool_call_id") == call["id"] and item.get("name") == call["name"]]
+        if len(replies) > 1 or (i < index and not replies):
+            raise AppError("RECOVERY_REQUIRED", "The old planning history is incomplete", 409)
+        if not replies:
+            value = output if i == index else {"error": {"code": "AGENT_SUSPENDED"}}
+            messages.append({"role": "tool", "tool_call_id": call["id"], "name": call["name"],
+                             "content": json.dumps(value, ensure_ascii=False)})
+    state.pop("pending_turn")
+    delegation.state = state
+    delegation.steps += 1
+    _record(delegation, step, "tool", call_id=terminal_call["id"], tool=terminal_call["name"], key=key)
+    db.session.commit()
 
 
 def _round(delegation_id, expected_step, registry):
@@ -204,6 +272,8 @@ def _round(delegation_id, expected_step, registry):
             return result()
         if "messages" not in state:
             state["messages"] = _initial_messages(run, delegation, registry)
+            if state.get("pending_revision_message"):
+                state["messages"].append({"role": "user", "content": state.pop("pending_revision_message")})
             delegation.state = deepcopy(state)
             db.session.commit()
         if _loop_check(delegation, state):
@@ -396,6 +466,28 @@ def snapshot(run):
     return value
 
 
+def _approval_rejected(run, command, error, admitted_status):
+    """Consume a definitive pre-dispatch refusal without stranding its inbox."""
+    if error.code not in {"PATCH_QUOTE_CHANGED", "INVALID_PATCH", "BUDGET_EXCEEDED",
+            "PLAN_VERSION_CONFLICT", "PATCH_SUPERSEDED", "PATCH_REJECTED",
+            "PATCH_ALREADY_APPLIED", "PATCH_REVIEW_REQUIRED", "INVALID_PATCH_EVIDENCE",
+            "PATCH_BASE_NOT_APPROVED", "MODEL_PRICE_CHANGED", "PLAN_INPUT_CHANGED",
+            "INVALID_EXECUTION_PLAN", "INVALID_GATE"}:
+        raise error
+    # No execution belongs in this exception boundary. Unknown submissions and
+    # unexpected failures retain their original command for explicit recovery.
+    db.session.rollback()
+    from app.agent.plan_versions import current_version
+    version = current_version(run)
+    review_status = {"approve_plan": "awaiting_plan_review", "approve_gate": "awaiting_gate",
+                     "approve_results": "awaiting_result_review"}.get(command["action"])
+    run.status = (review_status if review_status == admitted_status and version is not None
+        and version.version == command.get("plan_version") else "attention")
+    run.command, run.error = None, {"code": error.code}
+    db.session.commit()
+    return snapshot(run)
+
+
 def advance(run, saver=None):
     root = initialize(run)
     registry = build_v3_registry()
@@ -404,7 +496,7 @@ def advance(run, saver=None):
     # free and runs even if that handler already ended its delegation.
     for receipt in ToolInvocation.query.filter(ToolInvocation.budget_scope == run.run_id,
             ToolInvocation.status.in_(["pending", "running"]),
-            ToolInvocation.tool_name.in_(["delegate", "write_workspace", "ask_user", "finish", "instantiate_blueprint", "submit_plan", "request_preview"])).all():
+            ToolInvocation.tool_name.in_(["delegate", "write_workspace", "ask_user", "finish", "instantiate_blueprint", "submit_plan", "request_preview", "propose_patch", "review_patch"])).all():
         owner = db.session.get(AgentDelegation, receipt.delegation_id)
         if owner is not None:
             ctx = _context(run, owner)
@@ -413,6 +505,7 @@ def advance(run, saver=None):
     command = deepcopy(run.command or {})
     if command:
         action = command.get("action")
+        admitted_status = command.get("admitted_from_status", run.status)
         if action == "reject":
             cancel(run)
         elif action == "answer":
@@ -420,21 +513,38 @@ def advance(run, saver=None):
         elif action == "resume" and root.status == "failed":
             # Failed/unknown paid submissions never receive a new step/key.
             run.status = "attention"
+        elif action == "revise_plan":
+            from app.agents.repair_flow import revise_plan
+            revise_plan(run, command)
+        elif action in {"approve_patch", "reject_patch"}:
+            from app.plans.patch_execution import approve_patch, reject_patch
+            handler = approve_patch if action == "approve_patch" else reject_patch
+            try:
+                handler(run, command["patch_id"], command["quote_id"], command.get("scope", "only"), registry=registry)
+            except AppError as error:
+                return _approval_rejected(run, command, error, admitted_status)
         elif action in {"approve_plan", "approve_gate", "approve_results"}:
             from app.plans import runtime as execution_runtime
-            if action == "approve_plan":
-                execution_runtime.begin(run, command["plan_version"], command.get("repair_budget_credits", 0), registry=registry)
-            elif action == "approve_gate":
-                execution_runtime.approve_gate(run, command["plan_version"], command["gate_node_id"])
-            else:
-                execution_runtime.approve_results(run, command["plan_version"])
+            try:
+                if action == "approve_plan":
+                    execution_runtime.begin(run, command["plan_version"], command.get("repair_budget_credits", 0), registry=registry)
+                elif action == "approve_gate":
+                    execution_runtime.approve_gate(run, command["plan_version"], command["gate_node_id"])
+                else:
+                    execution_runtime.approve_results(run, command["plan_version"])
+            except AppError as error:
+                return _approval_rejected(run, command, error, admitted_status)
         run.command = None
         db.session.commit()
+    from app.agents.repair_flow import active_flow, advance_repair_flow, planning_delegation
+    if advance_repair_flow(run, registry):
+        return snapshot(run)
     from app.agent.plan_versions import current_version
     if current_version(run) is not None and run.status in {
             "executing", "awaiting_gate", "delivering", "awaiting_plan_review", "awaiting_result_review", "attention", "success"}:
         from app.plans.runtime import advance as advance_plan
         advance_plan(run, registry)
+        advance_repair_flow(run, registry)
         return snapshot(run)
     if root.status == "awaiting_input" and run.status != "cancelled":
         run.status = "awaiting_input"
@@ -442,22 +552,31 @@ def advance(run, saver=None):
         db.session.commit()
     if run.status == "cancelled" or root.status == "awaiting_input":
         return snapshot(run)
-    _wake_parents(run)
-    ready = AgentDelegation.query.filter(AgentDelegation.run_id == run.run_id,
-        AgentDelegation.status.in_(["pending", "running"])).order_by(AgentDelegation.updated_at, AgentDelegation.id).first()
+    if active_flow(run):
+        ready = planning_delegation(run)
+    else:
+        _wake_parents(run)
+        ready = AgentDelegation.query.filter(AgentDelegation.run_id == run.run_id,
+            AgentDelegation.status.in_(["pending", "running"])).order_by(AgentDelegation.updated_at, AgentDelegation.id).first()
     if ready:
         if saver is None:
             if not current_app.testing:
                 raise AppError("AGENT_CHECKPOINTER_REQUIRED", "A persistent v3 checkpointer is required", 503)
             saver = current_app.extensions.setdefault("agent_v3_test_saver", InMemorySaver())
         graph = build_delegation_graph(saver, lambda did, step: _round(did, step, registry))
-        config = {"configurable": {"thread_id": f"{run.run_id}:delegation:{ready.id}"}}
+        thread_id = f"{run.run_id}:delegation:{ready.id}"
+        epoch = (ready.state or {}).get("planning_epoch", 0)
+        if epoch:
+            thread_id += f":epoch:{epoch}"
+        config = {"configurable": {"thread_id": thread_id}}
         saved = graph.get_state(config)
         if saved.values:
             interrupted = any(task.interrupts for task in saved.tasks)
             graph.invoke(Command(resume={"accepted": True}) if interrupted else None, config)
         else:
             graph.invoke({"delegation_id": ready.id, "completed_steps": ready.steps, "status": ready.status}, config)
+    if active_flow(run):
+        return snapshot(run)
     db.session.refresh(root)
     if root.status == "completed":
         outcome = (root.output or {}).get("outcome")

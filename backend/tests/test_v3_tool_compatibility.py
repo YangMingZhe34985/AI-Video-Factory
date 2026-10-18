@@ -91,8 +91,9 @@ def test_v3_catalog_does_not_mutate_legacy_roles_or_descriptions():
         "analyze_images", "estimate_cost", "list_models", "list_skills", "load_skill", "read_skill_resource",
         "list_agents", "delegate", "ask_user", "read_workspace", "write_workspace", "finish",
         "check_plan", "instantiate_blueprint", "submit_plan", "request_preview", "retain_video_segment",
+        "propose_patch", "review_patch",
     }
-    assert len(v3.names()) == 39
+    assert len(v3.names()) == 41
     assert "producer" in v3.get("analyze_video").allowed_roles
     assert "producer" not in legacy.get("analyze_video").allowed_roles
 

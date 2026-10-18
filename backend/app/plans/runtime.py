@@ -330,7 +330,7 @@ def advance(run, registry=None):
                 task.inputs, task.inputs_hash = data, digest
                 task.state = {**task.state, "resolved": True, "input_fingerprints": sources}
                 db.session.commit()
-            existing = execution.reusable(run, task)
+            existing = None if task.state.get("force_execute") else execution.reusable(run, task)
             if existing:
                 execution.reuse(task, existing)
                 continue

@@ -398,3 +398,44 @@ PlanPatch
 - `request_preview({purpose,prompt,reference_artifact_ids?})` 只提供一张规划图，服务端按有无参考图选择 t2i/i2i 默认模型；不接收 model_id/params/n。Registry 外层账本计费一次、最多六个非 rejected 调用、每次不超过配置的三 credits 上限；独立冻结 permit 保护 Job/MQ 调度，成功结果生成不可变工作区 note。公开工具输入不得设置 plan_node_task_id/plan_preview_id 等服务端上下文。
 - 编译器内部另返回 source_artifact_ids/input_artifact_metadata；批准时冻结现有源素材摘要，节点就绪时复验源文件与前驱产物摘要。公开 Run 只返回可审核计划、节点状态、工件链接和统计，不返回内部校验占位值、原始模型消息或服务端许可。
 - submit_plan 成功时在同一事务完成 Producer 委派并保存 plan_submitted 输出；无需额外模型回合才能进入审核。request_preview 已创建未提交 Job 的恢复仍使用原 permit/账本/Job；存在提交证据时只允许最多两次原 provider_id 的免费读取恢复，未知提交停止。QC 时长以批准的源片段时长为基准，打包前复验 QC 输入摘要；compressed_artifact_id 只能来自同一 compose 节点的明确压缩副本。
+
+## V.17 V5 Patch 实施精化（D-035）
+
+### V.17.1 草稿与操作
+PatchDraft = {base_version:int>=1, reason:str(1–2000), evidence_refs:Evidence[](最多40，默认[]), ops:Op[](1–50), scope:only|cascade(默认only)}。不接收服务端字段。
+Evidence 为互斥 {task_id:int>=1} | {artifact_id:str} | {workspace_ref:{key,version}}，逐项校验当前 Run 归属。
+Op 为互斥 {op:update_inputs,node_id,inputs:dict} | {op:replace_node,node_id,node:PlanDraftNode} | {op:insert_node,node:PlanDraftNode,before?:node_id} | {op:remove_node,node_id}。
+update_inputs 浅合并顶层 inputs；null 仅能清除工具允许的可选值。replace 的 node.id 必须保持一致；before 给目标增加新节点的 depends_on。单 Patch 每个目标至多一次操作，新插入 id 不可同时成为其他 op 目标。删除交付目标或产生悬空引用直接报编译 issue，不自动改写 deliverables。
+
+### V.17.2 服务端记录与审阅
+Run.snapshot.v3_patches 按 patch_id 保存 {patch_id,draft,proposed_by,proposal_ref,status,director_review,...}；工作区草稿只保存 PatchDraft。
+Patch 状态为 proposed/review_pending/reviewed/awaiting_approval/rejected/applied/invalid。流程单独保存于 snapshot.v3_repair_flows[flow_id]，v3_active_repair_flow 指向当前流程；其 trigger 为服务端失败回执、用户修订或门反馈，不能由模型伪造。
+propose_patch({draft}) 仅 Repair/Director，在同一事务保存草稿/来源/工具收据及提议委派完成状态；不执行生成。
+review_patch({patch_id,verdict:approve|revise|reject,reason,revised_draft?}) 仅当前流程指定的 Director 委派。revise 必须带修订草稿并表示审阅修订后通过，approve/reject 不带替换草稿。审阅收据绑定 delegation_id、review_ref、最终 draft_hash、request_key 与基准版本；只读报价复核工作区作者/内容和委派，不信任模型自报审阅。
+advance_repair_flow(run,registry)->bool 每次最多推进一个确定性阶段；创建 Repair/Director 仍经过 Registry.delegate，额度来自同 Producer 剩余规划配额。草稿提交、审阅和委派的本地收据覆盖 Registry/checkpoint 间隙。True 表示当前 tick 由修复流程接管，禁止普通 Producer 完成映射覆盖执行或等待批准状态。
+
+### V.17.3 编译、影响范围与报价
+apply_patch_draft(base,draft) 返回独立 PlanDraft，不写库；quote_patch(run,record,scope=None,registry=None) 返回内部 {compiled,dry_run,decisions,quote}，不产生模型调用或新版本。
+decisions 包含 base_version/target_version/scope、私有哈希、每节点 execute/reuse/retain（以及范围外失败的保留状态）、来源证明、受影响集合和自动授权判断。SourceProof 冻结旧任务版本/id、真实 inputs/hash、输入/输出摘要、output、artifact_ids、invocation_id/job_id。任何客户端不可提供 decisions。
+公开 quote = {patch_id,base_version,scope,quote_id,can_apply,affected_node_ids,execute_node_ids,reused_node_ids,kept_node_ids,removed_node_ids,continuation_node_ids,estimated_credits:{repair,continuation,total},node_costs:[{node_id,action,estimated_cost,input_video_seconds,output_video_seconds}],automatic:{eligible,reasons,remaining_credits},warnings,issues,demo:true}。
+total=repair+continuation，不再收费复用/保留结果。only/cascade 分别有各自 quote_id；scope 选择进入报价哈希。无效候选返回 can_apply=false 与 issues；伪审阅、归属或版本冲突直接 403/409。
+quote 另含 manual_can_apply：人工审批总预算需覆盖 total + 原修复池剩余预留；自动审批覆盖 total + 本次占用后剩余预留。can_apply 表示至少一种方式可执行；automatic.eligible 同时检查自动总预算。人工不可批但自动可批时使用专门 warning 说明，不将其混为全局编译失败。尚未开始的节点属于 continuation，不占本次修复池。
+影响范围为旧/新 DAG 后代闭包并集。only 保留未直接修改的已完成下游生成结果，明确历史来源与衔接风险；cascade 强制执行影响子图，即使命中原输入 hash。所有交付处理节点重新执行。范围外成功产物需验证可用；范围外失败保留失败，不自动重新提交。
+失败触发时 only 不允许改与失败无关的已完成节点；user_revision 允许在人工批准后重做已完成目标并保留下游，不能自动授权。已明确批准的 only 历史保留可以跨后续无关修订沿用，必须核验原 Patch 批准链与真实输入/产物摘要。
+
+### V.17.4 批准与恢复
+approve_patch(run,patch_id,quote_id,scope,*,automatic=False,registry=None) 在 Run 锁内复算，漂移返回 PATCH_QUOTE_CHANGED/409；原子保存版本、节点任务、执行批准、历史许可、Patch 状态和修复占用。重放已批准 patch 返回原版本，不重复创建任务或占额度。
+自动修复只针对服务端允许的失败节点，全部 op 为提示词字段 update_inputs，模型/参数/时长/引用/结构不变，且不影响已完成产物、不需要保留风险确认。repair_budget_credits 不因新版本重置，repair_claims[patch_id] 一次性占用；同逻辑节点跨版本最多两次，失败修复也消耗次数。Run 总预算还覆盖 continuation，真实花费仅来自工具账本。
+snapshot.v3_repair={budget_limit,repair_claims:{patch_id:{credits,node_ids,automatic,status,approved_version}}} 独立于每版本执行快照；只有自动修复占用该预授权池，人工批准不重置或补充池。Patch approval/rejection 保存 quote_id、scope，批准另存 version/automatic；同内容重放返回原结果。
+确定性批准预检失败（版本、报价、预算或无效候选的明确拒绝）在处理器事务回滚后清除旧动作箱；原幂等 key 仍保持原请求，重新报价使用新动作 key。未知提交、意外异常及已激活后的执行不包含在该异常边界。批准/拒绝已落库而流程尚未结束时，从对应收据和 PlanTask 重建执行/审核状态；不得从 resume 的临时 understanding 推断成功。
+未解决 submit_unknown、鉴权/余额/配置失败不启动 Repair；存在未知提交或旧 Job/MQ 仍在执行，任何 Patch 都不激活。原 provider_id 免费查询/下载仍由确定性代码处理。
+revise_plan 对未批准计划唤醒同 Producer；对已批准计划转交 Director 起草 Patch。planning_epoch 只换 checkpoint 标识，不清计数、额度或 started_at；已超时仍停止。已批准版本禁止 submit_plan 绕过 Patch。
+如上个终止工具已提交但规划回合尚未收尾，修订前必须匹配成功的原 LLM/终止工具收据，补齐缺失工具回复并完成原 steps 记账一次，再切换 epoch；不能丢弃未知 pending_turn 或换 key 重做收费调用。
+
+### V.17.5 API 与公开状态
+POST /api/agent/runs/<id>/patch-quote 输入 {patch_id,scope?}，只读、本人可见。
+actions 增加 revise_plan {plan_version,message,gate_node_id?}、approve_patch/reject_patch {patch_id,quote_id,scope}，均要求 request_key；审批范围必须与 quote_id 一致。
+revise_plan 可用于 awaiting_plan_review / awaiting_result_review / awaiting_gate，以及没有未知提交或仍在执行任务的 attention；门否决必须提供当前成功且未批准的 gate_node_id，服务端保存 qc_failed 反馈证据。修订不修改原用户硬约束。
+公开 patches 返回状态、作者、原因、精简 diff、审阅结论、报价/是否自动批准及批准版本；不暴露私有哈希、原始模型消息或文件路径。reject_patch 只拒绝当前补丁，保留已完成产物及原失败状态。
+Run 另公开 action_pending、resume_count 与 repair_budget={limit,committed,remaining}（预授权占用，不重复计入账本花费）；节点公开 retained、来源版本与依赖。attention 接受新动作后暂转 understanding，动作箱保存 admitted_from_status，由 worker 消费，避免后台自发重试。
+patches.diff_preview 为逐操作 {op,node_id,before,after}：输入更新仅展示被改字段，替换/新增/删除展示对应 Plan 节点；使用同 Run 基准版本生成并脱敏，便于用户核对具体修改后再审批。

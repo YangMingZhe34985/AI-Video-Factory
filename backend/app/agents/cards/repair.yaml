@@ -11,14 +11,13 @@
     "list_skills",
     "load_skill",
     "read_skill_resource",
-    "list_agents",
     "read_workspace",
-    "write_workspace",
-    "ask_user",
     "finish",
     "get_task_status",
     "analyze_images",
-    "estimate_cost"
+    "estimate_cost",
+    "check_plan",
+    "propose_patch"
   ],
   "can_delegate_to": [],
   "limits": {

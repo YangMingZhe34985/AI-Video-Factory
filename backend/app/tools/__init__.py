@@ -45,6 +45,8 @@ def build_v3_registry():
     register_agent_tools(registry)
     from app.plans.tools import register_plan_tools
     register_plan_tools(registry)
+    from app.plans.patch_tools import register_patch_tools
+    register_patch_tools(registry)
     from app.plans.preview import SPEC as preview_spec
     registry.register(preview_spec)
     return registry

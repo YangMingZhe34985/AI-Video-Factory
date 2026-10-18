@@ -217,3 +217,16 @@ retry_shot 允许服务端识别的 blocked 子镜头恢复本地尾帧提取：
 - 批准回执冻结计划、模型/价格、素材摘要及修复额度；只有精确绑定的服务端上下文能提交。公共 Skill/Job 重跑、线程与 MQ 最终提交均检查同一许可。已受理任务仅查询/下载恢复，不因之后模型禁用/改价重发 POST；未知提交停止。Blueprint 身份须匹配服务端 builder 草稿哈希收据，不能信任 origin 自报。
 - 影响 V4 编译/执行/Blueprint/预览与 V5 Patch、V6 Agent、V7 功能界面；Claude 保留 Gate 与美化，经典/v1/v2 逐阶段回归。本轮仅 Mock/Stub，真实模型调用 0。
 - 集成精化：submit_plan 成功时，在创建审核版本的同一事务结束 Producer 委派并保存 plan_submitted 输出，避免版本提交后还需额外 LLM 回合才能结束、崩溃后永久 running；显式 finish 仍仅可引用相同提交收据。预览恢复只允许重接没有任何提交证据的同一 Job 或读取已有 provider_id，不新增付费尝试。QC 按批准时长检查，并在打包前重验 QC 输入摘要；压缩副本必须来自同一主片的显式压缩输出。
+
+## D-035 · 2026-10-19 · V5 局部 Patch、审阅证据与跨版本授权
+- 原因：V.10 需要明确输入修改语义、Director 审阅证明、only/cascade 的历史产物边界、增量费用及崩溃恢复；不能以新的全片批准掩盖局部修复成本。
+- 决定：PatchDraft 不接受服务端 patch_id/proposed_by/status/报价。四类 op 严格判别，update_inputs 浅合并，replace 保持原 id，insert.before 只增加控制依赖，不隐式改写数据引用，remove 后悬空引用交给编译器拒绝。证据使用同 Run 的 task/artifact/workspace 三类显式引用。
+- 决定：Repair 提交与其委派完成原子保存；确定性协调器通过 ToolRegistry 的 delegate 创建 Director 审阅任务。review_patch 只接受服务端指定的 Director 委派，绑定基准版本、草稿哈希和不可变工作区审阅收据；不相信 proposed_by 或普通 note。模型只请求工具，不直接启动生产。
+- 决定：受影响范围为旧/新 DAG 的后代闭包并集。cascade 强制执行影响子图；only 显式保留未直接修改且已成功的下游生成结果，冻结真实历史输入及产物来源并披露衔接风险。未完成的下游仍按新输入执行；拼接、probe、QC、打包重新执行，不能保留旧成片清单。范围外失败不能被新版本悄悄重交。
+- 决定：报价为新增修复费用 + 尚待继续执行的费用，成功复用/显式保留为零；既往账本费用不重复加入。quote_id 绑定候选计划、审阅、范围、原任务状态、素材摘要及最新模型价格，批准时在 Run 锁内重新核验。任何未解决的未知提交或旧任务仍在执行时均禁止激活。
+- 决定：批准原子保存新版本、节点任务、批准/历史快照及修复占用收据，不调用带独立 commit 的 create_version(); begin() 串联。修复额度跨版本累计，每逻辑节点自动修复最多两次；只改失败节点提示词、模型/参数/引用/结构不变、无已完成产物影响且在剩余额度内才自动授权。占用不冒充真实花费，实际费用仍只取 ToolInvocation。
+- 决定：revise_plan 复用同 Producer，递增 checkpoint epoch，保留 steps/llm_calls/started_at/额度和历史消息；命令重放不重复追加修订。未批准计划可重写提交，已批准计划必须走 Patch。允许 awaiting_gate 的明确否决意见作为 qc_failed 证据，不将取消整 Run 当作修复。修订仍受原始用户硬约束保护，不通过 note 或新 brief 放宽排除系列等要求。
+- 影响：V5 后端与 V6 策略、V7 Patch 功能界面；经典/v1/v2 不变。用户本轮明确禁止真实 LLM/付费测试，所有验证为 Mock/Stub。Gate、正式提示词审定和美化继续由 Claude 负责。
+- 预算精化：报价另公开 manual_can_apply。人工批准必须同时容纳本次增量费用与原修复池的剩余预留；自动批准则先扣除此补丁占用再核验剩余预留，避免把同一笔修复费用预留两次。can_apply 表示至少一种有效授权方式可执行，automatic.eligible 还需通过自动方式的总预算检查；页面按 manual_can_apply 决定能否人工批准。未开始的后续节点费用归 continuation，不占本次修复池。
+- 人工修订精化：禁止 only 修改“无关已完成节点”的限制针对失败触发的修复；明确 user_revision 可在人工批准后重做已完成目标，only 保留已完成下游并确认衔接风险，cascade 重做受影响后代。公开 diff_preview 展示具体修改前后值，避免只凭原因与价格批准不可核对的改动。
+- 恢复精化：批准前的确定性版本/报价/预算拒绝在原子处理器回滚后消费旧命令，允许重新报价；未知提交与意外异常仍保留命令。Patch 已批准或已拒绝后、流程完成回执前中断，恢复必须从批准/拒绝收据和实际任务重建状态，不能把 resume 的 understanding 映射为整 Run 成功。

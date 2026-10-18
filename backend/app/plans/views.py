@@ -2,10 +2,48 @@
 from copy import deepcopy
 
 from app.agent.plan_versions import current_version
-from app.models import Artifact
+from app.models import AgentPlanVersion, Artifact
 from app.plans.runtime import latest_tasks
 from app.tools.specs.package_story import _safe
 from app.utils.time_utils import isoformat
+
+
+def public_patches(run):
+    from app.agents.api import safe_text
+    result = []
+    for patch_id, record in (run.snapshot or {}).get("v3_patches", {}).items():
+        draft = record.get("draft") or {}
+        review = record.get("director_review") or {}
+        base = AgentPlanVersion.query.filter_by(run_id=run.run_id, version=draft.get("base_version")).first()
+        originals = {node["id"]: node for node in base.plan.get("nodes", [])} if base else {}
+        changes = []
+        for op in draft.get("ops", []):
+            node_id = op.get("node_id", (op.get("node") or {}).get("id"))
+            original = originals.get(node_id)
+            before, after = original, op.get("node")
+            if op.get("op") == "update_inputs":
+                after = op.get("inputs", {})
+                before = {key: (original or {}).get("inputs", {}).get(key) for key in after}
+            changes.append({"op": op.get("op"), "node_id": node_id, "before": _safe(before), "after": _safe(after)})
+        result.append({"patch_id": patch_id, "status": record.get("status"),
+            "base_version": draft.get("base_version"), "scope": draft.get("scope", "only"),
+            "author": record.get("proposed_by"), "reason": safe_text(_safe(draft.get("reason")), 2000),
+            "diff_summary": [{"op": op.get("op"), "node_id": op.get("node_id", (op.get("node") or {}).get("id")),
+                "fields": sorted((op.get("inputs") or {}).keys()) if op.get("op") == "update_inputs" else []}
+                for op in draft.get("ops", [])],
+            "diff_preview": changes,
+            "review": {"verdict": review.get("verdict"), "reason": safe_text(_safe(review.get("reason")), 2000)} if review else None,
+            "auto_approved": bool(record.get("auto_approved")),
+            "approved_version": record.get("approved_version"),
+            "quote": _safe(record.get("quote"))})
+    return result
+
+
+def repair_budget(run):
+    state = (run.snapshot or {}).get("v3_repair", {})
+    limit = state.get("budget_limit", (run.snapshot or {}).get("v3_execution", {}).get("repair_budget_credits", 0))
+    reserved = sum(item.get("credits", 0) for item in state.get("repair_claims", {}).values() if item.get("automatic"))
+    return {"limit": limit, "committed": reserved, "remaining": max(0, limit - reserved)}
 
 
 def public_plan(run):
@@ -30,6 +68,9 @@ def public_plan(run):
             "gate": node.get("gate"), "gate_approved": node["id"] in approvals,
             "artifacts": artifacts, "error": _safe(task.error) if task else None,
             "reused_from_task_id": task.reused_from_task_id if task and hasattr(task, "reused_from_task_id") else (task.state or {}).get("reused_from") if task else None,
+            "retained": bool((task.state or {}).get("retained_by_only")) if task else False,
+            "source_plan_version": (task.state or {}).get("source_plan_version") if task else None,
+            "depends_on": version.check.get("dag", {}).get("dependencies", {}).get(node["id"], node.get("depends_on", [])),
             "updated_at": isoformat(task.updated_at) if task else None})
     results = []
     for delivery in version.plan.get("deliverables", []):

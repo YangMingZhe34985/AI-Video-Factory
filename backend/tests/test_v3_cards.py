@@ -68,15 +68,17 @@ def test_prompt_escape_is_rejected_even_if_file_exists(card_copy):
         AgentCatalog(root, registry)
 
 
-def test_agent_function_visibility_does_not_include_future_execution_tools(app_ctx):
+def test_agent_function_visibility_excludes_execution_and_limits_patch_roles(app_ctx):
     catalog = get_catalog()
     registry = build_v3_registry()
-    forbidden = {"agent_llm_turn", "propose_patch", "generate_image", "generate_video", "animate_shot", "transform_video",
+    forbidden = {"agent_llm_turn", "generate_image", "generate_video", "animate_shot", "transform_video",
                  "retain_video_segment", "compose_video", "extract_frame", "probe_media", "qc_video", "package_story"}
     for card in catalog.cards.values():
         assert not forbidden.intersection(card.tools)
         assert all(registry.get(name).agent_visible for name in card.tools)
         if card.name != "producer":
             assert "submit_plan" not in card.tools
+        assert ("propose_patch" in card.tools) == (card.name in {"director", "repair"})
+        assert ("review_patch" in card.tools) == (card.name == "director")
         assert all(registry.get(name).permission != "generate" or name == "request_preview" for name in card.tools)
     assert {"check_plan", "instantiate_blueprint", "submit_plan", "request_preview"}.issubset(catalog.cards["producer"].tools)

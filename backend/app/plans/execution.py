@@ -165,6 +165,30 @@ def reuse(task, previous):
     db.session.commit()
 
 
+def carry_forward(task, previous, *, retained_by_only=False):
+    """Copy immutable evidence into a new version without pretending it reran."""
+    original, seen = previous, set()
+    while original.state.get("reused_from") and original.id not in seen:
+        seen.add(original.id)
+        source = db.session.get(PlanNodeTask, original.state["reused_from"])
+        if source is None or source.run_id != previous.run_id or source.output != previous.output:
+            break
+        original = source
+    task.inputs_hash, task.inputs = previous.inputs_hash, deepcopy(previous.inputs)
+    task.output, task.artifact_ids = deepcopy(previous.output), deepcopy(previous.artifact_ids)
+    state = deepcopy(previous.state or {})
+    state.update(patch_id=task.state["patch_id"], force_execute=False, reused_from=previous.id,
+        source_task_id=state.get("source_task_id", original.id),
+        source_plan_version=state.get("source_plan_version", original.plan_version),
+        source_node_id=state.get("source_node_id", original.node_id),
+        retained_by_only=bool(retained_by_only or state.get("retained_by_only")),
+        continuity_risk_accepted=bool(retained_by_only or state.get("continuity_risk_accepted")))
+    task.state = state
+    task.invocation_id, task.job_id = previous.invocation_id, previous.job_id
+    task.status, task.error = previous.status, deepcopy(previous.error)
+    task.attempt, task.estimated_cost = previous.attempt, 0.0
+
+
 def failure(error, *, known_not_submitted=False):
     code = getattr(error, "code", "PLAN_EXECUTION_FAILED")
     category = "qc_failed" if code == "PLAN_QC_FAILED" else "invalid_parameters" if (
