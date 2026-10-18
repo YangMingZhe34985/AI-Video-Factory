@@ -99,3 +99,9 @@ test('quotes disclose ungenerated continuation separately from redo scope withou
   assert.deepEqual(quoteImpact(withContinuation, 'cascade').continuing, ['s03'])
   assert.equal(quoteImpact(withContinuation, 'only').cost, 15)
 })
+
+test('blocked tail-frame children can retry only when the server explicitly permits recovery', () => {
+  assert(productionActionAllowed('production_attention', { status: 'blocked', can_retry: true }, 'retry'))
+  assert(!productionActionAllowed('production_attention', { status: 'blocked', can_retry: false }, 'retry'))
+  assert(!productionActionAllowed('producing', { status: 'blocked', can_retry: true }, 'retry'))
+})
