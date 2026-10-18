@@ -82,7 +82,7 @@ def validate_params(model: ModelRegistry, params: dict) -> dict:
             errors.append(f"{name}: expected {rule.get('type')}")
             continue
         if rule.get("format") == "image_size":
-            match = re.fullmatch(r"([1-9][0-9]*)\*([1-9][0-9]*)", str(value))
+            match = re.fullmatch(r"([1-9][0-9]{0,7})\*([1-9][0-9]{0,7})", str(value))
             if not match:
                 errors.append(f"{name}: expected positive width*height")
             else:

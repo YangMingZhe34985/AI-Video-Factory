@@ -78,7 +78,7 @@ def estimate_model_cost(model, params: dict, *, input_video_seconds: float = 0.0
     rates = pricing.get("resolution_rates")
     if rates is not None:
         resolution = effective.get("resolution")
-        if unit != "second" or not isinstance(rates, dict) or resolution not in rates:
+        if unit != "second" or not isinstance(rates, dict) or not isinstance(resolution, str) or resolution not in rates:
             raise AppError("INVALID_INPUT", "No configured estimate for this model resolution", 422)
         rate = _number(rates[resolution], "pricing.resolution_rates", allow_zero=True)
     else:
