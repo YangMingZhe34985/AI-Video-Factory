@@ -1,10 +1,54 @@
 """Server-owned approval and artifact bindings for story production Skills."""
 from copy import deepcopy
+from contextlib import contextmanager
+from contextvars import ContextVar
 
 from app.api import AppError
-from app.models import AgentRun, AgentShotTask, ToolInvocation
+from app.models import AgentPlanVersion, AgentRun, AgentShotTask, ToolInvocation
 from app.agent import plan_versions as versions
 from app.agent.production_plan import select_plan_model
+
+
+_dispatch_permit = ContextVar("story_production_dispatch", default=None)
+
+
+def require_task_authorization(tool_name, ctx):
+    """Public callers cannot replace a frozen story task with a fresh tool key."""
+    if ctx.shot_task_id is not None or tool_name not in {"animate_shot", "generate_video", "produce_shot", "remix_shot"}:
+        return
+    version = AgentPlanVersion.query.filter_by(run_id=ctx.budget_scope).order_by(AgentPlanVersion.version.desc()).first()
+    if version and (version.plan or {}).get("recipe") == "story_video":
+        raise AppError("UNSAFE_RETRY", "Story videos require an approved production task and quoted action", 409)
+
+
+def reject_manual_dispatch(job):
+    if (job.config or {}).get("agent_story_production"):
+        raise AppError("UNSAFE_RETRY", "Production Jobs must use the story retry/redo approval flow", 409)
+
+
+@contextmanager
+def authorized_job_dispatch(job, run_type, node_key=None, *, force=False, restart=False):
+    """Server-only admission permit, never populated from HTTP or tool input.
+
+    Callers already validated the frozen task or durable recovery receipt. The
+    permission exists only while admitting that exact Job operation, not in the
+    asynchronous executor thread or another HTTP request.
+    """
+    allowed = ((run_type == "run_full" and node_key is None and not force and not restart)
+               or (run_type == "run_node" and node_key == "poll_i2v" and force and not restart))
+    if not allowed:
+        raise AppError("UNSAFE_RETRY", "Production permits cannot force a paid submit or restart", 409)
+    token = _dispatch_permit.set((job.job_id, run_type, node_key, force, restart))
+    try:
+        yield
+    finally:
+        _dispatch_permit.reset(token)
+
+
+def validate_dispatch(job, run_type, node_key, force, restart):
+    if ((job.config or {}).get("agent_story_production")
+            and _dispatch_permit.get() != (job.job_id, run_type, node_key, force, restart)):
+        reject_manual_dispatch(job)
 
 
 def invocation_key(task):

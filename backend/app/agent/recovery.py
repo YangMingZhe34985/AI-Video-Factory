@@ -52,7 +52,9 @@ def recover_job(job: Job, scope: str) -> None:
         node.ended_at = utc_now()
     job.status = "pending"
     db.session.commit()
-    JobRunService.start(job.job_id, "run_full")
+    from app.agent.production_policy import authorized_job_dispatch
+    with authorized_job_dispatch(job, "run_full"):
+        JobRunService.start(job.job_id, "run_full")
 
 
 def invoke_once(registry, name, data, ctx):
