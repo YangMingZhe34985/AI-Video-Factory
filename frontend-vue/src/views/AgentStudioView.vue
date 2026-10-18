@@ -211,6 +211,7 @@ import AuthedImage from '@/components/agent/AuthedImage.vue'
 import AuthedVideo from '@/components/agent/AuthedVideo.vue'
 import messages from '@/components/agent/messages'
 import { normalizeStoryRules } from '@/components/agent/storyboard'
+import { knownErrorText } from '@/components/agent/agent-errors'
 import { actOnAgentRun, actOnStoryboard, answerAgentCard, createAgentRun, getAgentRun, listAgentRuns, listModels, reviseAgentShot } from '@/api/agent'
 
 const { t, locale } = useI18n({ useScope: 'local', messages })
@@ -283,6 +284,8 @@ const pillClass = (status) => `tone-${TONE[status] || 'busy'}`
 const newKey = () => globalThis.crypto?.randomUUID?.() || `agent-${Date.now()}-${Math.random().toString(36).slice(2)}`
 const message = (err) => {
   const failure = err.response?.data?.error
+  const known = knownErrorText(err, locale.value)
+  if (known) return known
   return failure
     ? [failure.details?.shot_id, failure.message, ...(failure.details?.errors || []).map((item) => (typeof item === 'string' ? item : item.msg))].filter(Boolean).join(' · ')
     : err.message

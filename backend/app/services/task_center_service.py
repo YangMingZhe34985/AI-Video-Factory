@@ -155,7 +155,10 @@ def project_parent(row, owner):
         if version:
             item["progress"] = _progress([task.status for task in videos], len(planned), "video_shots")
         else:
-            nodes = latest_nodes([job.id for job in jobs]).all() if jobs else []
+            # Agent helper Jobs (e.g. video analysis) run a few nodes of the
+            # 19-node DAG; skipped branches are not progress of this Run.
+            nodes = [node for node in (latest_nodes([job.id for job in jobs]).all() if jobs else [])
+                     if node.status != "skipped"]
             item["progress"] = _progress([node.status for node in nodes],
                 max(len(nodes), sum(len(_node_keys(job)) for job in jobs)), "workflow_nodes")
         item["stage"] = code(obj.status) or "unknown"

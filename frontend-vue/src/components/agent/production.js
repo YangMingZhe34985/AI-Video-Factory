@@ -19,6 +19,11 @@ export const categoryLabels = {
 export function finiteCredits(value) {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null
 }
+// Quotes are not budget checks; a known remaining budget below the cost will be rejected.
+export function exceedsBudget(cost, remaining) {
+  const value = finiteCredits(cost), budget = finiteCredits(remaining)
+  return value != null && budget != null && value > budget + 1e-6
+}
 export function creditText(value) {
   const numeric = finiteCredits(value)
   return numeric == null ? '待服务器估算' : String(Math.round(numeric * 100) / 100)
