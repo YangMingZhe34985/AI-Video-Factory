@@ -1,7 +1,7 @@
 # Agent v2 契约
 
 > 跨任务接口的唯一来源。实现必须与此一致；修改契约前先在 `DECISIONS.md` 记录。
-> 章节状态：**A 已定稿（2026-10-17）**｜**B 已定稿（2026-10-18）**｜C、D 待写（分别由 C0、D0 任务产出）。
+> 章节状态：**A 已定稿（2026-10-17）**｜**B 已定稿（2026-10-18）**｜**C 已定稿（2026-10-18）**｜D 待写（由 D0 任务产出）。
 > 约定：所有 Schema 以 pydantic v2 实现，`extra="forbid"`，字符串去首尾空白；字段长度为上限。
 
 ---
@@ -555,7 +555,254 @@ intake → research_plan → research_search → research_select → research_fe
 
 ---
 
+# C 章：长片规划与审核 A
 
-# C 章：长片规划与审核 A（待写，任务 C0）
+> 状态：已定稿（2026-10-18，任务 C0）。适用配方 `story_video`。`remix` 本阶段继续使用现有链路。
+
+## C.1 范围与开关
+
+- Phase C 交付：Creative v2（剧本、角色设定、风格指南）→ Director v2（分镜、衔接、选型、费用）→ Prompt Smith（逐镜头提示词）→ Plan Check（纯代码）→ **审核 A**（角色定妆图与分镜关键帧，只花图片费用）→ 分镜确认。
+- **视频生成不在 Phase C**：分镜确认后 Run 进入 `storyboard_approved`，由 Phase D 的依赖调度器接着生产视频（D 章）。
+- 开关 `AGENT_STORY_V2_ENABLED`（默认 false）。关闭时 `story_video` 继续走现有过渡路由（A.11 / D-007）；Phase D 合入并通过评审后再默认开启。测试中显式开启。
+- 后续 Agent 可以读取 Research 的 `research_dossier`：被选定候选的 `reference_id` 直接作为角色参考图（C.3）。
+
+## C.2 流程（v2 图，story 分支）
+
+```text
+route(story_video) ─[AGENT_STORY_V2_ENABLED]→ creative_v2 → (clarify)* → director_v2 → (clarify)* → prompt_smith
+  → plan_check → [需要生成角色参考？] character_preview → character_review*（中断）
+  → keyframe_preview → storyboard_review*（中断） → storyboard_approved（Phase C 终点）
+```
+
+| 状态 | 含义 |
+|---|---|
+| `planning` | Creative / Director / Prompt Smith 进行中（沿用） |
+| `previewing` | 正在生成角色参考图或关键帧（新增） |
+| `awaiting_characters` | 等待确认角色定妆（新增，仅当有需要生成的角色参考图时出现） |
+| `awaiting_storyboard` | 等待确认分镜与关键帧（新增，取代 story 分支原来的 `awaiting_approval`） |
+| `storyboard_approved` | 分镜已确认，等待 Phase D 生产（新增） |
+
+worker 需要轮询 `previewing`；两个审核状态由命令推进。
+
+## C.3 Creative v2 输出
+
+```text
+StoryPackage
+  story: Story
+  characters: list[Character] (≤ 8)
+  style: StyleGuide
+  open_questions: list[Question] (≤ 3)      # A.7，交给 queue_questions
+
+Story
+  logline: str (≤ 200)
+  synopsis: str (≤ 2000)
+  acts: list[{act_id, title (≤ 60), summary (≤ 600)}] (1–6)
+  beats: list[Beat] (1–40)
+
+Beat
+  beat_id, act_id, summary (≤ 400)
+  duration_sec: int (≥ 1)                    # 预计时长
+  character_ids: list[str]
+  location: str (≤ 120), emotion: str (≤ 60)
+
+Character
+  character_id: str (ASCII, ≤ 40)
+  name (≤ 80), role (≤ 120)
+  lock_description: str (≤ 600)              # 外观锁定：脸、发型、配色、服装、标志物；每条提示词都会引用
+  personality: str (≤ 300)
+  reference: CharacterReference
+
+CharacterReference
+  source: "research" | "attachment" | "generate"
+  artifact_ids: list[str] (≤ 3)              # research：选定候选的 reference_id；attachment：identity_ref 附件
+  research_entity_id: str | null
+  generate_prompt: str | null (≤ 2000)       # source = generate 时必填，用于定妆图
+
+StyleGuide
+  visual_style (≤ 300), palette (≤ 200), lighting (≤ 200), camera_language (≤ 300)
+  prompt_prefix: str (≤ 400)                 # 所有图片提示词的公共前缀
+  negative_prompt: str | null (≤ 500)
+```
+
+规则（代码校验）：
+- `beats` 时长之和与 `target_duration_sec` 的偏差不超过容差：`max(duration_tolerance_sec, target × AGENT_STORY_DURATION_TOLERANCE_RATIO)`；
+- `character_ids` 必须存在；`source = research` 的 `artifact_ids` 必须是本 Run 选定候选的 `reference_id`；`attachment` 必须是本 Run 的 `identity_ref` 或 `style_ref` 附件；
+- 用户在需求中给了情节时，Creative 只补全不改写（写入系统提示词）；未给情节时自行创作。
+
+## C.4 Director v2 输出（分镜草稿）
+
+Director 只写“拍什么、怎么衔接、用什么模型”，提示词交给 Prompt Smith。
+
+```text
+ProductionPlan
+  plan_version: int                          # 服务器分配，见 C.7
+  recipe: "story_video"
+  title (≤ 200), target_duration_sec, aspect_ratio
+  scenes: list[{scene_id, location (≤ 120), time_of_day (≤ 40), summary (≤ 300)}] (1–12)
+  shots: list[ShotPlan] (1–AGENT_MAX_STORY_SHOTS)
+  rationale: str (≤ 1500)
+  estimates: {preview_credits, video_credits, total_credits}   # 代码计算，LLM 填写无效
+
+ShotPlan
+  shot_id: str ("s01" 形式), scene_id, order: int (从 1 连续)
+  beat_ids: list[str], character_ids: list[str]
+  summary: str (≤ 300)                       # 画面内容
+  framing: str (≤ 120)                       # 景别 / 构图，如“中景，侧面跟拍”
+  duration_sec: number
+  transition_in: "start" | "tail_frame" | "independent" | "keyframe_bridge" | "hard_cut"
+  first_frame: FrameSpec
+  end_frame: FrameSpec | null                # 仅 keyframe_bridge
+  motion: {mode: "i2v" | "first_last_frame", model_id, prompt (≤ 8000), params: dict}
+  depends_on: list[str]                      # 代码根据 transition_in 推导，LLM 填写无效
+  rationale: str (≤ 300)
+
+FrameSpec
+  method: "generate" | "tail_frame" | "user_image"
+  image_mode: "t2i" | "i2i" | null           # method = generate 时必填
+  model_id: str | null
+  prompt: str (≤ 8000)                       # Prompt Smith 填写
+  reference_artifact_ids: list[str]          # 角色参考图、风格参考图或用户附件
+```
+
+衔接规则（Director 的系统提示词与 Plan Check 一致）：
+- 第一个镜头 `transition_in = start`；同一场景内的连续动作用 `tail_frame`（首帧取上一镜头尾帧，必须串行）；换场景、换时间点用 `independent` 或 `hard_cut`（可并行）。
+- `keyframe_bridge` 只有在 `AGENT_ENABLE_KEYFRAME_BRIDGE=true` 且能力目录中存在支持 `first_last_frame` 的模型时允许（D-005）。
+- 镜头时长按所选视频模型的能力目录拆分，不写死固定秒数。
+- 生成方式固定为首帧 → i2v（或开关开启时的首尾帧）；本阶段 `story_video` 不使用 t2v / r2v，Plan Check 拒绝。用户附件中 `first_frame` 角色的图片可作为某镜头的 `method = user_image`。
+
+## C.5 Prompt Smith
+
+内部 Skill `write_shot_prompts`（角色 `director`，权限 `llm`），**逐镜头调用**，幂等键 `{run_id}:prompts:{plan_version}:{shot_id}:{内容哈希}`，内容不变则重放、不重复计费。
+
+| 输入 | 说明 |
+|---|---|
+| `shot` | ShotPlan（不含提示词） |
+| `characters` | 该镜头涉及角色的 `name` 与 `lock_description` |
+| `style` | StyleGuide |
+| `previous_shot_summary` | 上一镜头的 `summary` 与 `framing`（用于衔接） |
+| `model_notes` | 首帧模型与视频模型的能力说明 |
+
+输出：`{first_frame_prompt (method = tail_frame 时为空), end_frame_prompt | null, motion_prompt}`。
+
+写法（与 A-Gate 后的 Director-lite 一致）：中文、单段、无含糊词；首帧 / 尾帧提示词以 `style.prompt_prefix` 开头，只写静态画面；有角色参考图时首句锁定人物身份并重复 `lock_description` 的关键特征；动作提示词只写动态与运镜，节奏匹配镜头时长，`tail_frame` 镜头要承接上一镜头的结束姿态。
+
+修改单个镜头（用户编辑或重做）只重写该镜头的提示词。
+
+## C.6 Plan Check（纯代码）
+
+| # | 规则 | 违反时 |
+|---|---|---|
+| 1 | 镜头时长之和在 C.3 的容差内 | issue `DURATION_MISMATCH` |
+| 2 | 每个镜头时长落在其视频模型的能力范围与步长内（`validate_generation_model`） | `MODEL_CAPABILITY_MISMATCH` |
+| 3 | `order` 从 1 连续；第一个镜头为 `start`；`tail_frame` 只能指向上一个镜头 | `INVALID_TRANSITION` |
+| 4 | `first_frame.method = tail_frame` 当且仅当 `transition_in = tail_frame` | `INVALID_TRANSITION` |
+| 5 | `keyframe_bridge` 需要开关与能力，且 `end_frame` 非空 | `KEYFRAME_BRIDGE_UNAVAILABLE` |
+| 6 | 镜头中出现有参考图的角色时，`method = generate` 必须是 `i2i` 并引用该角色的参考图；参考图数量不超过模型上限 | `CHARACTER_REFERENCE_MISSING` |
+| 7 | 引用的角色、场景、附件、参考图均存在且属于本 Run | `INVALID_REFERENCE` |
+| 8 | 模型满足 `constraints`（偏好、排除）与能力目录（复用 `select_for_request`） | `MODEL_CAPABILITY_MISMATCH` |
+| 9 | 预览费用 + 视频费用 ≤ 剩余预算 | `BUDGET_EXCEEDED` |
+
+- `depends_on` 由代码推导：`tail_frame` → `[上一镜头]`，其余为空。
+- 不通过的计划仍保存为可编辑草稿（与 A 章一致），问题列表 `plan_issues` 带 `shot_id`。Director 可在一次自动修订中收到这些问题（最多一次，幂等记账），仍不通过则交给用户在审核页修改。
+
+## C.7 计划版本与预览任务（数据表，任务 C2）
+
+`agent_plan_versions`
+
+| 字段 | 说明 |
+|---|---|
+| `run_id` | 字符串，索引；与 `version` 组成唯一键 |
+| `version` | 从 1 递增 |
+| `author` | `director` / `user` / `system` |
+| `parent_version` | 可空 |
+| `plan` | ProductionPlan JSON（含 Prompt Smith 写好的提示词） |
+| `story_package` | StoryPackage JSON（Creative 输出，版本内冻结） |
+| `check` | `{issues, estimates}` |
+| `created_at` | |
+
+`agent_shot_tasks`（Phase C 用于预览图，Phase D 扩展到视频）
+
+| 字段 | 说明 |
+|---|---|
+| `run_id`, `plan_version` | |
+| `target_type` | `character` / `keyframe` / `end_frame`（D 章追加 `video`、`tail_frame`） |
+| `target_id` | 角色 ID 或镜头 ID |
+| `attempt` | 从 1 递增；与前四个字段组成唯一键 |
+| `status` | `pending` / `running` / `success` / `failed` / `stale` / `cancelled` |
+| `inputs_hash` | 提示词、模型、参数、参考图的哈希，用于判断是否过期 |
+| `invocation_id`, `job_id` | 关联账本与 Job |
+| `artifact_ids` | JSON 列表 |
+| `estimated_cost` | |
+| `error` | JSON，可空 |
+| `created_at`, `updated_at` | |
+
+规则：
+- 每次 Director 产出、用户编辑、重做都会生成新的计划版本；快照中保存当前版本号。
+- 预览产物永不覆盖：重做生成新的 `attempt`，旧产物保留可回退。
+- 一张关键帧的 `inputs_hash` 与当前计划不一致时标记 `stale`。角色参考图被重做后，引用该角色的关键帧全部标记 `stale`，**不自动重做**，由用户决定（显示费用）。
+
+## C.8 审核 A 的动作
+
+在 A.9 的动作集合上新增（沿用命令收件箱语义）：
+
+| action | 允许的状态 | 请求体 | 说明 |
+|---|---|---|---|
+| `approve_characters` | `awaiting_characters` | `{edits?: [{character_id, lock_description?, generate_prompt?}]}` | 有修改时生成新计划版本；然后进入关键帧预览 |
+| `regenerate` | `awaiting_characters`、`awaiting_storyboard` | `{target_type, target_id, prompt?, request_key}` | 重做一张角色图、关键帧或尾帧；先做预算检查；完成后回到同一审核状态 |
+| `regenerate_stale` | `awaiting_storyboard` | `{request_key}` | 一次重做所有 `stale` 的关键帧；响应中返回预计费用 |
+| `edit_plan` | `awaiting_storyboard` | `{plan, base_version, request_key}` | 校验后生成新版本；`base_version` 不是当前版本时返回 `409 PLAN_VERSION_CONFLICT`；受影响的提示词由 Prompt Smith 重写，关键帧标记 `stale` |
+| `approve_storyboard` | `awaiting_storyboard` | `{plan_version}` | 版本必须是当前版本；所有需要关键帧的镜头都有 `success` 且非 `stale` 的关键帧，否则 `409 PREVIEW_INCOMPLETE`；再次检查视频预算 |
+| `reject` | 两个审核状态 | — | 取消 Run |
+
+`regenerate`、`regenerate_stale`、`edit_plan` 的 `request_key` 用于幂等：同一 key 重复提交不重复生成。
+
+## C.9 Run 视图（A.10 追加）
+
+| 字段 | 内容 |
+|---|---|
+| `story` | StoryPackage（当前版本） |
+| `plan` | ProductionPlan（当前版本，story_video 时取代 SimplePlan） |
+| `plan_version` | 当前版本号 |
+| `plan_issues` | Plan Check 问题列表 |
+| `estimates` | `{preview_credits, video_credits, total_credits, spent_credits}` |
+| `previews` | `{characters: {id: Preview}, keyframes: {shot_id: Preview}, end_frames: {shot_id: Preview}}`，`Preview = {status, artifact_id, preview_url, attempt, stale, error}` |
+
+预览图属于 Run 所有者，`preview_url` 需要鉴权（前端用 `AuthedImage`）。
+
+## C.10 费用
+
+- 预览费用 = 需要生成的角色参考图 + 关键帧 + 尾帧，按图片模型单价计（A.5）；视频费用 = Σ 视频模型单价 × 镜头时长。
+- 进入 `previewing` 前检查预览费用；`approve_storyboard` 时检查视频费用（Phase D 才真正产生）。两项分别显示在审核页。
+- 重做按实际次数累加，计入同一 `budget_scope`。
+
+## C.11 前端（任务 C7）
+
+- 分镜板：顶部时长条（各镜头按时长分段，对比目标时长与容差）与费用（预览已花 / 视频预计）；角色卡（参考图、锁定描述、来源：检索 / 附件 / 定妆生成，可重做）；镜头时间线（关键帧缩略图、衔接方式图标、`stale` / 失败标记）；镜头编辑抽屉（画面、景别、时长、模型、首帧与动作提示词，修改后实时显示 Plan Check 问题和费用变化）。
+- “重新生成过期关键帧（N 张，约 X credits）”按钮；版本冲突时提示刷新。
+- 交互以方案网页版（`agent_v2_proposal_claude.md` 链接的 Artifact）的分镜板为参照。
+
+## C.12 配置项（新增）
+
+| 键 | 默认 | 说明 |
+|---|---|---|
+| `AGENT_STORY_V2_ENABLED` | false | 开启新的长片规划与审核 A |
+| `AGENT_MAX_STORY_SHOTS` | 30 | 单个计划的镜头上限 |
+| `AGENT_STORY_DURATION_TOLERANCE_RATIO` | 0.1 | 时长容差比例（与 `duration_tolerance_sec` 取较大值） |
+| `AGENT_ENABLE_KEYFRAME_BRIDGE` | false | 允许首尾帧衔接（D-005，D2 开放） |
+| `AGENT_CREATIVE_MODEL` / `AGENT_PROMPT_SMITH_MODEL` | 空 | 留空回退 `AGENT_PLANNER_MODEL`（D-002） |
+
+## C.13 错误码（新增）
+
+| HTTP | code | 场景 |
+|---|---|---|
+| 422 | `INVALID_STORY` | Creative 输出两次校验都不通过 |
+| 422 | `INVALID_PRODUCTION_PLAN` | 用户编辑的计划无法通过 Schema 校验（业务问题以 `plan_issues` 呈现，不报错） |
+| 409 | `PLAN_VERSION_CONFLICT` | `edit_plan` / `approve_storyboard` 的版本不是当前版本 |
+| 409 | `PREVIEW_INCOMPLETE` | 仍有缺失、失败或过期的关键帧 |
+| 422 | `KEYFRAME_BRIDGE_UNAVAILABLE` | 计划使用首尾帧衔接但未开启或无可用模型 |
+| 422 | `CHARACTER_REFERENCE_MISSING` | 角色镜头没有引用其参考图 |
+
+---
+
 
 # D 章：依赖调度与局部修复（待写，任务 D0）
