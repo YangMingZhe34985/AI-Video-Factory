@@ -50,14 +50,17 @@ class DashScopeWan3Adapter(DashScopeGenerationAdapter):
             _invalid("Unsupported Wan 3 model ID")
         if not isinstance(inputs, dict) or not isinstance(params, dict):
             _invalid("Wan 3 inputs and parameters must be objects")
-        if set(inputs) - INPUTS or set(params) - PARAMETERS:
+        effective = {**(getattr(self.model, "default_params", None) or {}), **params}
+        if set(inputs) - INPUTS or set(effective) - PARAMETERS:
             _invalid("Unsupported Wan 3 input or parameter")
-        parameters = self._parameters(params)
+        parameters = self._parameters(effective)
         prompt = inputs.get("prompt", "")
         negative = inputs.get("negative_prompt", "") or ""
         if not isinstance(prompt, str) or not isinstance(negative, str):
             _invalid("Wan 3 prompt must be text")
         prompt = prompt.strip()
+        if not prompt:
+            _invalid("Wan 3 requires a nonempty positive prompt")
         if negative.strip():
             # Wan 3 has no standalone negative_prompt field. Preserve classic intent.
             prompt += "\n\n避免出现：" + negative.strip()
