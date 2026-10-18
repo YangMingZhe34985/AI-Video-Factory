@@ -128,9 +128,10 @@ class ArtifactService:
         if agent_upload_owner is not None:
             query = query.filter(or_(Job.strategy != "agent_upload",
                                      Job.config["agent_upload_owner"].as_string() == agent_upload_owner))
-            preview_scope = Job.config["agent_story_preview"]["run_id"].as_string()
-            query = query.filter(or_(preview_scope.is_(None), preview_scope.in_(
-                select(AgentRun.run_id).where(AgentRun.owner_id == agent_upload_owner))))
+            for marker in ("agent_story_preview", "agent_story_production"):
+                preview_scope = Job.config[marker]["run_id"].as_string()
+                query = query.filter(or_(preview_scope.is_(None), preview_scope.in_(
+                    select(AgentRun.run_id).where(AgentRun.owner_id == agent_upload_owner))))
 
         if series_id:
             query = query.filter(Template.series == series_id.strip())
