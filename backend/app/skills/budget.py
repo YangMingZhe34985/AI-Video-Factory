@@ -61,24 +61,37 @@ def _number(value, name, *, allow_zero=False):
     return Decimal(str(value))
 
 
-def estimate_model_cost(model, params: dict) -> float:
+def estimate_model_cost(model, params: dict, *, input_video_seconds: float = 0.0) -> float:
     """Estimate final model usage; absent pricing keeps the legacy fixed cost."""
     from app.services.model_service import ModelService
 
+    incoming = _number(input_video_seconds, "input_video_seconds", allow_zero=True)
     catalog = model.capabilities or {}
     pricing = catalog.get("pricing")
     if not pricing:
         current_app.logger.warning("Missing pricing for model %s; using legacy credit estimate", model.model_id)
-        if model.task_type in {"text_to_video", "image_to_video", "reference_to_video"}:
+        if any(ModelService.supports_task_type(model, task) for task in ("text_to_video", "image_to_video", "reference_to_video")):
             return VIDEO_GENERATION
         return IMAGE_GENERATION if model.task_type == "text_to_image" else LLM_CALL
     unit = pricing.get("unit")
-    rate = _number(pricing.get("credits_per_unit", 1 if unit == "call" else None),
-                   "pricing.credits_per_unit", allow_zero=True)
     effective = ModelService.effective_params(model, params)
+    rates = pricing.get("resolution_rates")
+    if rates is not None:
+        resolution = effective.get("resolution")
+        if unit != "second" or not isinstance(rates, dict) or resolution not in rates:
+            raise AppError("INVALID_INPUT", "No configured estimate for this model resolution", 422)
+        rate = _number(rates[resolution], "pricing.resolution_rates", allow_zero=True)
+    else:
+        rate = _number(pricing.get("credits_per_unit", 1 if unit == "call" else None),
+                       "pricing.credits_per_unit", allow_zero=True)
     if unit == "second":
-        seconds = effective.get("duration")
-        return float(rate * _number(seconds, "duration") * _number(effective.get("n_outputs", 1), "n_outputs"))
+        basis = pricing.get("billing_basis", "output_seconds")
+        if basis not in {"output_seconds", "input_plus_output_seconds"}:
+            raise AppError("INVALID_INPUT", "Unsupported video billing basis", 422)
+        seconds = _number(effective.get("duration"), "duration") * _number(effective.get("n_outputs", 1), "n_outputs")
+        return float(rate * (seconds + (incoming if basis == "input_plus_output_seconds" else 0)))
+    if incoming:
+        raise AppError("INVALID_INPUT", "Input video duration requires a video pricing model", 422)
     if unit == "image":
         return float(rate * _number(effective.get("n", 1), "n"))
     if unit == "call":

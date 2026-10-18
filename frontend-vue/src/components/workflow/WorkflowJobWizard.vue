@@ -657,6 +657,7 @@ import { useWorkflowStore } from '@/stores/workflow'
 import { useSeriesStore } from '@/stores/series'
 import { useTemplateStore } from '@/stores/templates'
 import { useModelStore } from '@/stores/models'
+import { supportsTaskType } from '@/utils/modelCapabilities'
 import { useToast } from '@/composables/useToast'
 import { setRecentJob } from '@/composables/useRecentJob'
 import { validateRun } from '@/api/workflow'
@@ -866,7 +867,7 @@ function nodeTaskTypes(nodeKey) {
 function modelOptionsForNode(node) {
   const taskTypes = new Set(nodeTaskTypes(node.node_key))
   return uniqueModelsById(
-    modelStore.models.filter((model) => taskTypes.has(model.task_type))
+    modelStore.models.filter((model) => [...taskTypes].some((taskType) => supportsTaskType(model, taskType)))
   )
 }
 

@@ -92,7 +92,7 @@ def _aspect_params(model_data, aspect):
     schema = model_data["parameters"]
     if aspect in schema.get("ratio", {}).get("enum", []):
         return {"ratio": aspect}
-    for size in schema.get("size", {}).get("enum", []):
+    for size in schema.get("size", {}).get("enum", schema.get("size", {}).get("presets", [])):
         width, height = map(int, size.split("*"))
         divisor = gcd(width, height)
         if f"{width // divisor}:{height // divisor}" == aspect:

@@ -5,6 +5,8 @@ server checks values. Tools are driven by LLMs, so every model choice and
 parameter is validated here before it reaches a provider payload.
 """
 
+import re
+
 from flask import current_app
 
 from app.api import AppError
@@ -42,7 +44,7 @@ _TYPE_CHECKS = {
 def resolve_model(model_id: str, capability: str) -> ModelRegistry:
     model = ModelService.get_model(model_id, require_enabled=True)
     allowed = TASK_TYPES[capability]
-    if model.task_type not in allowed:
+    if not any(ModelService.supports_task_type(model, task_type) for task_type in allowed):
         raise AppError(
             "INVALID_INPUT",
             f"Model {model.model_id} has task_type {model.task_type}; expected one of {sorted(allowed)}",
@@ -79,6 +81,16 @@ def validate_params(model: ModelRegistry, params: dict) -> dict:
         if check and not check(value):
             errors.append(f"{name}: expected {rule.get('type')}")
             continue
+        if rule.get("format") == "image_size":
+            match = re.fullmatch(r"([1-9][0-9]*)\*([1-9][0-9]*)", str(value))
+            if not match:
+                errors.append(f"{name}: expected positive width*height")
+            else:
+                width, height = map(int, match.groups())
+                if not rule["min_pixels"] <= width * height <= rule["max_pixels"]:
+                    errors.append(f"{name}: pixel area is outside the supported range")
+                if not rule["min_aspect_ratio"] <= width / height <= rule["max_aspect_ratio"]:
+                    errors.append(f"{name}: aspect ratio is outside the supported range")
         if "enum" in rule and value not in rule["enum"]:
             errors.append(f"{name}: must be one of {rule['enum']}")
         if "min" in rule and isinstance(value, (int, float)) and value < rule["min"]:

@@ -1,5 +1,6 @@
 from copy import deepcopy
 from math import gcd
+import re
 
 from app.api import AppError
 from app.extensions import db
@@ -125,6 +126,37 @@ CHAT_PARAMETER_SCHEMA = {
         "max": 2,
         "default": 0.2,
     }
+}
+
+
+GENERATION_TASK_MODES = {
+    "text_to_image": {"t2i", "i2i"}, "text_to_video": {"t2v"},
+    "image_to_video": {"i2v"}, "reference_to_video": {"r2v"},
+}
+LEGACY_TASK_MODES = {**GENERATION_TASK_MODES, "video_understanding": {"text", "image_understanding", "video_understanding"},
+                     "text_to_text": {"text"}, "prompt_rewrite": {"text"}}
+
+QWEN3_IMAGE_PARAMETER_SCHEMA = {
+    "size": {"type": "string", "label": "Image Size", "format": "image_size",
+             "min_pixels": 512 ** 2, "max_pixels": 2048 ** 2,
+             "min_aspect_ratio": 1 / 8, "max_aspect_ratio": 8,
+             "presets": ["1024*1024", "1536*864", "864*1536", "1024*768", "768*1024"], "default": "1024*1024"},
+    "n": {"type": "integer", "label": "Count", "min": 1, "max": 6, "default": 1},
+    "prompt_extend": {"type": "boolean", "label": "Prompt Extend", "default": True},
+    "enable_thinking": {"type": "boolean", "label": "Enable Thinking", "default": False},
+    "watermark": {"type": "boolean", "label": "Watermark", "default": False},
+    "prompt_extend_mode": {"type": "string", "label": "Prompt Extend Mode", "enum": ["direct", "agent"], "default": "direct"},
+    "negative_prompt": {"type": "string", "label": "Negative Prompt"},
+    "seed": {"type": "integer", "label": "Seed", "min": 0, "max": 2147483647},
+}
+WAN3_VIDEO_PARAMETER_SCHEMA = {
+    "duration": {"type": "integer", "label": "Duration (seconds)", "min": 2, "max": 30, "default": 5},
+    "resolution": {"type": "string", "label": "Resolution", "enum": ["480P", "720P", "1080P"], "default": "720P"},
+    "ratio": {"type": "string", "label": "Aspect Ratio", "enum": ["adaptive", "21:9", "16:9", "4:3", "1:1", "3:4", "9:16"], "default": "adaptive"},
+    "audio": {"type": "boolean", "label": "Audio", "default": False},
+    "prompt_extend": {"type": "boolean", "label": "Prompt Extend", "default": False},
+    "watermark": {"type": "boolean", "label": "Watermark", "default": False},
+    "seed": {"type": "integer", "label": "Seed", "min": 0, "max": 2147483647},
 }
 
 
@@ -332,6 +364,27 @@ DEFAULT_MODELS = [
         },
         "parameter_schema": HAPPYHORSE_I2V_PARAMETER_SCHEMA,
     },
+    *[{
+        "model_id": model_id, "display_name": display_name, "provider": "dashscope",
+        "task_type": "text_to_image", "adapter_name": "dashscope_qwen_image",
+        "default_params": {"size": "1024*1024", "n": 1, "prompt_extend": True,
+                           "enable_thinking": False, "watermark": False, "prompt_extend_mode": "direct"},
+        "parameter_schema": QWEN3_IMAGE_PARAMETER_SCHEMA,
+    } for model_id, display_name in (("qwen-image-3.0", "Qwen Image 3.0"), ("qwen-image-3.0-pro", "Qwen Image 3.0 Pro"))],
+    *[{
+        "model_id": model_id, "display_name": display_name, "provider": "dashscope",
+        "task_type": "text_to_video", "adapter_name": "dashscope_wan3",
+        "default_params": {"duration": 5, "resolution": "720P", "ratio": "adaptive", "audio": False,
+                           "prompt_extend": False, "watermark": False},
+        "parameter_schema": WAN3_VIDEO_PARAMETER_SCHEMA,
+    } for model_id, display_name in (("wan3.0-video", "Wan 3.0 Video"), ("wan3.0-video-prime", "Wan 3.0 Video Prime"))],
+    {
+        "model_id": "deepseek-v4.1-flash", "display_name": "DeepSeek V4.1 Flash", "provider": "dashscope",
+        "task_type": "prompt_rewrite", "adapter_name": "qwen_chat",
+        "default_params": {"temperature": 0.7, "enable_thinking": False},
+        "parameter_schema": {**CHAT_PARAMETER_SCHEMA,
+                             "enable_thinking": {"type": "boolean", "label": "Enable Thinking", "default": False}},
+    },
 ]
 
 def _seed_capabilities(data: dict) -> dict:
@@ -346,7 +399,7 @@ def _seed_capabilities(data: dict) -> dict:
     duration = schema.get("duration")
     unit = "second" if duration else "image" if "t2i" in modes else "call"
     ratios = list(schema.get("ratio", {}).get("enum", []))
-    for size in schema.get("size", {}).get("enum", []):
+    for size in schema.get("size", {}).get("enum", schema.get("size", {}).get("presets", [])):
         width, height = (int(value) for value in size.split("*"))
         divisor = gcd(width, height)
         ratio = f"{width // divisor}:{height // divisor}"
@@ -374,6 +427,27 @@ for _seed in DEFAULT_MODELS:
         _seed["capabilities"]["modes"].append("first_last_frame")
         _seed["capabilities"]["reference_images"] = {"max": 2}
 
+    if _seed["model_id"].startswith("qwen-image-3.0"):
+        _seed["capabilities"].update(modes=["t2i", "i2i"], family="qwen-image-3.0", reference_images={"max": 3},
+            pricing={"unit": "image", "credits_per_unit": 3.0 if _seed["model_id"].endswith("-pro") else 2.0},
+            quality_tier="high" if _seed["model_id"].endswith("-pro") else "standard",
+            notes="演示 credits，非供应商报价；最多3张参考图、6张输出；i2i不可使用agent提示词扩展。")
+    if _seed["model_id"].startswith("wan3.0-video"):
+        factor = 2.0 if _seed["model_id"].endswith("-prime") else 1.0
+        _seed["capabilities"].update(modes=["t2v", "i2v", "first_last_frame", "r2v"], family="wan3.0",
+            reference_images={"max": 10},
+            pricing={"unit": "second", "credits_per_unit": 2.0 * factor,
+                     "resolution_rates": {"480P": factor, "720P": 2.0 * factor, "1080P": 3.0 * factor},
+                     "billing_basis": "input_plus_output_seconds"},
+            quality_tier="high" if factor == 2 else "standard",
+            provider_capabilities={"reference_images": {"max": 10, "agent_enabled": True},
+                "reference_video": {"max": 5, "max_total_seconds": 15, "agent_enabled": False, "adapter_enabled": False},
+                "reference_audio": {"max": 5, "agent_enabled": False},
+                "file": {"agent_enabled": False}, "link": {"agent_enabled": False},
+                "video_edit": {"agent_enabled": False}, "video_extend": {"agent_enabled": False},
+                "input_plus_output_seconds_max": 30},
+            notes="演示 credits，非供应商报价；按分辨率及输入视频秒数+输出秒数估算。当前Agent只接入图片参考；视频/音频/file/link/编辑延长不自动启用，首尾画质未实测。")
+
 DEFAULT_MODEL_BY_ID = {model["model_id"]: model for model in DEFAULT_MODELS}
 
 
@@ -392,6 +466,25 @@ MODEL_ALIAS_TO_ID[_model_alias_key("GLM5.1")] = "glm-5.1"
 
 
 class ModelService:
+    @staticmethod
+    def supports_mode(model, mode: str) -> bool:
+        capabilities = model.capabilities or {}
+        if "modes" in capabilities:
+            return mode in (capabilities.get("modes") or [])
+        return mode in LEGACY_TASK_MODES.get(model.task_type, set())
+
+    @staticmethod
+    def supports_task_type(model, task_type: str) -> bool:
+        # Scalar classifications remain compatible; provider-only metadata never
+        # grants execution permission, and text roles keep their original guards.
+        return model.task_type == task_type or bool(
+            GENERATION_TASK_MODES.get(task_type, set()) & set((model.capabilities or {}).get("modes") or []))
+
+    @staticmethod
+    def model_family(model) -> str:
+        return (model.capabilities or {}).get("family") or re.split(
+            r"[-_](?:t2v|i2v|r2v|image)(?:[-_]|$)", model.model_id, flags=re.I)[0]
+
     @staticmethod
     def effective_params(model, params: dict | None = None) -> dict:
         """Use catalog defaults consistently for quoting and provider payloads."""
@@ -461,9 +554,9 @@ class ModelService:
     @staticmethod
     def list_models(task_type: str | None = None) -> list[ModelRegistry]:
         query = ModelRegistry.query
-        if task_type:
-            query = query.filter_by(task_type=task_type)
         models = query.order_by(ModelRegistry.provider.asc(), ModelRegistry.model_id.asc()).all()
+        if task_type:
+            models = [model for model in models if ModelService.supports_task_type(model, task_type)]
         return ModelService._unique_by_canonical_id(models)
 
     @staticmethod

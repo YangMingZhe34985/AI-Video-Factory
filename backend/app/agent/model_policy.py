@@ -28,16 +28,16 @@ def _normal(value):
     return re.sub(r"[\s_-]+", "", unicodedata.normalize("NFKC", value).casefold())
 
 
-def _family(model_id):
-    return re.split(r"[-_](?:t2v|i2v|r2v)(?:[-_]|$)", model_id, flags=re.I)[0]
+def _family(model):
+    return ModelService.model_family(model)
 
 
 def _selector(value):
     return re.sub(r"\s*(?:系列|模型|\bseries\b|\bfamily\b|\bmodel\b)\s*$", "", value, flags=re.I).strip()
 
 
-def _matches_family(model_id, family):
-    model, prefix = _normal(_family(model_id)), _normal(family)
+def _matches_family(model, family):
+    model, prefix = _normal(_family(model)), _normal(family)
     # wan2.7 must never match wan2.70; an unversioned family such as wan
     # can match wan2.7, and happyhorse can match happyhorse-1.0.
     return model == prefix or (model.startswith(prefix) and prefix[-1:].isalpha())
@@ -49,10 +49,10 @@ def _alias_pattern(value):
 
 def _mentions(goal, models):
     goal = unicodedata.normalize("NFKC", goal)
-    non_video_ids = {model_id for (model_id,) in ModelRegistry.query.with_entities(ModelRegistry.model_id).filter(
-        ModelRegistry.task_type.notin_(VIDEO_TASKS)).all()}
+    non_video_ids = {model.model_id for model in ModelRegistry.query.all()
+                     if not any(ModelService.supports_task_type(model, task) for task in VIDEO_TASKS)}
     aliases = {value for model in models for value in (
-        model.model_id, model.display_name, _family(model.model_id),
+        model.model_id, model.display_name, _family(model),
         re.match(r"[A-Za-z]+", model.model_id).group(0) if re.match(r"[A-Za-z]+", model.model_id) else model.model_id,
     )}
     # Recognize familiar names even if that model/version is not registered.
@@ -96,11 +96,12 @@ def _matching_ids(value, models):
                  or _normal(candidate) in {_normal(model.model_id), _normal(model.display_name)}]
         if exact:
             return set(exact)
-    return {model.model_id for model in models if _matches_family(model.model_id, _selector(value))}
+    return {model.model_id for model in models if _matches_family(model, _selector(value))}
 
 
 def build_policy(goal: str, preference: str | None = None) -> dict:
-    models = ModelRegistry.query.filter(ModelRegistry.task_type.in_(VIDEO_TASKS)).all()
+    models = [model for model in ModelRegistry.query.all()
+              if any(ModelService.supports_task_type(model, task) for task in VIDEO_TASKS)]
     required, excluded = _mentions(goal, models)
     if preference:
         required.append(preference)
@@ -149,9 +150,9 @@ def scope_policy(scope: str) -> dict | None:
 def candidates(policy: dict, mode: str):
     task_type = VIDEO_MODES[mode][0]
     ids = policy["allowed_model_ids"] if policy["source"] == "user" else [policy["defaults"][mode]]
-    return ModelRegistry.query.filter(ModelRegistry.model_id.in_(ids),
-                                      ModelRegistry.task_type == task_type,
-                                      ModelRegistry.enabled.is_(True)).order_by(ModelRegistry.model_id).all()
+    return [model for model in ModelRegistry.query.filter(ModelRegistry.model_id.in_(ids),
+                                      ModelRegistry.enabled.is_(True)).order_by(ModelRegistry.model_id)
+            if ModelService.supports_task_type(model, task_type)]
 
 
 def select_video_model(policy: dict, mode: str, requested: str | None = None):
