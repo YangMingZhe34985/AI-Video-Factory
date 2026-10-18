@@ -129,6 +129,13 @@
               @action="storyAction" @refresh="select(selected.run_id)"
             />
 
+            <ProductionBoard
+              v-if="isStoryPlan && production && (production.approved_version || productionStatuses.includes(selected.status))" :key="`production-${selected.run_id}`"
+              :run-id="selected.run_id" :plan="plan" :plan-version="planVersion" :production="production"
+              :status="selected.status" :budget-limit="budgetLimit" :disabled="busy || Boolean(selected.command)"
+              :demo="mode === 'mock'" @action="storyAction"
+            />
+
             <template v-if="draft?.shots && !isStoryPlan">
               <ShotPlanEditor
                 :plan="draft" :shots="selected.snapshot?.shots" :history="selected.snapshot?.shot_history" :issues="selected.snapshot?.plan_issues || []"
@@ -181,6 +188,7 @@ import ClarificationCard from '@/components/agent/ClarificationCard.vue'
 import SimplePlanEditor from '@/components/agent/SimplePlanEditor.vue'
 import ShotPlanEditor from '@/components/agent/ShotPlanEditor.vue'
 import StoryboardEditor from '@/components/agent/StoryboardEditor.vue'
+import ProductionBoard from '@/components/agent/ProductionBoard.vue'
 import AuthedImage from '@/components/agent/AuthedImage.vue'
 import AuthedVideo from '@/components/agent/AuthedVideo.vue'
 import messages from '@/components/agent/messages'
@@ -215,6 +223,8 @@ const isStoryPlan = computed(() => plan.value?.recipe === 'story_video' && Numbe
 const previews = computed(() => pick(selected.value, 'previews') || {})
 const storyEstimates = computed(() => pick(selected.value, 'estimates') || {})
 const storyIssues = computed(() => pick(selected.value, 'plan_issues') || [])
+const production = computed(() => pick(selected.value, 'production'))
+const productionStatuses = ['storyboard_approved', 'producing', 'production_attention', 'awaiting_video_review', 'videos_approved']
 const isRemix = computed(() => selected.value?.request?.mode === 'remix' || requestSpec.value?.recipe_hint === 'remix')
 // v1 stores the remix source on the request; v2 has it as the remix_source attachment.
 const sourceVideo = computed(() => {
@@ -242,7 +252,8 @@ const shortTime = (value) => (value ? new Date(value).toLocaleDateString(locale.
 const TONE = {
   success: 'good', partial_success: 'warn', failed: 'bad', cancelled: 'muted', needs_attention: 'bad',
   awaiting_input: 'ask', awaiting_approval: 'ask', awaiting_delivery: 'ask',
-  awaiting_characters: 'ask', awaiting_storyboard: 'ask', storyboard_approved: 'good',
+  awaiting_characters: 'ask', awaiting_storyboard: 'ask', storyboard_approved: 'ask',
+  awaiting_video_review: 'ask', production_attention: 'bad', videos_approved: 'good',
 }
 const dotClass = (status) => ({ good: 'bg-emerald-500', warn: 'bg-amber-500', bad: 'bg-red-500', muted: 'bg-slate-400', ask: 'bg-blue-500' }[TONE[status]] || 'bg-blue-300 animate-pulse')
 const pillClass = (status) => `tone-${TONE[status] || 'busy'}`
@@ -329,7 +340,7 @@ async function revise(shot) {
 async function storyAction({ action, payload, onSuccess, onError }) {
   const runId = selected.value.run_id
   const serialized = JSON.stringify({ runId, action, payload })
-  const requiresKey = ['regenerate', 'regenerate_stale', 'edit_plan'].includes(action)
+  const requiresKey = ['regenerate', 'regenerate_stale', 'edit_plan', 'start_production', 'retry_shot', 'redo_shot', 'approve_videos', 'review_plan'].includes(action)
   if (serialized !== storyPayload) { storyPayload = serialized; storyKey = newKey() }
   busy.value = true
   error.value = ''
