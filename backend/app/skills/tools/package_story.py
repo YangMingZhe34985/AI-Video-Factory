@@ -4,7 +4,6 @@ from hashlib import sha256
 import json
 import re
 import zipfile
-from pathlib import Path
 from pydantic import BaseModel, ConfigDict, Field
 from app.api import AppError
 from app.agent.delivery_policy import approved_sources, require_delivery_authorization, resolve_delivery_artifact, resolve_source
@@ -110,6 +109,7 @@ def run(data, ctx):
                 archive.write(resolve_source(compressed), "final/compressed.mp4")
             for name, payload in (("manifest", manifest), ("plan", version.plan), ("story", version.story_package), ("qc", owner.snapshot["delivery"]["qc"])):
                 archive.writestr(name + ".json", json.dumps(_safe(payload), ensure_ascii=False, indent=2, allow_nan=False))
+        validate_sources(data, ctx)
         temporary.replace(target)
     finally:
         temporary.unlink(missing_ok=True)

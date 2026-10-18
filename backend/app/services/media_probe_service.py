@@ -68,20 +68,22 @@ class MediaProbeService:
         audio = None
         if audio_lines:
             audio_line = audio_lines[0]
-            acodec = re.search(r"Audio:\s*([^\s,(]+)", audio_line)
+            acodec = re.search(r"Audio:\s*([^\s,(]+)(?:\s+\(([^)]+)\))?", audio_line)
             rate = re.search(r",\s*(\d+)\s+Hz,\s*([^,]+)", audio_line)
             layout = rate[2].strip() if rate else None
             channels = {"mono": 1, "stereo": 2, "5.1": 6, "5.1(side)": 6, "7.1": 8}.get(layout)
             numeric = re.fullmatch(r"(\d+) channels?", layout or "")
             if numeric:
                 channels = int(numeric[1])
-            audio = {"codec": acodec[1] if acodec else None, "sample_rate": int(rate[1]) if rate else None,
+            audio = {"codec": acodec[1] if acodec else None, "profile": acodec[2] if acodec else None,
+                     "sample_rate": int(rate[1]) if rate else None,
                      "channels": channels, "channel_layout": layout}
         video = {"codec": codec[1] if codec else None, "profile": codec[2] if codec else None,
                  "pixel_format": pixel[1] if pixel else None, "time_base": tbn[1] if tbn else None,
                  "sar": sar[1] if sar else None, "level": None}
         complete = all(video[key] for key in ("codec", "profile", "pixel_format", "time_base", "sar"))
-        complete = bool(complete and fps and (audio is None or all(audio.values())))
+        complete = bool(complete and fps and (audio is None or (all(audio.values())
+            and audio["codec"] == "aac" and audio["profile"] == "LC")))
         streams = len(re.findall(r"Stream #\d+:\d+", header))
         return {"duration_sec": seconds, "width": int(size[1]), "height": int(size[2]),
             "fps": float(fps[1]) if fps else None, "video": video, "audio": audio,

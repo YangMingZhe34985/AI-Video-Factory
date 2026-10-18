@@ -1,6 +1,5 @@
 """Durable, zero-model-cost delivery stages for an approved story plan."""
 from copy import deepcopy
-from hashlib import sha256
 from flask import current_app
 from app.api import AppError
 from app.agent import plan_versions as versions
@@ -66,9 +65,9 @@ def _valid_outputs(run):
     return result
 
 
-def _outputs_valid(run):
+def _outputs_valid(run, outputs=None):
     delivery = (run.snapshot or {}).get("delivery", {})
-    outputs = _valid_outputs(run)
+    outputs = _valid_outputs(run) if outputs is None else outputs
     return bool((delivery.get("qc") or {}).get("passed") and outputs["master"] and outputs["package"]
                 and (not delivery.get("compress_output") or outputs["compressed"]))
 
@@ -133,7 +132,7 @@ def apply_command(run, command):
         intent = receipt["intent"]
         db.session.commit()
     try:
-        status = begin_delivery(row, versions.current_version(row), retry=command["action"] == "retry_delivery",
+        status = begin_delivery(row, versions.require_current_version(row, command["plan_version"]), retry=command["action"] == "retry_delivery",
             target_attempt=intent["target_attempt"])
     except AppError as error:
         update(row, stage="failed", error={"code": error.code, "message": error.message})
@@ -236,7 +235,7 @@ def public_delivery(run):
     return {"enabled": enabled(), "plan_version": version.version, "status": run.status,
         "stage": delivery.get("stage", "pending"), "error": delivery.get("error"), "cost_credits": 0,
         "can_start": enabled() and run.status == "videos_approved",
-        "can_retry": enabled() and (run.status == "delivery_attention" or (run.status == "success" and not _outputs_valid(run))),
+        "can_retry": enabled() and (run.status == "delivery_attention" or (run.status == "success" and not _outputs_valid(run, outputs))),
         "master": media_ref("master"), "compressed": media_ref("compressed"),
         "package": package_ref, "qc": delivery.get("qc"), "warnings": list(dict.fromkeys([
             *details.get("warnings", []), *(delivery.get("qc") or {}).get("warnings", []),
