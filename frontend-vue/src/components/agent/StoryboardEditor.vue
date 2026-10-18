@@ -8,6 +8,7 @@
       服务器计划已更新，当前编辑基于旧版本。<button type="button" class="ml-2 underline" @click="reload">刷新为最新版本（放弃本地修改）</button>
     </div>
     <p v-if="actionError" role="alert" class="mt-3 break-words text-sm text-red-600">{{ actionError }}</p>
+    <p v-if="actionEstimate != null" role="status" class="mt-3 text-xs text-slate-500">操作已提交 · 服务器预计本次图片费用 {{ money(actionEstimate) }} credits。</p>
     <p v-if="status === 'storyboard_approved'" class="mt-4 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300">分镜已确认。本阶段停在这里，未提交视频模型任务。</p>
     <div class="mt-5 flex flex-wrap items-baseline justify-between gap-2 text-sm">
       <span><strong class="tabular-nums">{{ format(check.total) }} 秒</strong> / 目标 {{ check.target }} 秒</span>
@@ -52,7 +53,7 @@
     </section>
 
     <section class="mt-6" aria-label="镜头时间线">
-      <h4 class="text-sm font-semibold">镜头时间线 · {{ localPlan.shots.length }} 个镜头</h4>
+      <h4 class="text-sm font-semibold">镜头时间线 · {{ localPlan.shots.length }} / {{ maxShots }} 个镜头</h4>
       <ol class="mt-3 space-y-3">
         <li v-for="shot in timelineShots" :key="shot.shot_id" class="rounded-xl border border-slate-200 p-3 dark:border-slate-700">
           <div class="flex flex-col gap-3 sm:flex-row">
@@ -141,11 +142,12 @@ const props = defineProps({
   runId: { type: String, required: true }, plan: { type: Object, required: true }, story: { type: Object, default: () => ({}) },
   planVersion: { type: Number, required: true }, previews: { type: Object, default: () => ({}) }, estimates: { type: Object, default: () => ({}) },
   issues: { type: Array, default: () => [] }, models: { type: Array, default: () => [] }, spec: { type: Object, default: () => ({}) },
-  status: { type: String, required: true }, disabled: Boolean, demo: Boolean, durationToleranceRatio: { type: Number, default: 0.1 }, keyframeBridgeEnabled: Boolean,
+  status: { type: String, required: true }, disabled: Boolean, demo: Boolean, durationToleranceRatio: { type: Number, default: 0.1 }, keyframeBridgeEnabled: Boolean, maxShots: { type: Number, default: 30 },
 })
 const emit = defineEmits(['action', 'refresh'])
 const localPlan = ref(clone(props.plan)), original = ref(JSON.stringify(props.plan)), baseVersion = ref(props.planVersion)
 const characterDraft = ref(clone(props.story.characters || [])), characterOriginal = ref(JSON.stringify(props.story.characters || []))
+const actionEstimate = ref(null)
 const drawer = ref(null), shotDraft = ref(null), savedFrame = ref(null), confirmation = ref(null), actionError = ref(''), pendingEdit = ref(false)
 const dirty = computed(() => JSON.stringify(localPlan.value) !== original.value)
 const charactersDirty = computed(() => JSON.stringify(characterDraft.value) !== characterOriginal.value)
@@ -158,7 +160,7 @@ const sourceLabels = { research: '检索资料', attachment: '用户附件', gen
 const transitionLabels = { start: '● 起始', tail_frame: '→ 尾帧承接', independent: '⑂ 独立并行', hard_cut: '│ 硬切并行', keyframe_bridge: '⇢ 首尾帧衔接' }
 const statusText = computed(() => ({ planning: '规划中', previewing: '预览生成中', awaiting_characters: '等待确认角色', awaiting_storyboard: '等待确认分镜', storyboard_approved: '分镜已确认' }[props.status] || props.status))
 const previewPlan = computed(() => shotDraft.value ? editedPlan(localPlan.value, shotDraft.value) : localPlan.value)
-const check = computed(() => localPlanCheck(previewPlan.value, props.story, props.models, props.spec, { durationToleranceRatio: props.durationToleranceRatio, keyframeBridgeEnabled: props.keyframeBridgeEnabled }))
+const check = computed(() => localPlanCheck(previewPlan.value, props.story, props.models, props.spec, { durationToleranceRatio: props.durationToleranceRatio, keyframeBridgeEnabled: props.keyframeBridgeEnabled, maxShots: props.maxShots }))
 const timelineShots = computed(() => timeline(previewPlan.value))
 const durationIssue = computed(() => check.value.issues.some((issue) => issue.code === 'DURATION_MISMATCH'))
 const visibleIssues = computed(() => {
@@ -166,7 +168,7 @@ const visibleIssues = computed(() => {
   return candidates.filter((issue, index) => candidates.findIndex((other) => other.code === issue.code && other.shot_id === issue.shot_id) === index)
 })
 const stale = computed(() => staleTargets(props.plan, props.previews))
-const staleCost = computed(() => targetCost(stale.value, props.models))
+const staleCost = computed(() => targetCost(stale.value, props.models, props.previews))
 const incomplete = computed(() => incompleteTargets(props.plan, props.previews))
 const charactersIncomplete = computed(() => (props.story.characters || []).some((character) => character.reference.source === 'generate' && (props.previews.characters?.[character.character_id]?.status !== 'success' || props.previews.characters?.[character.character_id]?.stale)))
 const charactersInvalid = computed(() => characterDraft.value.some((character) => !character.lock_description?.trim() || character.reference.source === 'generate' && !character.reference.generate_prompt?.trim()))
@@ -218,8 +220,12 @@ function changeTransition(value) {
 }
 function submit(action, payload = {}) {
   if (locked.value) return
-  actionError.value = ''
-  emit('action', { action, payload, onSuccess: () => { confirmation.value = null; if (['edit_plan', 'approve_characters'].includes(action)) pendingEdit.value = true }, onError: (error) => { pendingEdit.value = false; actionError.value = error } })
+  actionError.value = ''; actionEstimate.value = null
+  emit('action', { action, payload, onSuccess: (result) => {
+    confirmation.value = null
+    if (['edit_plan', 'approve_characters'].includes(action)) pendingEdit.value = true
+    if (['regenerate', 'regenerate_stale'].includes(action) && Number.isFinite(result?.action_estimated_credits)) actionEstimate.value = result.action_estimated_credits
+  }, onError: (error) => { pendingEdit.value = false; actionError.value = error } })
 }
 function savePlan() { submit('edit_plan', { plan: clone(localPlan.value), base_version: baseVersion.value }) }
 function submitCharacters() {
@@ -237,7 +243,7 @@ function askRegenerate(type, id, prompt) {
   const shot = props.plan.shots.find((item) => item.shot_id === id)
   const frame = type === 'keyframe' ? shot?.first_frame : shot?.end_frame
   const affected = type === 'character' ? props.plan.shots.filter((item) => item.character_ids.includes(id)).map((item) => item.shot_id) : []
-  confirmation.value = { action: 'regenerate', payload: { target_type: type, target_id: id, ...(prompt ? { prompt } : {}) }, title: `重做${type === 'character' ? '角色定妆图' : type === 'keyframe' ? '关键帧' : '尾帧'} ${type === 'character' ? characterName(id) : id}`, cost: preview?.estimated_cost ?? (frame ? priceFor(props.models, frame.model_id, 1, 'image') : null), description: affected.length ? `会使 ${affected.join('、')} 的角色关联关键帧过期。旧图保留，不自动重做其他图片，后续需单独确认费用。${charactersDirty.value ? '卡片里的外观锁定修改尚未保存；本次只提交定妆提示词。' : ''}` : '仅重做这张预览图片，旧产物保留。不会提交任何视频生成任务。' }
+  confirmation.value = { action: 'regenerate', payload: { target_type: type, target_id: id, ...(prompt ? { prompt } : {}) }, title: `重做${type === 'character' ? '角色定妆图' : type === 'keyframe' ? '关键帧' : '尾帧'} ${type === 'character' ? characterName(id) : id}`, cost: type === 'character' ? (Number.isFinite(preview?.estimated_cost) ? preview.estimated_cost : null) : frame ? targetCost([{ type, id, frame }], props.models, props.previews) : null, description: affected.length ? `会使 ${affected.join('、')} 的角色关联关键帧过期。旧图保留，不自动重做其他图片，后续需单独确认费用。${charactersDirty.value ? '卡片里的外观锁定修改尚未保存；本次只提交定妆提示词。' : ''}` : '仅重做这张预览图片，旧产物保留。不会提交任何视频生成任务。' }
 }
 function askStale() { confirmation.value = { action: 'regenerate_stale', payload: {}, title: `重做 ${stale.value.length} 张过期关键帧`, cost: staleCost.value, description: `范围：${stale.value.map((item) => `${item.id}${item.type === 'end_frame' ? ' 尾帧' : ''}`).join('、')}。其他已完成预览保持可用。` } }
 function confirmReject() { confirmation.value = { action: 'reject', payload: {}, title: '放弃此计划', description: '将取消本次创作。已有预览与消费记录保留。' } }

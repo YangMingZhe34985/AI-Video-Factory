@@ -4,6 +4,14 @@ const round = (value) => Math.round(value * 10000) / 10000
 const norm = (value) => String(value || '').normalize('NFKC').toLowerCase().replace(/[\s_-]+/g, '')
 const label = (value) => String(value || '').replace(/\s*(系列|模型|family|series|model)\s*$/i, '')
 
+export function normalizeStoryRules(rules = {}) {
+  return {
+    durationToleranceRatio: Number.isFinite(rules.duration_tolerance_ratio) && rules.duration_tolerance_ratio >= 0 ? rules.duration_tolerance_ratio : 0.1,
+    maxShots: Number.isInteger(rules.max_shots) && rules.max_shots > 0 ? rules.max_shots : 30,
+    keyframeBridgeEnabled: rules.keyframe_bridge_enabled === true,
+  }
+}
+
 export function matchesModel(value, model) {
   const requested = norm(label(value))
   const family = norm(model.model_id?.split(/[-_](?:t2v|i2v|r2v|image)(?:[-_]|$)/i)[0])
@@ -59,8 +67,13 @@ export function incompleteTargets(plan, previews) {
   })
 }
 
-export function targetCost(targets, models) {
-  const values = targets.map((item) => priceFor(models, item.frame.model_id, 1, 'image'))
+export function targetCost(targets, models, previews = {}) {
+  const values = targets.map((item) => {
+    const preview = previewFor(previews, item.type, item.id)
+    // A quote from an older model must not price a newly edited target.
+    if (preview?.model_id === item.frame.model_id && Number.isFinite(preview.estimated_cost) && preview.estimated_cost >= 0) return preview.estimated_cost
+    return priceFor(models, item.frame.model_id, 1, 'image')
+  })
   return values.some((value) => value === null) ? null : round(values.reduce((sum, value) => sum + value, 0))
 }
 
@@ -83,6 +96,7 @@ export function localPlanCheck(plan, story, models, spec = {}, options = {}) {
   const issues = []
   const add = (code, message, shotId = null) => issues.push({ code, message, shot_id: shotId })
   const shots = plan?.shots || []
+  if (shots.length > (options.maxShots ?? 30)) add('INVALID_PRODUCTION_PLAN', `镜头数不能超过 ${options.maxShots ?? 30} 个`)
   const total = shots.reduce((sum, shot) => sum + (Number.isFinite(shot.duration_sec) ? shot.duration_sec : 0), 0)
   const target = spec.target_duration_sec ?? plan?.target_duration_sec ?? 0
   const tolerance = Math.max(spec.duration_tolerance_sec ?? 10, target * (options.durationToleranceRatio ?? 0.1))
