@@ -181,3 +181,6 @@ Tests isolate SQLite/storage, force Mock and block provider HTTP. Source-video t
 Further reading: [Agent creation](docs/architecture/phase2_langgraph_mvp.md), [source-video remix](docs/architecture/phase3_video_remix.md), [stability evaluation](docs/architecture/phase4_stability_evaluation.md), [MQ operations and rollback](docs/architecture/mq_implementation.md), [backend API](backend/README.md), [production deployment](DEPLOYMENT.md).
 
 Production uses its own `.env.production` injected into containers; keep it separate from local `.env`. Licensed under [MIT](LICENSE).
+
+
+2026-10 新模型目录、旧百炼 URL、已接入模式与限制见 [模型目录说明](README_zh.md#模型目录更新2026-10)。新增目录不会切换默认模型，当前仅完成 Mock 验证。

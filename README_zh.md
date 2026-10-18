@@ -165,6 +165,29 @@ API 健康地址为 `http://127.0.0.1:5000/api/health`。查看 MQ 状态时，�
 python -m flask --app run.py mq-status
 ```
 
+## 模型目录更新（2026-10）
+
+新增模型不会替换现有服务器默认值。API 启动时（`AUTO_REPAIR_SCHEMA=true`）会补齐模型种子；需要手动补齐时，可通过现有 `POST /api/models/seed-defaults` 接口更新目录。这里只更新目录，不会调用生成服务。生产环境修改前请保留自己配置的模型参数与价格。
+
+| 模型 | 当前接入范围 |
+| --- | --- |
+| `qwen-image-3.0` / `qwen-image-3.0-pro` | 文生图、最多3张参考图的图像编辑；异步提交/轮询/下载，保留多张输出（Agent入口最多4张） |
+| `wan3.0-video` / `wan3.0-video-prime` | 文生视频、首帧、首尾帧候选、参考图片；同一真实模型ID用于多种任务，固定2–30秒 |
+| `deepseek-v4.1-flash` | 百炼文本/结构化决策，使用 `DASHSCOPE_API_KEY`；默认关闭思考，不使用 DeepSeek 自营 Key |
+
+新模型继续沿用当前域名，不需要 Workspace ID：
+
+```dotenv
+DASHSCOPE_API_BASE_URL=https://dashscope.aliyuncs.com/api/v1
+DASHSCOPE_OPENAI_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+```
+
+Wan3 首尾帧仍由 `AGENT_ENABLE_KEYFRAME_BRIDGE` 控制，默认关闭；不能据 Mock 结果认定它与首帧模式画质相同。官方全模态参考、视频编辑/延长能力与当前 Agent 可执行能力分列：本轮不允许 Agent 自动使用参考视频、编辑、延长或文件/网页。受控视频输入、完整预算和审核契约尚需后续开发；智能时长 `-1` 暂不开放，避免无法确定费用上界。
+
+模型目录的 **credits 仍是演示估算，不是人民币账单**。Wan3 按分辨率选择每秒费率，参考视频的费用规则是“输入视频秒数 + 输出视频秒数”；延长的 `duration` 表示完整输出长度，不是新增段长度。图片输入计费、LLM token计费等差异不能由演示credits精确表示。新模型仅经过隔离Mock与HTTP Stub验证，真实账号在旧域名下的可用性、画质及费用尚未实测。
+
+官方参考：[Qwen Image 3.0](https://help.aliyun.com/zh/model-studio/qwen-image-generation-and-editing-api-reference)、[Wan3统一API](https://help.aliyun.com/zh/model-studio/wan3-video-generation-api-reference)、[DeepSeek百炼API](https://help.aliyun.com/zh/model-studio/deepseek-api)、[计费](https://help.aliyun.com/zh/model-studio/model-pricing)。开发边界与Claude交接见 [M/T契约](docs/agent_v2/CONTRACTS.md) 和 [交接日志](docs/agent_v2/PROGRESS.md)。
+
 ## 切换真实模型
 
 在根目录 `.env` 填写对应的 `DASHSCOPE_API_KEY` / `DEEPSEEK_API_KEY`，设置 `MODEL_ADAPTER_MODE=real`，重启 API 和所有 worker。确认模型注册表中的模型已启用，再创建新会话，检查计划和费用后审批。

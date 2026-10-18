@@ -6,11 +6,7 @@ from app.api import AppError
 
 
 class QwenChatAdapter(MockChatAdapter):
-    """Qwen-compatible adapter shell.
-
-    The MVP keeps behavior mocked while preserving a stable surface for adding
-    DashScope chat calls in submit/poll/download_outputs later.
-    """
+    """OpenAI-compatible chat transport for DashScope and legacy DeepSeek."""
 
     provider_name = "dashscope"
 
@@ -41,6 +37,7 @@ class QwenChatAdapter(MockChatAdapter):
         return super().api_key(required=required)
 
     def build_payload(self, inputs: dict, params: dict) -> dict:
+        params = {**(getattr(self.model, "default_params", None) or {}), **params}
         if self.use_mock:
             return super().build_payload(inputs, params)
         self.validate_inputs(inputs, params)

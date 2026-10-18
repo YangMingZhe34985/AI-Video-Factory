@@ -25,19 +25,23 @@ class DashScopeGenerationAdapter(MockAdapter):
     def task_url(self, task_id: str) -> str:
         return f"{self.dashscope_base_url()}/tasks/{task_id}"
 
+    def submission_headers(self) -> dict:
+        # Preserve the legacy transport; new protocols override this explicitly.
+        return {
+            "Authorization": f"Bearer {self.api_key()}",
+            "Content-Type": "application/json",
+            "X-DashScope-Async": "enable",
+            "X-DashScope-OssResourceResolve": "enable",
+            "X-DashScope-DataInspection": '{"input":"disable","output":"disable"}',
+        }
+
     def submit(self, payload: dict) -> dict:
         if self.use_mock:
             return super().submit(payload)
         data = self.request_json(
             "POST",
             self.create_url(),
-            headers={
-                "Authorization": f"Bearer {self.api_key()}",
-                "Content-Type": "application/json",
-                "X-DashScope-Async": "enable",
-                "X-DashScope-OssResourceResolve": "enable",
-                "X-DashScope-DataInspection": '{"input":"disable","output":"disable"}',
-            },
+            headers=self.submission_headers(),
             json=payload,
         )
         task_id = ((data.get("output") or {}).get("task_id")) or ""
