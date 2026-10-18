@@ -45,7 +45,7 @@ export default {
     popularity_high: '常见', popularity_medium: '较常见', popularity_low: '少见',
     assumptionsHint: '以下事项 Agent 自行做了默认选择，如不合适可以在计划中修改。',
     // clarification
-    askedBy_intake: '需求理解', askedBy_research: '资料检索', askedBy_director: '导演', askedBy_creative: '创意', askedBy_production: '制作',
+    askedBy_producer: '创作统筹', askedBy_intake: '需求理解', askedBy_research: '资料检索', askedBy_director: '导演', askedBy_creative: '创意', askedBy_production: '制作',
     clarifyTitle: '需要你确认', recommended: '推荐', defaultTag: '默认', optional: '可跳过',
     freeText: '都不是，我来说明', freeTextPlaceholder: '用一句话说明你的选择',
     submitAnswers: '提交选择', useDefaults: '其余按默认继续', answered: '已确认的选择',
@@ -119,7 +119,7 @@ export default {
     awaitingChoice: 'Awaiting your choice', consensus: 'Shared traits', selected: 'Chosen', candidateN: 'Candidate {n}', sources: 'Sources',
     popularity_high: 'Common', popularity_medium: 'Fairly common', popularity_low: 'Rare',
     assumptionsHint: 'The Agent chose these defaults on its own. Change them in the plan if they do not fit.',
-    askedBy_intake: 'Understanding', askedBy_research: 'Research', askedBy_director: 'Director', askedBy_creative: 'Creative', askedBy_production: 'Production',
+    askedBy_producer: 'Producer', askedBy_intake: 'Understanding', askedBy_research: 'Research', askedBy_director: 'Director', askedBy_creative: 'Creative', askedBy_production: 'Production',
     clarifyTitle: 'Please confirm', recommended: 'Recommended', defaultTag: 'Default', optional: 'Optional',
     freeText: 'None of these, let me explain', freeTextPlaceholder: 'Explain your choice in a sentence',
     submitAnswers: 'Submit', useDefaults: 'Continue with defaults', answered: 'Confirmed choices',

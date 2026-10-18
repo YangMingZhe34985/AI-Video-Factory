@@ -762,3 +762,31 @@ V5 提交 f19dbd4 已快进合入本地 feat/agent-v2，未推送；已从该基
 2. Claude重点审定：delegation-policy的简单任务直接完成与显式额度保留；long-form-video中Prompt Smith改按需并带prompt_scope；character-consistency不能将生成图理解描述成已有自动QC；intent-analysis应使用RequirementBrief而非v2 RequestSpec。四个关键Skill本轮保持未改。
 3. Claude检查Producer/Director及三个Gate。600秒墙钟上限仍包含排队/人工等待，恢复不重置；真实自主规划质量、实际单价/媒体效果、MySQL迁移并发均待验收。AGENT_V3_ENABLED继续默认false。
 需要用户决定：无新增；按本轮要求继续V7，禁止真实LLM/付费测试。
+
+## 2026-10-19 · Codex · V7 开始
+V6提交2681f1c已快进合入本地feat/agent-v2，未推送；当前从该基线创建agent-v3/V7。D-037/V.19先定义功能界面、审批/报价、迟到响应及美化边界。随后将已在TEMP预检的源码迁入正式分支，仅做Mock验证；本条不代表V7正式验收。
+
+## 2026-10-19 · Codex · V7 功能界面与 V4–V7 本地交付
+状态：V4–V7 Codex实现与逐阶段Mock/Stub验证完成，不进入V8；本条随agent-v3/V7提交，验证后快进合入本地feat/agent-v2，不推送。前置提交：V4 4051247、V5 f19dbd4、V6 2681f1c均已本地合入。
+
+完成内容：
+- D-037 / V.19先行；schema_version=3专用V3RunPanel，保留原必填文本/附件入口、v1/v2历史面板。未增加任务类型、模型、镜头数表单。共享布局的responsive默认为false，仅Agent Studio启用必要手机适配；该页旧版本也使用响应式侧栏，其他经典页面保持原默认行为。
+- 协作树与分页公开步骤，通用阶段/节点/依赖/门/历史保留来源，规划/总/修复预算分开显示。节点费用取服务器估价，区分交付秒数、累计生成秒数、I+G输入秒数；未知费用不显示为免费。
+- 计划审批绑定当前版本及可选修复预授权，预览审批/反馈绑定成功未批准节点，修改仅提交意图；结果确认和本地鉴权下载。服务端继续决定权限、预算、范围与最终执行。
+- Patch展示前后差异、独立审阅和六类影响范围，须重新获取当前only/cascade报价。只保留下游旧产物时要求明确勾选衔接风险；人工准入与有限费用同时校验，报价失效不能批准。不可人工批准时仍可拒绝有效的当前补丁。
+- 请求键在同内容网络重试保持稳定；范围/版本变化取消旧请求并丢弃迟到响应。普通轮询不会重置编辑、scope、展开节点、在途动作或下载；选择新任务在途时旧动作回执不能夺回选择，旧轮询不能回滚已确认的历史状态。
+- 新增可复用的frontend-vue/tests/browser/agent-v3.smoke.js及使用说明，所有API内存拦截；没有新增npm依赖、没有修改后端应用/经典DAG/真实.env。
+
+验证：
+- 正式源码前端 **129 passed**（原64 + 新65），npm run build通过，git diff --check通过。
+- 正式构建浏览器 **18组通过**：分页、费用上限、稳定重试键、选择题、门、未知动作恢复、only/cascade及失效报价、版本漂移、慢动作/下载跨轮询、任务切换及历史回退竞态、空文本/快捷键、v1/v2兼容。1440/400px各亮/暗主题，document/body及内容区边界均无横向溢出；pageerror 0、意外请求0。现有Google Fonts请求被主动拦截，不访问外部网络。
+- 后端相关runtime/Plan/Patch API联合 **26 passed**；V7的backend与2681f1c无差异，完整基线沿用V6的 **2098 passed/111文件**，没有将这26项与全量相加。V4/V5分别1906/2000项完整覆盖，逐阶段证据见对应记录。
+- 浏览器结果保存于忽略目录.playwright-mcp/v7-preview-20261019/v7-final-result.txt；后端API报告%TEMP%/cinecrew-v7-api-results.xml。前端拦截和后端隔离集成分别验证，不冒充真实端到端服务商调用。PNG仅占位、ZIP为空包、未提供MP4，本次UI不验证媒体解码或生成效果。
+- 使用Mock/Stub、隔离SQLite/存储、网络阻断；真实文本/视觉/图片/视频调用累计0，费用0，未连接真实MySQL/Redis。临时预览在收尾时关闭。未安装依赖，用户未跟踪的AI_Video_Factory_Technical_Notes_CN.md、私人报告和环境配置保留。
+
+交给Claude / 尚未验收：
+1. V-Gate1/2/3、Producer/Director及委派策略审定、四项关键Skill审定和界面美化仍待Claude；本轮未修改delegation-policy、intent-analysis、long-form-video、character-consistency。具体策略差异见上一条V6记录。
+2. 重点复验公开计划/费用投影、审批与修订版本、Patch保留风险、轮询/选择竞态，以及资源Schema与真实工具合同一致。浏览器脚本可重复执行，默认不开真实后端。
+3. AGENT_V3_ENABLED仍默认false。真实LLM自主规划、视觉一致性/首尾帧质量、真实单价、MySQL迁移与并发、600秒墙钟含人工等待的取舍仍未验收。不得据Mock全绿直接打开付费生产或宣称Gate完成。
+4. 本轮仅本地提交/合并，无远程推送、无PR；V8尚未开始，需要在V-Gate3后按用户指令推进。
+需要用户决定：本轮无新增；后续真实测试须遵循用户当轮授权，不沿用历史授权自动调用。

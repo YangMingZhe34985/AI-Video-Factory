@@ -1,11 +1,11 @@
 <template>
-  <DefaultLayout title="Agent Studio" :subtitle="t('subtitle')">
+  <DefaultLayout title="Agent Studio" :subtitle="t('subtitle')" responsive>
     <div class="mx-auto max-w-7xl">
       <p v-if="enabled === false" class="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">{{ t('disabled') }}</p>
 
-      <div v-else-if="enabled" class="grid gap-6 lg:grid-cols-[16rem_minmax(0,1fr)]">
+      <div v-else-if="enabled" class="grid grid-cols-1 gap-6 lg:grid-cols-[16rem_minmax(0,1fr)]">
         <!-- history rail -->
-        <aside class="space-y-3 lg:sticky lg:top-0 lg:self-start">
+        <aside class="min-w-0 space-y-3 lg:sticky lg:top-0 lg:self-start">
           <button type="button" class="new-btn" @click="startNew"><PhPlus :size="16" weight="bold" />{{ t('newRun') }}</button>
           <nav :aria-label="t('history')" class="rounded-2xl border border-slate-200 bg-white p-2 dark:border-slate-700 dark:bg-slate-900">
             <p class="px-2 pb-1 pt-1.5 text-xs font-medium uppercase tracking-wide text-slate-400">{{ t('history') }}</p>
@@ -15,7 +15,7 @@
             >
               <span class="block truncate text-sm text-slate-800 dark:text-slate-100">{{ titleOf(item) }}</span>
               <span class="mt-0.5 flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400">
-                <span class="h-1.5 w-1.5 rounded-full" :class="dotClass(item.status)" />{{ statusLabel(item.status) }}
+                <span class="h-1.5 w-1.5 rounded-full" :class="dotClass(item.status)" />{{ item.schema_version === 3 ? v3StatusLabel(item.status) : statusLabel(item.status) }}
                 <span class="ml-auto tabular-nums">{{ shortTime(item.created_at) }}</span>
               </span>
             </button>
@@ -24,6 +24,7 @@
         </aside>
 
         <main class="min-w-0">
+          <p v-if="selected?.schema_version === 3 && error" role="alert" class="mb-3 break-words text-sm text-red-600 dark:text-red-400">{{ error }}</p>
           <!-- new project -->
           <section v-if="!selected" class="mx-auto max-w-3xl pt-4 lg:pt-10">
             <h2 class="text-3xl font-semibold tracking-tight text-slate-900 dark:text-white">{{ t('composerTitle') }}</h2>
@@ -38,6 +39,9 @@
             </div>
             <p v-if="mode !== 'real'" class="mt-8 text-xs text-amber-700 dark:text-amber-400">{{ mode === 'mock' ? t('mock') : t('auto') }}</p>
           </section>
+
+          <V3RunPanel v-else-if="selected.schema_version === 3" :key="selected.run_id" :run="selected"
+            @updated="applyV3Run" @refresh="select(selected.run_id)" />
 
           <!-- run detail -->
           <div v-else class="space-y-5">
@@ -194,6 +198,8 @@ import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { PhFileText, PhFilmStrip, PhPlus, PhUser, PhWaveform } from '@phosphor-icons/vue'
 import DefaultLayout from '@/layouts/DefaultLayout.vue'
+import V3RunPanel from '@/components/agent/V3RunPanel.vue'
+import { v3StatusLabel } from '@/components/agent/v3-actions'
 import AgentComposer from '@/components/agent/AgentComposer.vue'
 import RunStepper from '@/components/agent/RunStepper.vue'
 import UnderstandingCard from '@/components/agent/UnderstandingCard.vue'
@@ -277,6 +283,7 @@ const TONE = {
   success: 'good', partial_success: 'warn', failed: 'bad', cancelled: 'muted', needs_attention: 'bad',
   awaiting_input: 'ask', awaiting_approval: 'ask', awaiting_delivery: 'ask',
   awaiting_characters: 'ask', awaiting_storyboard: 'ask', storyboard_approved: 'ask',
+  awaiting_plan_review: 'ask', awaiting_gate: 'ask', awaiting_result_review: 'ask', attention: 'bad',
   awaiting_video_review: 'ask', production_attention: 'bad', videos_approved: 'good', delivery_attention: 'bad',
 }
 const dotClass = (status) => ({ good: 'bg-emerald-500', warn: 'bg-amber-500', bad: 'bg-red-500', muted: 'bg-slate-400', ask: 'bg-blue-500' }[TONE[status]] || 'bg-blue-300 animate-pulse')
@@ -299,7 +306,17 @@ function applyRun(value) {
   }
   selected.value = value
 }
+let pendingSelectionId = null
+function applyV3Run(value) {
+  if (disposed || selected.value?.run_id !== value?.run_id || value.schema_version !== 3
+      || (pendingSelectionId && pendingSelectionId !== value.run_id)) return
+  pendingSelectionId = null
+  selectionVersion++
+  applyRun(value)
+  runs.value = runs.value.map((item) => item.run_id === value.run_id ? value : item)
+}
 function startNew() {
+  pendingSelectionId = null
   selectionVersion++
   selected.value = null
   draft.value = null
@@ -307,6 +324,7 @@ function startNew() {
   router.replace({ query: {} })
 }
 async function select(id) {
+  pendingSelectionId = id
   const version = ++selectionVersion
   error.value = ''
   try {
@@ -315,16 +333,18 @@ async function select(id) {
       applyRun(value)
       await router.replace({ query: { run: id } })
     }
-  } catch (err) { error.value = message(err) }
+  } catch (err) { if (!disposed && version === selectionVersion) error.value = message(err) }
+  finally { if (version === selectionVersion) pendingSelectionId = null }
 }
 async function refresh() {
+  const version = selectionVersion
   try {
     const data = await listAgentRuns()
-    if (disposed) return
+    if (disposed || version !== selectionVersion || pendingSelectionId) return
     runs.value = data.items
     const current = data.items.find((item) => item.run_id === selected.value?.run_id)
-    if (current) applyRun(current)
-  } catch (err) { error.value = message(err) }
+    if (current && version === selectionVersion) applyRun(current)
+  } catch (err) { if (!disposed && version === selectionVersion) error.value = message(err) }
 }
 async function create(payload) {
   busy.value = true

@@ -459,3 +459,13 @@ patches.diff_preview 为逐操作 {op,node_id,before,after}：输入更新仅展
 - 规划额度上下文：新LLM step在请求前持久化一份服务端 quota snapshot，包含 delegation_limit、delegation_remaining、run_planning_limit、run_planning_spent、run_budget_limit、run_spent，均为调用前值（本轮LLM也会消耗配额）。快照只描述状态，不授予授权；同step重放必须使用原快照，已有旧账本而无快照时沿用旧消息，不新增上下文改变原请求摘要。模型应按实际子任务显式分配 planning_credits，并保留自身汇总/提交所需额度；不自动上调任何限额。
 - 上述兼容只保证新增quota上下文不改写原step。跨发布若函数Schema或工具权限已变化，仍遵守原严格摘要校验并安全停止，不自动重发付费回合，也不声称可无缝迁移所有在途旧委派。
 - 角色必须能读取实际写入合同：plan-review resources 暴露 brief/research_dossier/story/plan_draft/critic_review/patch 的模型 JSON Schema，以及十个 Plan 工具的 resolved input_schema、Plan io_types 命名输出和 authoring 字段放置说明。异步 Job 回执字段不等于 Plan 完成输出。角色按需读取，不把全部资源注入每轮，不开放生成函数；以实际编译/归属校验为准。资源漂移由回归阻止。capture_reference_page 只对原用户文本中 URL 创建正文工件，不能充当图片或任意研究网页截图。
+
+## V.19 V7 功能界面（D-037）
+- 新面板仅用于 schema_version=3。协作树使用 agents 的 delegation_id/parent_id，步骤使用 GET steps 分页；不读取内部 snapshot/messages。预算分别显示 Run 已花费、规划限额/已用、自动修复已占用/剩余，后两者不再加到账本花费。
+- 按 Plan.stages 分组节点，展示工具/模型/提示词/参数/依赖、关键帧门与历史保留来源。输出时长与累计计费生成时长分别使用 estimates.video_seconds / generated_video_seconds，节点费用使用服务端 estimates.nodes；没有单价信息显示未知。
+- approve_plan 明确当前 plan_version 与用户可选 repair_budget_credits；approve_gate 绑定当前成功未批准 gate_node_id；approve_results 只接受结果。revise_plan 输入修改意图，门反馈携带 gate_node_id，不直接改批准计划或绕过硬约束。
+- Patch 先显示 diff_preview 与审阅结论，再请求当前scope只读报价。人工批准要求匹配patch_id/base_version/scope/quote_id、manual_can_apply、有限非负估价与显式风险确认；接口仍权威复验。quote_id非执行许可，前端不能提供私有decisions。
+- 动作进行中禁用重复按钮；同内容网络重试使用稳定request_key。Run切换、版本或scope变化取消旧请求并废弃迟到结果；组件卸载取消请求/计时器。媒体只使用现有鉴权工件组件/精确本地路由下载。
+- 浏览器验收覆盖亮/暗主题、约400px无横向溢出、分页步骤、计划/门/交付动作、only/cascade和旧报价失效；仅Mock。UI不声称已通过真实模型质量评估。
+
+- 同一Run同版本的普通轮询不重置编辑、范围或进行中的动作/下载；正在切换到另一Run时，旧任务回执不能取消新选择，动作确认前的迟到轮询不能回滚历史列表。

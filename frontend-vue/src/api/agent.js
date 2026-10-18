@@ -30,3 +30,11 @@ export const actOnStoryboard = (id, action, payload = {}) => request.post(`/agen
 
 // CONTRACTS D: read-only quote; model submission still requires an explicit action.
 export const quoteAgentProduction = (id, input) => request.post(`/agent/runs/${id}/production/quote`, input)
+
+// V3 actions use a stable caller-owned key; never retry with a new request body.
+export const actOnAgentV3Run = (id, body, signal) => request.post(`/agent/runs/${id}/actions`, body, { signal })
+export const listAgentV3Steps = (id, page = 1, perPage = 30, signal) =>
+  request.get(`/agent/runs/${id}/steps`, { params: { page, per_page: perPage }, signal })
+// The read-only server quote binds scope and cost to one exact Patch version.
+export const quoteAgentV3Patch = (id, input, signal) =>
+  request.post(`/agent/runs/${id}/patch-quote`, input, { signal, timeout: 180000 })

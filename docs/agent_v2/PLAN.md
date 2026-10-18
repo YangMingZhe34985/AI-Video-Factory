@@ -138,7 +138,7 @@
 | V5 | Plan Patch：Repair、Director 审阅、增量报价、低风险自动授权 | Codex | V4 | 完成（D-035；后端2000项、前端64项与构建通过；Gate待Claude） |
 | V-Gate2 | V4–V5 评审 | Claude | V4 V5 | 待开始 |
 | V6 | Agent 上线：七个 Agent 的卡片与提示词、委派策略 | Codex（Claude 审定 Producer/Director/委派策略） | V-Gate2 | Codex实现与Mock回归完成（D-036；后端2098项；真实评测、策略审定及Gate待Claude） |
-| V7 | 界面：协作时间线、通用计划视图、规划额度、Patch 审批 | Codex（功能），Claude（美化） | V6（接口） | 待开始 |
+| V7 | 界面：协作时间线、通用计划视图、规划额度、Patch 审批 | Codex（功能），Claude（美化） | V6（接口） | 功能完成（D-037；前端129项/构建、18组浏览器Mock、后端API26项通过；美化与Gate待Claude） |
 | V-Gate3 | 评审 + 真实 LLM 评测 + v2 对照 | Claude | V6 V7 | 待开始 |
 | V8 | 经典路径：生产意图、系列 + 模板、`run_workflow_template`（契约开工前补写） | Codex | V-Gate3 | 待开始 |
 

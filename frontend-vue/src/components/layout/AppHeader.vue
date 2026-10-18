@@ -1,8 +1,8 @@
 <template>
-  <header class="bg-white px-8 py-5 flex items-center justify-between z-10 border-b border-gray-100">
-    <div>
-      <h1 class="text-2xl font-bold text-gray-900">{{ title }}</h1>
-      <p class="text-sm text-gray-500 mt-1">{{ subtitle }}</p>
+  <header class="bg-white py-5 flex items-center justify-between z-10 border-b border-gray-100" :class="responsive ? 'min-w-0 flex-wrap gap-2 px-4 sm:px-8 dark:bg-slate-900 dark:border-slate-700' : 'px-8'">
+    <div :class="{ 'min-w-0': responsive }">
+      <h1 class="text-2xl font-bold text-gray-900" :class="{ 'break-words dark:text-white': responsive }">{{ title }}</h1>
+      <p class="text-sm text-gray-500 mt-1" :class="{ 'break-words dark:text-slate-400': responsive }">{{ subtitle }}</p>
     </div>
     <div class="flex items-center space-x-4">
       <div class="relative hidden md:block">
@@ -38,6 +38,7 @@ import { useToast } from '@/composables/useToast'
 defineProps({
   title: { type: String, required: true },
   subtitle: { type: String, default: '' },
+  responsive: { type: Boolean, default: false },
 })
 
 const { t } = useI18n()

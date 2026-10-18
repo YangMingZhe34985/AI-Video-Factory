@@ -1,13 +1,13 @@
 <template>
   <aside
     class="bg-sidebar text-white flex flex-col transition-none shrink-0 relative select-none"
-    :style="{ width: `${sidebarWidth}px` }"
+    :style="{ width: `${displayWidth}px` }"
   >
     <!-- Logo -->
     <div class="h-16 flex items-center px-4 border-b border-gray-800 overflow-hidden">
       <router-link to="/dashboard" class="flex items-center text-base font-bold text-white truncate">
         <PhPlayCircle weight="fill" class="text-primary text-2xl mr-2 shrink-0" />
-        <span v-if="sidebarWidth > 200" class="truncate">{{ t('app.title') }}</span>
+        <span v-if="displayWidth > 200" class="truncate">{{ t('app.title') }}</span>
       </router-link>
     </div>
 
@@ -20,18 +20,19 @@
         class="w-full flex items-center py-2.5 text-sm font-medium rounded-lg transition-colors"
         :class="[
           isActive(item.to) ? 'bg-primary text-white' : 'text-gray-400 hover:bg-sidebarItem hover:text-white',
-          sidebarWidth > 200 ? 'px-4' : 'px-2 justify-center',
+          displayWidth > 200 ? 'px-4' : 'px-2 justify-center',
         ]"
-        :title="sidebarWidth <= 200 ? item.label : undefined"
+        :title="displayWidth <= 200 ? item.label : undefined"
+        :aria-label="item.label"
       >
-        <component :is="iconMap[item.icon]" class="text-lg shrink-0" :class="sidebarWidth > 200 ? 'mr-3' : ''" />
-        <span v-if="sidebarWidth > 200" class="truncate">{{ item.label }}</span>
+        <component :is="iconMap[item.icon]" class="text-lg shrink-0" :class="displayWidth > 200 ? 'mr-3' : ''" />
+        <span v-if="displayWidth > 200" class="truncate">{{ item.label }}</span>
       </router-link>
     </nav>
 
     <!-- API status + user -->
     <div class="p-3">
-      <div v-if="sidebarWidth > 200" class="bg-sidebarItem rounded-xl p-3 mb-3 text-xs">
+      <div v-if="displayWidth > 200" class="bg-sidebarItem rounded-xl p-3 mb-3 text-xs">
         <div class="flex justify-between items-center mb-2">
           <span class="text-gray-400 font-medium">{{ t('sidebar.apiEnv') }}</span>
           <span
@@ -54,7 +55,7 @@
         <div class="w-7 h-7 rounded-full bg-gray-500 flex items-center justify-center text-xs font-bold shrink-0">
           {{ (authStore.username || 'A')[0].toUpperCase() }}
         </div>
-        <div v-if="sidebarWidth > 200" class="flex-1 min-w-0 ml-2.5">
+        <div v-if="displayWidth > 200" class="flex-1 min-w-0 ml-2.5">
           <p class="text-sm font-medium text-white truncate">{{ authStore.username }}</p>
           <p class="text-xs text-gray-400 truncate">{{ t('sidebar.admin') }}</p>
         </div>
@@ -62,7 +63,7 @@
     </div>
 
     <!-- Drag handle (right edge) -->
-    <div
+    <div v-if="!compact"
       class="absolute top-0 right-0 w-1 h-full cursor-col-resize group z-10"
       @mousedown.prevent="startDrag"
     >
@@ -72,7 +73,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '@/stores/auth'
@@ -81,6 +82,14 @@ import { useResizablePanel } from '@/composables/useResizablePanel'
 import {
   PhPlayCircle, PhSquaresFour, PhFolder, PhChatText, PhCube, PhBriefcase, PhGitMerge, PhImage, PhGear,
 } from '@phosphor-icons/vue'
+
+const props = defineProps({ responsive: { type: Boolean, default: false } })
+const smallScreen = ref(false)
+const compact = computed(() => props.responsive && smallScreen.value)
+let mobileQuery
+const syncScreen = () => { smallScreen.value = mobileQuery?.matches ?? false }
+onMounted(() => { mobileQuery = window.matchMedia('(max-width: 639px)'); syncScreen(); mobileQuery.addEventListener('change', syncScreen) })
+onUnmounted(() => mobileQuery?.removeEventListener('change', syncScreen))
 
 const { t } = useI18n()
 const route = useRoute()
@@ -94,6 +103,8 @@ const { width: sidebarWidth, startDrag } = useResizablePanel('sidebar:width', {
   maxWidth: 360,
   side: 'right',
 })
+
+const displayWidth = computed(() => compact.value ? 64 : sidebarWidth.value)
 
 const iconMap = {
   PhSquaresFour, PhFolder, PhChatText, PhCube, PhBriefcase, PhGitMerge, PhImage, PhGear,
