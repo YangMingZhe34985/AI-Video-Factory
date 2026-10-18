@@ -78,6 +78,8 @@ class DashScopeQwenImageAdapter(DashScopeGenerationAdapter):
                 if not mime or not (1 <= width <= 8000 and 1 <= height <= 8000) or max(width / height, height / width) > 10:
                     raise ValueError("Unsupported image format, dimensions or aspect ratio")
                 img.verify()
+            with Image.open(io.BytesIO(content)) as img:
+                img.load()
         except (OSError, ValueError, UnidentifiedImageError, Image.DecompressionBombError) as error:
             raise AppError("INVALID_INPUT", "Invalid Qwen reference image", 422) from error
         return f"data:{mime};base64,{base64.b64encode(content).decode('ascii')}"

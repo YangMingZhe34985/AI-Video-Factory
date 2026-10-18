@@ -981,15 +981,15 @@ qc:null|{passed,checks:[{code,passed,summary}],warnings:[]}, warnings:[]
 
 ## M.1 目录、选择与兼容
 - 新增真实 ID：qwen-image-3.0 / qwen-image-3.0-pro（dashscope，text_to_image，dashscope_qwen_image）、wan3.0-video / wan3.0-video-prime（dashscope，text_to_video，dashscope_wan3）、deepseek-v4.1-flash（dashscope，prompt_rewrite，qwen_chat）。不创建伪造的 -i2v/-t2v 别名发送给服务商，不改变现有默认模型。
-- task_type 保留原单值；统一 supports_task_type(model, requested_type) 保留原分类匹配，并允许 capabilities.modes 中已接入的生成模式映射到 text_to_image/text_to_video/image_to_video/reference_to_video。LLM 模式不扩大旧任务权限；Agent 额外要求 agent_selectable 与具体 mode。API /models 筛选、Skill guard、Agent 新旧选择器、经典下拉使用相同语义。
+- task_type 保留原单值；统一 ModelService.supports_task_type(model, requested_type) 保留原分类匹配，并允许 capabilities.modes 中已接入的生成模式映射到 text_to_image/text_to_video/image_to_video/reference_to_video。LLM 模式不扩大旧任务权限；Agent 额外要求 agent_selectable 与具体 mode。API /models 筛选、Skill guard、Agent 新旧选择器、经典下拉使用相同语义。
 - capabilities.family 为可选规范系列（wan3.0、qwen-image-3.0）；精确 ID 优先，系列匹配必须边界精确，不能把 wan3.0 误匹配 wan3.01。未指定模型仍严格使用服务器配置。
 - capabilities.modes 仅放当前执行链支持项：Qwen 3.0 为 t2i/i2i；Wan 3.0 为 t2v/i2v/first_last_frame/r2v（参考图片）；DeepSeek 为 text。provider_capabilities 另记官方多模态参考、编辑/延长、file/link 与接入状态；这些元数据不构成 Agent 自动调用许可。首尾仍需要原开关、能力与实际适配器支持；质量未实测。
-- Qwen 参数：n 1–6、可选 size（宽*高，面积512²–2048²、比例1:8–8:1）、prompt_extend / enable_thinking / watermark、prompt_extend_mode direct|agent、negative_prompt、seed。最多3张输入图片；i2i 不允许 prompt_extend_mode=agent。入口 RequestSpec.output_count 的1–4限制不变。
-- Wan 参数：duration 整数2–30（默认5）、resolution 480P|720P|1080P、ratio adaptive|21:9|16:9|4:3|1:1|3:4|9:16、audio、prompt_extend、watermark及官方允许的seed。duration=-1暂拒绝；首帧/尾帧与任意参考媒体互斥。输入视频合计≤15秒且输入+输出≤30秒；输入图片≤10、视频/音频各≤5。高级输入暂不自动接入 Agent；若适配层无法可靠检验某项媒体约束，必须明确拒绝，不假称可用。
+- Qwen 参数：n 1–6、可选 size（宽*高，面积512²–2048²、比例1:8–8:1）、prompt_extend / enable_thinking / watermark、prompt_extend_mode direct|agent、negative_prompt、seed。最多3张输入图片；i2i 不允许 prompt_extend_mode=agent。入口 RequestSpec.output_count 与生成Skill顶层n的1–4限制不变；经典底层参数可按模型能力选择1–6。
+- Wan 参数：duration 整数2–30（默认5）、resolution 480P|720P|1080P、ratio adaptive|21:9|16:9|4:3|1:1|3:4|9:16、audio、prompt_extend、watermark及官方允许的seed。duration=-1暂拒绝；首帧/尾帧与任意参考媒体互斥。输入视频合计≤15秒且输入+输出≤30秒；输入图片≤10、视频/音频各≤5。高级输入暂不自动接入 Agent；若适配层无法可靠检验某项媒体约束，必须明确拒绝，不假称可用。本轮适配层所有 reference_video 明确 WAN3_MEDIA_UNSUPPORTED；音频仅受管本地 WAV（完整可解码、单段1–15秒且总≤15秒），文件仅受管TXT/Markdown，网页为公开HTTP(S)，文件/网页须 prompt_extend=true。远程音频/文件、MP3、分页文档暂不开放；这些适配输入未新增公共 Skill。
 - 种子升级幂等并保留运营者能力/价格修改；旧模型记录、经典19节点与默认配置不改变。
 
 ## M.2 传输与费用
-- 用户明确要求旧地址。新图片异步 POST 使用现有 DASHSCOPE_API_BASE_URL + /services/aigc/image-generation/generation；新视频异步 POST 使用该配置 + /services/aigc/video-generation/video-synthesis；轮询均 /tasks/{task_id}。默认 base 仍 https://dashscope.aliyuncs.com/api/v1。DeepSeek 走已有 DASHSCOPE_OPENAI_BASE_URL /chat/completions 与 DASHSCOPE_API_KEY，不走 DeepSeek 自营服务。不新增 workspace-id 环境变量。
+- 用户明确要求旧地址。新图片异步 POST 使用现有 DASHSCOPE_API_BASE_URL + /services/aigc/image-generation/generation；新视频异步 POST 使用该配置 + /services/aigc/video-generation/video-synthesis；轮询均 /tasks/{task_id}。默认 base 仍 https://dashscope.aliyuncs.com/api/v1。DeepSeek 走已有 DASHSCOPE_OPENAI_BASE_URL /chat/completions 与 DASHSCOPE_API_KEY，不走 DeepSeek 自营服务。不新增 workspace-id 环境变量。新异步请求不携带旧适配器的关闭审核头；旧模型传输行为保持。Wan3将经典反向提示词追加到正向文本的“避免出现”段落，不发送未声明的 negative_prompt 参数，正向文本仍必填。
 - Qwen 请求 input.messages 的单个 user.content 包含 image / text；Wan 请求 input.prompt + media:[{type,url}]。仅模型协议转换，不绕过现有异步 MQ、ToolRegistry、预算与授权。所有接口测试 stub HTTP，验证旧 URL 与 payload；实际账号对旧域名新模型支持尚待获批实测。
 - 新图片适配器需保留多输出，不把 n>1 静默裁成1；若下游尚有限制，补对应下载/工件处理的最小兼容实现与回归。不得无记录地重复生成。
 - estimate_model_cost(model, params, *, input_video_seconds=0.0) 向后兼容；pricing 可带 resolution_rates（resolution→credits/秒）与 billing_basis=output_seconds|input_plus_output_seconds。Wan为后者，cost=(input_video_seconds + duration*n_outputs)*rate；无视频输入时输入秒数为0。分档未知、时长非有限或非正等拒绝，不能算成零。输入秒数必须来自服务端媒体检验，不能信任用户声称的时长；当前 Agent 仅图片参考因此为0。
@@ -998,7 +998,7 @@ qc:null|{passed,checks:[{code,passed,summary}],warnings:[]}, warnings:[]
 ## M.3 本次范围与验收
 - 模型登记、真实协议 payload、Agent/经典多模式选择、首尾候选、系列限制、按秒估算、异步恢复与多图输出均有隔离 Mock 回归；不改变任务默认选择，不引入真实数据库迁移。
 - 官方媒体编辑/延长是相同 media+prompt 协议，无额外 task_type 参数。后续 Agent 如要使用，须补受控附件、媒体时长、计划/授权/成本、局部修复契约，不因目录声明就自动启用。
-- 文件边界：M1 为 model_service / 新 capability helper、model_selection/model_policy/model_guard、budget、经典模型筛选与 storyboard.js/helper，以及对应测试；M2 为新 Wan adapter、animate_shot 首尾 guard 及对应测试；M3 为新 Qwen image adapter、adapter 注册、qwen_chat/planning 默认参数、必要下载多输出接线及对应测试，README/.env.example（仅有必要说明、不改实际.env）。其他 Agent 图、交付授权及 Claude E-Gate 文件不改。
+- 文件边界：M1 为 model_service / 新 capability helper、model_selection/model_policy/model_guard、budget、director_lite尺寸预设读取、经典模型筛选与 storyboard.js/helper，以及对应测试；M2 为新 Wan adapter、animate_shot 首尾 guard 及对应测试；M3 为新 Qwen image adapter、adapter 注册、qwen_chat/planning 默认参数、必要下载多输出接线及对应测试，README/.env.example（仅有必要说明、不改实际.env）。其他 Agent 图、交付授权及 Claude E-Gate 文件不改。
 
 # T 章：只读任务中心（2026-10-18，T1）
 

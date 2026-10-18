@@ -1,5 +1,6 @@
 """New protocols against stub HTTP only, never paid requests."""
 import base64
+import io
 from types import SimpleNamespace
 
 import pytest
@@ -173,3 +174,15 @@ def test_structured_call_model_defaults_and_no_fallback(protocol_app, monkeypatc
     with pytest.raises(AppError):
         planning.structured_call("JSON", Data(text="Cat"), Result, {}, role="intake")
     assert len(calls) == 2
+
+
+@pytest.mark.parametrize("inline", [False, True])
+def test_truncated_jpeg_rejected_before_paid_submit(protocol_app, tmp_path, inline):
+    stream = io.BytesIO()
+    Image.new("RGB", (256, 256), (40, 80, 120)).save(stream, format="JPEG")
+    body = stream.getvalue()[:-100]
+    path = tmp_path / "truncated.jpg"
+    path.write_bytes(body)
+    source = "data:image/jpeg;base64," + base64.b64encode(body).decode("ascii") if inline else str(path)
+    with pytest.raises(AppError, match="Invalid Qwen reference image"):
+        DashScopeQwenImageAdapter(catalog()).build_payload({"prompt": "Suit", "source_image": source}, {})
