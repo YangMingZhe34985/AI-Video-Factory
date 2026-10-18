@@ -188,13 +188,27 @@ def test_invalid_prompt_response_is_billable_and_never_automatically_repeated(ap
     calls = []
     def invalid(*args, **kwargs):
         calls.append(1)
-        return {"first_frame_prompt": "missing style prefix", "motion_prompt": "主体移动"}
+        return {"first_frame_prompt": "", "motion_prompt": "主体移动"}
     monkeypatch.setattr(smith, "structured_call", invalid)
     before = BudgetGuard.spent(run.run_id)
     for _ in range(2):
         with pytest.raises(AppError) as error: write_plan_prompts(state, shot_ids=["s01"])
         assert error.value.code == "PROMPT_VALIDATION_FAILED"
     assert len(calls) == 1 and BudgetGuard.spent(run.run_id) > before
+
+
+def test_missing_style_prefix_is_repaired_without_another_call(app_ctx, monkeypatch):
+    run, state = planned()
+    calls = []
+    def unprefixed(*args, **kwargs):
+        calls.append(1)
+        return {"first_frame_prompt": "角色站在雨夜屋顶，静态中景。", "motion_prompt": "主体移动"}
+    monkeypatch.setattr(smith, "structured_call", unprefixed)
+    output = write_plan_prompts(state, shot_ids=["s01"])
+    prefix = state["story_package"]["style"]["prompt_prefix"].strip()
+    prompt = output["plan"]["shots"][0]["first_frame"]["prompt"]
+    assert prompt.startswith(prefix) and prompt.endswith("角色站在雨夜屋顶，静态中景。")
+    assert len(calls) == 1
 
 
 def test_prompt_input_keeps_external_instructions_out_of_system_message(app_ctx, monkeypatch):
