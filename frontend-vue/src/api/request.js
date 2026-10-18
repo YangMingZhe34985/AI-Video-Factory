@@ -32,6 +32,7 @@ function processQueue(error, token = null) {
 request.interceptors.response.use(
   (response) => response.data.data || response.data,
   async (error) => {
+    if (axios.isCancel(error)) return Promise.reject(error)
     const originalRequest = error.config
     const authStore = useAuthStore()
     const toastStore = useToastStore()
