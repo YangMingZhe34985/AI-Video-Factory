@@ -198,3 +198,19 @@ def test_file_analysis_is_bounded_untrusted_text_without_model_calls(app_ctx):
     assert analysis["kind"] == "file" and "不可信" in analysis["description"]
     assert len(analysis["details"]["text_excerpt"]) <= 4000
     assert ToolInvocation.query.count() == 0
+
+
+@pytest.mark.parametrize("manifest", [[{"artifact_id": [], "sha256": "x"}], [{"artifact_id": "a", "sha256": 1}]])
+def test_malformed_readonly_manifest_rejected_without_server_error(app_ctx, video, manifest):
+    run, spec, raw = setup_run(video)
+    raw["manifest"] = manifest
+    with pytest.raises(AppError) as error:
+        validate_transform_plan(raw, spec, run=run)
+    assert error.value.code == "TRANSFORM_INPUT_CHANGED"
+
+
+def test_reference_url_prefix_is_not_an_explicit_user_url():
+    raw = mock_request_spec(IntakeInput(text="根据 https://example.test/full/path 生成视频"))
+    raw["transform"]["reference_urls"] = ["https://example.test/"]
+    with pytest.raises(ValueError):
+        validate_request_spec(raw, [], source_text="根据 https://example.test/full/path 生成视频")

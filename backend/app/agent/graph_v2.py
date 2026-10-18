@@ -106,8 +106,8 @@ def build_graph(checkpointer, registry=None):
         try:
             if decision.get("action") != "approve" or not decision.get("plan"):
                 raise AppError("APPROVAL_REQUIRED", "Transform approval requires the complete quoted plan", 409)
-            raw = decision["plan"]
-            from app.agent.transform_plan import execution_hash
+            from app.agent.transform_plan import TransformPlan, execution_hash
+            raw = TransformPlan.model_validate(decision["plan"]).model_dump(mode="json")
             frozen = (row.snapshot or {}).get("transform") or {}
             frozen_plan = frozen.get("plan") or {}
             replay = (frozen.get("approved") and frozen.get("plan_hash") == raw.get("plan_hash")

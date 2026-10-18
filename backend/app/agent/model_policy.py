@@ -174,6 +174,10 @@ def select_video_model(policy: dict, mode: str, requested: str | None = None):
 
 
 def validate_job_policy(job, policy=None):
+    if (job.config or {}).get("agent_transform"):
+        from app.agent.transform_policy import validate_job
+        validate_job(job)
+        return
     if (job.config or {}).get("agent_story_production"):
         from app.agent.production_policy import validate_job
         validate_job(job)

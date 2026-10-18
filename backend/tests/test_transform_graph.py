@@ -84,10 +84,19 @@ def test_price_drift_after_api_admission_returns_to_approval(app_ctx, video, cli
     assert ApiTask.query.filter_by(model_id="wan3.0-video").count() == 1
 
 
-def test_approval_receipt_survives_checkpoint_gap(app_ctx, video, client, monkeypatch):
+@pytest.mark.parametrize("edited_model", [None, "wan3.0-video-prime"])
+def test_approval_receipt_survives_checkpoint_gap(app_ctx, video, client, monkeypatch, edited_model):
     from app.agent import transform_policy
     run = until(create(video), {"awaiting_approval"})
-    approve(client, run)
+    if edited_model:
+        edited = {**run.snapshot["plan"], "model_id": edited_model}
+        quote = client.post(f"/api/agent/runs/{run.run_id}/transform-quote", json={"plan": edited})
+        assert quote.status_code == 200, quote.json
+        accepted = client.post(f"/api/agent/runs/{run.run_id}/actions",
+                               json={"action": "approve", "plan": quote.json["data"]})
+        assert accepted.status_code == 202, accepted.json
+    else:
+        approve(client, run)
     original = transform_policy.approve
     def commit_then_crash(*args):
         original(*args)
@@ -101,5 +110,8 @@ def test_approval_receipt_survives_checkpoint_gap(app_ctx, video, client, monkey
     assert response.status_code == 202, response.json
     until(run, {"success"})
     assert run.snapshot["transform"] == frozen
+    assert run.snapshot["request_spec"] == frozen["request_spec"]
+    if edited_model:
+        assert edited_model in run.snapshot["request_spec"]["constraints"]["model_preferences"]
     assert ToolInvocation.query.filter_by(tool_name="transform_video", budget_scope=run.run_id).count() == 1
-    assert ApiTask.query.filter_by(model_id="wan3.0-video").count() == 1
+    assert ApiTask.query.filter_by(model_id=edited_model or "wan3.0-video").count() == 1
