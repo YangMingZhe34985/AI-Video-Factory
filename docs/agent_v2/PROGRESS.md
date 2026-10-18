@@ -607,7 +607,7 @@ W-Gate 结论：通过。
 
 
 ## 2026-10-18 · Codex · V1 工具层与受控函数调用
-状态：完成；最终后端全量1505项通过，前端64项与构建通过。本条所在提交完成后本地合入feat/agent-v2，不推送。
+状态：完成；实现提交`ca69e13`已本地快进合入`feat/agent-v2`，未推送。最终后端全量1505项通过，前端64项与构建通过。
 分支与基线：`agent-v3/V1` 从 `feat/agent-v2 @ a67ffaf` 切出；在既有隔离工作树 `cinecrew-agent-v2-a4` 实现。未改主工作区的用户笔记或私人报告；不推送、不创建PR。
 完成内容：
 - D-032先明确兼容目录、v3模型默认、回合纠错、token计费与新工具Schema，再更新v3契约V.2/V.3/V.13。此任务只交付V1基础，不提前接入v3图、Agent循环、Plan IR或界面。
@@ -625,7 +625,7 @@ W-Gate 结论：通过。
 - 测试使用AGENTS指定Conda Python、Mock/Stub和临时SQLite/存储，网络阻断；pypdf通过`%TEMP%/cinecrew-w1-pypdf-6.21.1`加入PYTHONPATH，FFMPEG_BINARY使用主工作区已有FFmpeg 7.1。Windows全量测试的--basetemp请用短名称（例如%TEMP%/v1xxxxxx），避免MQ租约产物子目录突破路径限制。没有安装/修改用户环境。
 真实调用：0次，真实估算费用0；未进行可选的1–3次函数调用冒烟，没有任何真实图片/视频生成。所有credits为演示估价，未验证服务商账户可用性、真实账单或生成质量。
 下一步 / 给Claude和后续实现：
-- V1已完成，可并行开始V2与V3；本条所在提交按协作规则本地合入feat/agent-v2。Claude的V-Gate1在V1–V3全部完成后进行；当前不提前宣称Gate通过。
+- V1已完成并本地合并，可并行开始V2与V3。Claude的V-Gate1在V1–V3全部完成后进行；当前不提前宣称Gate通过。
 - 新代码导入app.tools；旧app.skills仅作兼容。Agent运行时用build_v3_registry并从Card限制工具清单；不得把内部agent_llm_turn或生成工具加入Agent可见清单。
 - V3必须为每次普通工具调用创建独立ToolContext和服务端key，不复用agent_chat留下的LLM回合key；由运行时处理循环、纠错step、委派额度、checkpoint和finish。messages采用兼容接口消息格式，输出tool_calls是已解析的{name,arguments}，回填assistant历史时需转换为function结构及JSON参数串。
 - V4须解析异步Job完成后的image/images/video工件、校验类型及缺失输出；当前io_types不代表初始Job回执已含工件。estimate_cost只接受已解析素材，不是完整计划编译器；analyze_images当前接纳Run上传图与研究参考图，未来计划预览产物的授权解析需要在V4贯通。
