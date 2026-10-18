@@ -7,15 +7,19 @@ from app.services.media_probe_service import MediaProbeService, MOCK_VIDEO_BYTES
 from app.services.storage_service import StorageService
 from app.services.video_compression_service import VideoCompressionService
 
-FFMPEG = Path(r"C:/Users/MingZheYang/Desktop/项目开发/AI Video Factory/.venv/Lib/site-packages/imageio_ffmpeg/binaries/ffmpeg-win-x86_64-v7.1.exe")
+def configure_ffmpeg(app):
+    try:
+        binary = VideoCompressionService.resolve_ffmpeg()
+    except FileNotFoundError:
+        pytest.skip("Set FFMPEG_BINARY or install FFmpeg for local media integration tests")
+    app.config["FFMPEG_BINARY"] = binary
+    return binary
 
 def media(app, *, audio=False):
-    if not FFMPEG.is_file():
-        pytest.skip("Local FFmpeg integration executable is not installed")
-    app.config["FFMPEG_BINARY"] = str(FFMPEG)
+    binary = configure_ffmpeg(app)
     target = StorageService.root() / ("long_audio.mp4" if audio else "sample.mp4")
     target.parent.mkdir(parents=True, exist_ok=True)
-    args = [str(FFMPEG), "-nostdin", "-hide_banner", "-y", "-f", "lavfi", "-i", "color=c=blue:s=128x96:r=10:d=1.2"]
+    args = [str(binary), "-nostdin", "-hide_banner", "-y", "-f", "lavfi", "-i", "color=c=blue:s=128x96:r=10:d=1.2"]
     if audio:
         args += ["-f", "lavfi", "-i", "sine=frequency=500:sample_rate=48000:duration=2.4"]
     args += ["-c:v", "libx264", "-pix_fmt", "yuv420p"]
@@ -49,8 +53,7 @@ def test_long_audio_does_not_extend_video_duration(app):
 @pytest.mark.parametrize("contents,code", [(b"", "MEDIA_EMPTY"), (b"not a video", "MEDIA_UNDECODABLE")])
 def test_invalid_media_rejected(app, contents, code):
     with app.app_context():
-        if FFMPEG.is_file():
-            app.config["FFMPEG_BINARY"] = str(FFMPEG)
+        configure_ffmpeg(app)
         path = StorageService.root() / "bad.mp4"
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(contents)
