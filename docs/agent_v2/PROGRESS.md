@@ -213,3 +213,22 @@
 - `.env.example` 增加 B.9 配置；`MODEL_ADAPTER_MODE=mock` 强制离线检索，样例形象、热度、单价均为演示。参考图理解需要配置具备视觉能力的 `AGENT_VISION_MODEL`（测试为 `qwen3.7-plus`）；`AGENT_RESEARCH_MODEL` 留空复用已有 planner 配置。开发联调前重启 API 与 Agent worker，继续使用隔离 Mock 环境。
 - 已选参考图目前只作为规划资料，接入生成模型的角色参考绑定属于 Phase C；没有提前实现 C 章。Research 提示词和浏览器资料展示留待 B-Gate 评审。
 验证边界：未验证真实搜索服务商、真实模型的抗注入/理解/生成质量、真实价格或 MySQL/Redis 部署。Mock 抗注入测试证明结构化边界和权限约束，不等同于真实 LLM 的内容判断能力。下载缓存为恢复保留，本阶段未增加缓存清理机制。
+
+## 2026-10-18 · Claude · B5 + B-Gate 评审 + C0
+状态：完成。B5 与 B-Gate 修复合入本地 `feat/agent-v2`（`776172f`）；C0 在 `agent-v2/C0`，已合入。所有 `agent-v2/*` 分支均无未合并提交。
+B5：新增 `ResearchCard.vue`（检索统计、warnings、实体共同特征与候选图网格、已选/推荐标记、主题要点带来源角标、可折叠来源列表）。来源链接只渲染 http(s)，`target=_blank rel="noopener noreferrer nofollow"`；资料正文按纯文本插值，不用 v-html；候选图走 `AuthedImage`。
+B-Gate 评审结论：通过。
+- 安全：逐跳 DNS 解析并检查全部地址、IP 固定连接与 TLS 主机校验、端口/重定向/字节/类型限制（`search/fetch.py`）；网址白名单只来自本 Run 收据与用户原文（`search/scope.py`）；参考图解码炸弹与尺寸检查、SHA 去重（`search/references.py`）；Research 提示词的不可信边界与 result_id 选择充分。
+- 修复（1 处）：`research.resolve()` 的用户可见假设里出现内部候选 ID（如 `e1_c1`），改为“候选 N”。
+- 待 Phase C：选定的参考图尚未接入生成（D-014）。
+- 测试：完整回归 **589 passed**；修复后 research 相关 89 passed；`npm run build` 通过。
+- 隔离 Mock 实测（临时 SQLite、端口 5055、鉴权开启）：输入“AI 漫化形象（DeepSeek、ChatGPT 等）二创故事，约 2 分钟”，预算 300 → researching → awaiting_input（10.6 credits）；DeepSeek 自动选定、ChatGPT 出图片选择题；资料卡显示 3 次检索、4 页、6 张参考图且全部加载；在界面选择 ChatGPT 候选 2 → 记录 `e2_c2` → 进入审核，故事计划 4 个镜头。进程已停止，`.claude/launch.json` 已删除。
+C0：CONTRACTS C 章定稿（C.1–C.13）；DECISIONS D-012–D-014；PLAN 展开 C1–C7 与 C-Gate。
+给 Codex（Phase C）：
+- 全部在 `AGENT_STORY_V2_ENABLED=true` 下开发和测试，开关关闭时现有 story_video 过渡路由与全部旧测试必须不变。
+- 建议顺序：C1 与 C2 可并行 → C3 → C4 → C5 → C6。C6 完成后在 PROGRESS 写清 Run 视图 `story` / `plan` / `previews` 的实际样例，供 C7 前端使用。
+- worker `tick()` 需加入 `previewing`；两个审核状态由命令推进，不轮询。
+- 角色参考：research 来源复用 `reference_for_run` 校验归属；生成镜头的 i2i 参考图数量受能力目录 `reference_images.max` 约束（`validate_generation_model` 已有 `reference_count` 参数）。
+- 预览图片生成必须经 ToolRegistry 的现有图片 Skill（幂等、预算、账本），不要直接调适配器。
+需要用户决定：无新增。各 Agent 模型、真实单价、检索服务商仍未定（不阻塞）。
+

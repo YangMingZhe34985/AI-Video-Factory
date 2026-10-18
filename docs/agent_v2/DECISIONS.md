@@ -53,3 +53,20 @@
 - 原因：网页内容不可信，若允许 LLM 自由提供网址，提示注入可以让 Agent 访问内网或任意地址。
 - 影响：B1–B4；A.10 状态集合；A7 前端已加入 `researching` 状态。
 - 分工：资料卡片前端（B.11）由 Claude 负责，记为任务 B5。
+
+## D-012 · 2026-10-18 · 长片 v2 在开关后开发（C0）
+- 决定：新增 `AGENT_STORY_V2_ENABLED`，默认 false；Phase C 的 story_video 只做到分镜确认（`storyboard_approved`），视频生产由 Phase D 接上后再默认开启。`remix` 在 Phase C 保持现有链路。
+- 原因：Phase C 结束时还不能产出视频，直接替换过渡路由会让长片功能在 C、D 之间不可用。
+- 影响：C1–C7；D 章从 `storyboard_approved` 开始。
+
+## D-013 · 2026-10-18 · 审核 A 与计划版本（C0）
+- 决定：新增状态 `previewing` / `awaiting_characters` / `awaiting_storyboard` / `storyboard_approved`；每次 Director 产出、用户编辑、重做都生成计划版本；预览产物按 attempt 保留不覆盖；角色图重做后相关关键帧标记 stale 但不自动重做；`edit_plan` / `approve_storyboard` 携带版本号，不一致返回 409。
+- 原因：审核 A 只花图片费用来锁定角色和画面，必须避免用户的修改被并发覆盖，也避免自动连锁重做产生意外费用。
+- 影响：C2、C5、C6、C7；A.10 状态集合扩展。
+
+## D-014 · 2026-10-18 · Research 参考图直接作为角色参考（C0）
+- 决定：Creative v2 的角色 `reference.source = research` 时直接使用选定候选的 `reference_id`；用户 `identity_ref` 附件同理；只有两者都没有时才生成定妆图并进入 `awaiting_characters`。Plan Check 要求含该角色的生成镜头使用 i2i 并引用参考图。
+- 原因：B-Gate 发现选定的参考图尚未接入生成；复用它们可省去定妆图费用并保证形象一致。
+- 影响：C1、C4、C5。
+- 分工：分镜板前端（C7）建议由 Claude 负责，与 A7 / B5 一致；用户可调整。
+
