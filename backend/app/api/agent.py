@@ -94,6 +94,8 @@ def serialize(row):
         result.update(public_view(row))
         from app.agent.production_view import public_production
         result["production"] = public_production(row)
+        from app.agent.delivery import public_delivery
+        result["delivery"] = public_delivery(row)
         result["summary"] = {"steps_total": total,
                              "steps_success": sum(shot.get("status") == "success" for shot in shots),
                              "steps_failed": sum(shot.get("terminal", False) and shot.get("status") != "success" for shot in shots)}
@@ -170,6 +172,9 @@ def approved_plan(row, edited):
 def action(run_id):
     data = parse(RunAction)
     row = get_run(run_id)
+    from app.agent.delivery import DELIVERY_ACTIONS
+    if data.action in DELIVERY_ACTIONS:
+        return delivery_action(row, data)
     from app.agent.production_actions import PRODUCTION_ACTIONS
     if data.action in PRODUCTION_ACTIONS:
         return production_action(row, data)
@@ -309,6 +314,35 @@ def production_action(row, data):
         db.session.commit()
         db.session.refresh(row)
         return api_success({**serialize(row), "action_estimated_credits": estimate}, 202)
+    except Exception:
+        db.session.rollback()
+        raise
+
+
+def delivery_action(row, data):
+    from copy import deepcopy
+    from hashlib import sha256
+    from app.agent import delivery, plan_versions
+    try:
+        row = plan_versions._lock_run(row)
+        command = {key: getattr(data, key) for key in ("action", "plan_version", "request_key")}
+        fingerprint = plan_versions.inputs_hash(command)
+        snapshot = deepcopy(row.snapshot or {})
+        receipts = snapshot.setdefault("delivery_action_receipts", {})
+        existing = receipts.get(data.request_key)
+        if existing:
+            if existing["inputs_hash"] != fingerprint:
+                raise AppError("IDEMPOTENCY_KEY_CONFLICT", "操作标识已用于其他交付内容。", 409)
+            db.session.commit()
+            return api_success({**serialize(row), "action_estimated_credits": 0}, 202)
+        if row.command is not None:
+            raise AppError("INVALID_AGENT_STATE", "已有操作等待处理。", 409)
+        delivery.validate_command(row, command)
+        command["command_id"] = "delivery:" + sha256(data.request_key.encode()).hexdigest()
+        receipts[data.request_key] = {"inputs_hash": fingerprint, "status": "queued", "command_id": command["command_id"]}
+        row.snapshot, row.command = snapshot, command
+        db.session.commit()
+        return api_success({**serialize(row), "action_estimated_credits": 0}, 202)
     except Exception:
         db.session.rollback()
         raise

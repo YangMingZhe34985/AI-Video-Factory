@@ -132,8 +132,13 @@
             <ProductionBoard
               v-if="isStoryPlan && production && (production.approved_version || productionStatuses.includes(selected.status))" :key="`production-${selected.run_id}`"
               :run-id="selected.run_id" :plan="plan" :plan-version="planVersion" :production="production"
-              :status="selected.status" :budget-limit="budgetLimit" :disabled="busy || Boolean(selected.command)"
+              :status="productionStatus" :budget-limit="budgetLimit" :disabled="busy || Boolean(selected.command)"
               :demo="mode === 'mock'" @action="storyAction"
+            />
+
+            <DeliveryPanel
+              v-if="deliveryVisible" :key="`delivery-${selected.run_id}`" :delivery="delivery"
+              :disabled="busy || Boolean(selected.command)" :demo="mode === 'mock'" @action="storyAction"
             />
 
             <template v-if="draft?.shots && !isStoryPlan">
@@ -149,7 +154,7 @@
               </div>
             </template>
 
-            <section v-if="results.length" class="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900">
+            <section v-if="results.length && !isStoryPlan" class="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900">
               <h3 class="text-sm font-semibold text-slate-900 dark:text-slate-100">{{ t('results') }}</h3>
               <div class="mt-3 grid gap-3 sm:grid-cols-2">
                 <figure v-for="item in results" :key="item.artifact_id" class="overflow-hidden rounded-xl border border-slate-200 dark:border-slate-700">
@@ -161,7 +166,7 @@
               </div>
             </section>
 
-            <section v-if="selected.snapshot?.packages?.length" class="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900">
+            <section v-if="selected.snapshot?.packages?.length && !isStoryPlan" class="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900">
               <h3 class="text-sm font-semibold text-slate-900 dark:text-slate-100">{{ t('packages') }}</h3>
               <p class="mt-1 text-xs text-slate-500">{{ t('packageHint') }}</p>
               <a v-for="pack in selected.snapshot.packages" :key="pack.artifact_id" :href="pack.download_url" class="mt-2 block text-sm text-blue-600 hover:underline" download>{{ t('download') }} ZIP · {{ pack.job_id }}</a>
@@ -189,6 +194,8 @@ import SimplePlanEditor from '@/components/agent/SimplePlanEditor.vue'
 import ShotPlanEditor from '@/components/agent/ShotPlanEditor.vue'
 import StoryboardEditor from '@/components/agent/StoryboardEditor.vue'
 import ProductionBoard from '@/components/agent/ProductionBoard.vue'
+import DeliveryPanel from '@/components/agent/DeliveryPanel.vue'
+import { deliveryRunStatuses } from '@/components/agent/delivery'
 import AuthedImage from '@/components/agent/AuthedImage.vue'
 import AuthedVideo from '@/components/agent/AuthedVideo.vue'
 import messages from '@/components/agent/messages'
@@ -225,7 +232,10 @@ const storyEstimates = computed(() => pick(selected.value, 'estimates') || {})
 const storyIssues = computed(() => pick(selected.value, 'plan_issues') || [])
 const production = computed(() => pick(selected.value, 'production'))
 const productionStatuses = ['storyboard_approved', 'producing', 'production_attention', 'awaiting_video_review', 'videos_approved']
-const storyboardStatus = computed(() => productionStatuses.includes(selected.value?.status) ? 'storyboard_approved' : selected.value?.status)
+const delivery = computed(() => pick(selected.value, 'delivery'))
+const deliveryVisible = computed(() => isStoryPlan.value && delivery.value && (selected.value?.status === 'videos_approved' || deliveryRunStatuses.has(selected.value?.status)))
+const productionStatus = computed(() => deliveryRunStatuses.has(selected.value?.status) ? 'videos_approved' : selected.value?.status)
+const storyboardStatus = computed(() => productionStatuses.includes(productionStatus.value) ? 'storyboard_approved' : selected.value?.status)
 const isRemix = computed(() => selected.value?.request?.mode === 'remix' || requestSpec.value?.recipe_hint === 'remix')
 // v1 stores the remix source on the request; v2 has it as the remix_source attachment.
 const sourceVideo = computed(() => {
@@ -254,7 +264,7 @@ const TONE = {
   success: 'good', partial_success: 'warn', failed: 'bad', cancelled: 'muted', needs_attention: 'bad',
   awaiting_input: 'ask', awaiting_approval: 'ask', awaiting_delivery: 'ask',
   awaiting_characters: 'ask', awaiting_storyboard: 'ask', storyboard_approved: 'ask',
-  awaiting_video_review: 'ask', production_attention: 'bad', videos_approved: 'good',
+  awaiting_video_review: 'ask', production_attention: 'bad', videos_approved: 'good', delivery_attention: 'bad',
 }
 const dotClass = (status) => ({ good: 'bg-emerald-500', warn: 'bg-amber-500', bad: 'bg-red-500', muted: 'bg-slate-400', ask: 'bg-blue-500' }[TONE[status]] || 'bg-blue-300 animate-pulse')
 const pillClass = (status) => `tone-${TONE[status] || 'busy'}`
@@ -341,7 +351,7 @@ async function revise(shot) {
 async function storyAction({ action, payload, onSuccess, onError }) {
   const runId = selected.value.run_id
   const serialized = JSON.stringify({ runId, action, payload })
-  const requiresKey = ['regenerate', 'regenerate_stale', 'edit_plan', 'start_production', 'retry_shot', 'redo_shot', 'approve_videos', 'review_plan'].includes(action)
+  const requiresKey = ['regenerate', 'regenerate_stale', 'edit_plan', 'start_production', 'retry_shot', 'redo_shot', 'approve_videos', 'review_plan', 'start_delivery', 'retry_delivery'].includes(action)
   if (serialized !== storyPayload) { storyPayload = serialized; storyKey = newKey() }
   busy.value = true
   error.value = ''

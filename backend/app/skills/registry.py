@@ -82,6 +82,13 @@ class ToolRegistry:
         return [self._specs[name].describe() for name in self.names()]
 
     def invoke(self, name: str, raw_input: dict | None, ctx: ToolContext) -> dict:
+        ctx._delivery_authorization = None
+        try:
+            return self._invoke(name, raw_input, ctx)
+        finally:
+            ctx._delivery_authorization = None
+
+    def _invoke(self, name: str, raw_input: dict | None, ctx: ToolContext) -> dict:
         spec = self.get(name)
         data = self._validate_input(spec, raw_input or {})
         self._authorize(spec, ctx)
@@ -301,7 +308,7 @@ class ToolRegistry:
         if spec.permission == "external" or spec.name in {"analyze_image", "extract_frame"} | DELIVERY_TOOLS or ctx.shot_task_id is not None:
             if (invocation.tool_name != spec.name or invocation.budget_scope != ctx.budget_scope
                     or invocation.input_payload != data.model_dump(mode="json")):
-                raise AppError("IDEMPOTENCY_KEY_CONFLICT", "Research key belongs to different input or Run", 409)
+                raise AppError("IDEMPOTENCY_KEY_CONFLICT", "Tool key belongs to different input or Run", 409)
 
     @staticmethod
     def _check_budget(

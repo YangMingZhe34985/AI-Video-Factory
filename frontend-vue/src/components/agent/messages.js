@@ -22,7 +22,7 @@ export default {
     // run header / stages
     stageUnderstand: '理解需求', stageClarify: '确认细节', stagePlan: '规划', stageReview: '审核', stageProduce: '生成', stageDeliver: '交付',
     stagePreview: '预览图片', stageCharacters: '角色确认', stageStoryboard: '分镜审核', stageApproved: '分镜已确认', stageVideoReview: '视频审核', stageVideoApproved: '素材已确认',
-    production_attention: '生产待处理', awaiting_video_review: '等待视频审核', videos_approved: '视频素材已确认',
+    editing: '成片处理中', delivery_attention: '交付待处理', production_attention: '生产待处理', awaiting_video_review: '等待视频审核', videos_approved: '视频素材已确认',
     previewing: '预览生成中', awaiting_characters: '等待角色确认', awaiting_storyboard: '等待分镜审核', storyboard_approved: '分镜已确认',
     spent: '已用 {spent} / {budget} credits',
     mock: 'Mock 演示模式：结果是测试素材，不会调用付费模型。',
@@ -97,7 +97,7 @@ export default {
     example3: 'A creative ~2 minute short starring anime versions of popular AI assistants',
     stageUnderstand: 'Understand', stageClarify: 'Confirm', stagePlan: 'Plan', stageReview: 'Review', stageProduce: 'Generate', stageDeliver: 'Deliver',
     stagePreview: 'Preview images', stageCharacters: 'Characters', stageStoryboard: 'Storyboard review', stageApproved: 'Storyboard approved', stageVideoReview: 'Video review', stageVideoApproved: 'Videos approved',
-    production_attention: 'Production needs attention', awaiting_video_review: 'Review videos', videos_approved: 'Videos approved',
+    editing: 'Assembling final video', delivery_attention: 'Delivery needs attention', production_attention: 'Production needs attention', awaiting_video_review: 'Review videos', videos_approved: 'Videos approved',
     previewing: 'Generating previews', awaiting_characters: 'Review characters', awaiting_storyboard: 'Review storyboard', storyboard_approved: 'Storyboard approved',
     spent: '{spent} / {budget} credits used',
     mock: 'Mock demo mode: results are test assets; no paid models are called.',

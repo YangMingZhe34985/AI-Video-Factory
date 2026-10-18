@@ -54,7 +54,8 @@ class RunAction(BaseModel):
 
     action: Literal["approve", "reject", "deliver", "resume", "revise", "answer",
                     "approve_characters", "regenerate", "regenerate_stale", "edit_plan", "approve_storyboard",
-                    "start_production", "retry_shot", "redo_shot", "review_plan", "approve_videos"]
+                    "start_production", "retry_shot", "redo_shot", "review_plan", "approve_videos",
+                    "start_delivery", "retry_delivery"]
     plan: dict | None = None
     shot: RemixShotSpec | None = None
     request_key: str | None = Field(default=None, min_length=1, max_length=128)
@@ -76,6 +77,10 @@ class RunAction(BaseModel):
 
     @model_validator(mode="after")
     def _revision_input(self):
+        if self.action in {"start_delivery", "retry_delivery"}:
+            if self.model_fields_set - {"action", "request_key", "plan_version"} or not self.request_key or self.plan_version is None:
+                raise ValueError("Delivery actions require only request_key and plan_version")
+            return self
         production_fields = {
             "start_production": {"plan_version", "repair_budget_credits"},
             "retry_shot": {"shot_id", "base_version", "quote_id"},

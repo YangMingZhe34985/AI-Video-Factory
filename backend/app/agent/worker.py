@@ -49,7 +49,7 @@ class AgentWorker:
     def tick(self):
         db.session.expire_all()
         ids = [row.run_id for row in AgentRun.query.filter(
-            (AgentRun.status.in_(["queued", "understanding", "analyzing", "researching", "planning", "previewing", "producing", "delivering"])) | AgentRun.command.is_not(None)
+            (AgentRun.status.in_(["queued", "understanding", "analyzing", "researching", "planning", "previewing", "producing", "delivering", "editing"])) | AgentRun.command.is_not(None)
         ).order_by(AgentRun.id).all()]
         for run_id in ids:
             self.advance(run_id)
@@ -83,10 +83,11 @@ class AgentWorker:
                     # the inbox is cleared. Its checkpoint receipt prevents rebilling.
                     self._save(row, snapshot.values, None)
                     return
-                if kind in {"tasks", "analysis", "previews", "production_tasks"}:
+                if kind in {"tasks", "analysis", "previews", "production_tasks", "delivery_tasks"}:
                     value = Command(resume={"action": "poll"})
                 elif command and command["action"] in {"approval": {"approve", "reject"}, "delivery": {"deliver", "revise"},
                                                        "clarify": {"answer"},
+                                                       "delivery_review": {"retry_delivery"},
                                                        "production_review": {"retry_shot", "redo_shot", "review_plan", "approve_videos"},
                                                        "characters": {"approve_characters", "regenerate", "reject"},
                                                        "storyboard": {"edit_plan", "regenerate", "regenerate_stale", "approve_storyboard", "reject"}}.get(kind, set()):
@@ -102,6 +103,9 @@ class AgentWorker:
                     # Resume the successor of the completed C approval without
                     # replaying creative/preview work or altering historical runs.
                     graph.update_state(config, {"production_command": command}, as_node="story_v2_apply")
+                if (version == 2 and command and command.get("action") in {"start_delivery", "retry_delivery"}
+                        and snapshot.values.get("status") in {"videos_approved", "success"}):
+                    graph.update_state(config, {"delivery_command": command, "status": "editing"}, as_node="production_v2_tick")
                 value = None
             # Clear inbox only AFTER graph/checkpoint succeeds. If killed here,
             # the persisted checkpoint determines whether to consume it again.
@@ -124,7 +128,8 @@ class AgentWorker:
         # These receipts commit with relational plan/task writes, independently
         # of graph checkpoints; never drop them on a crash or an inbox retry.
         preserved = {key: row.snapshot[key] for key in ("plan_operations", "story_action_receipts", "story_model_overrides",
-                     "production", "production_action_receipts", "production_repairs")
+                     "production", "production_action_receipts", "production_repairs",
+                     "delivery", "delivery_action_receipts")
                      if key in (row.snapshot or {})}
         return {**dict(values), **preserved}
 
@@ -135,7 +140,7 @@ class AgentWorker:
         previous_status = row.status
         row.snapshot = AgentWorker._merged_snapshot(row, values)
         row.status = values.get("status", "needs_attention")
-        row.error = error or values.get("production_error")
+        row.error = error or values.get("delivery_error") or values.get("production_error")
         row.command = None
         db.session.commit()
         if previous_status != row.status:

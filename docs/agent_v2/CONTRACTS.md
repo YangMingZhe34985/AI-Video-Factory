@@ -936,7 +936,7 @@ Agent Skill 创建的 Job 冻结 agent_output_policy={compress_output:bool}。�
 ## E.2 状态、授权与恢复
 新 approve_videos 在开关开启时自动进入 editing；历史 videos_approved 不自动处理，使用 start_delivery。动作 start_delivery / retry_delivery 带 plan_version、request_key，沿用 owner、当前版本和幂等收据；不同内容复用 key 返回冲突。
 start_delivery 限 videos_approved；retry_delivery 限 delivery_attention，或 success 但交付缓存缺失。不返回生产生成，不创建付费 attempt。成功阶段复用，失效本地产物可零费用重建；所有失败停 delivery_attention。
-snapshot.delivery 冻结 plan_version、按计划顺序的源工件 ID、输入哈希、授权及阶段/工具结果。ToolContext.delivery_version 为服务端字段，公共 Skill 请求不能设置；本地 Skill 每次含重放均重验授权、当前计划、来源与版本。跨 Run、旧版本、任意路径/URL 均拒绝。
+snapshot.delivery 冻结 plan_version、按计划顺序的源工件 ID、source_sha256（批准源字节摘要）、输入哈希、授权及阶段/工具结果。恢复不能重算摘要后接受源漂移。ToolContext.delivery_version 为服务端字段，公共 Skill 请求不能设置；本地 Skill 每次含重放均重验授权、当前计划、来源与版本。跨 Run、旧版本、任意路径/URL 均拒绝。
 Run.status = editing / delivery_attention / success；delivery.stage = pending / composing / checking / packaging / complete / failed。仅拼接、结构质检、素材包全部完成才 success。零费用指新增模型 credits 为 0，不代表没有 CPU/存储成本。
 
 ## E.3 Skill 契约与本地媒体
@@ -948,12 +948,12 @@ Run.status = editing / delivery_attention / success；delivery.stage = pending /
 - package_story 输入 {plan_version,artifact_id,compressed_artifact_id:null|str}；返回 {artifact_id,download_url,file_name}。包含所有批准原镜头、主片、可选压缩副本、计划/故事/QC/费用 manifest，不包含密钥、绝对路径或外部下载 URL。
 
 本地交付 Job 复用 agent_story_production 私有标记 target_type:"delivery" 与 skill.budget_scope；不得运行经典 DAG 或通过公开 run-* 重交。所有交付工件走现有 owner 鉴权。
-MediaProbeService.probe(path,decode=False) 返回 duration_sec,width,height,fps,video(codec,pixel_format,time_base,sar,profile,level),audio(codec,sample_rate,channels,channel_layout)|null,has_audio,stream_count,copy_compatible_metadata,decoded,mock,duration_source,video_duration_verified。decode=True 全片解码，时长按视频流核验。
-同编码/流布局、画幅、fps、时间基等充分一致才 stream-copy；元数据不足或不一致走 normalized。规范化以首镜头宽高/fps 为基准、保比例 pad 到偶数尺寸，H.264 CRF18；音频保留，缺失段补静音并对齐视频时长。高质量重编码不称无损。主片默认未额外压缩；显式需求另产压缩副本，主片保留。
+MediaProbeService.probe(path,decode=False) 返回 duration_sec,width,height,fps,video(codec,pixel_format,time_base,sar,profile,level,codec_parameters_hash),audio(codec,sample_rate,channels,channel_layout)|null,has_audio,stream_count,copy_compatible_metadata,decoded,mock,duration_source,video_duration_verified,container_duration_sec。decode=True 全片解码，时长按视频流核验。
+同编码/参数集签名/流布局、画幅、fps、时间基等充分一致才 stream-copy；元数据不足或不一致走 normalized。规范化以首镜头宽高/fps 为基准、保比例 pad 到偶数尺寸，H.264 CRF18；音频保留，缺失段补静音并对齐视频时长。高质量重编码不称无损。主片默认未额外压缩；显式需求另产压缩副本，主片保留。
 Mock 模式仅识别适配器精确哨兵并在交付工作区构造有效示意 MP4，标注 mock_materialized；不改原工件，不把任意损坏视频当 Mock，不作为画质验证。
 
 ## E.4 质检与交付视图
-核验可完整解码、非空、画幅/fps、源镜头齐全和顺序、每片及总时长。时长比较批准计划（不是用户最初目标），容差 max(0.5秒,期望时长×2%)。受管路径/归属、源 hash 或 manifest 不符即停止。QC 不承诺角色一致性或真实审美质量。
+核验可完整解码、非空、画幅/fps、源镜头齐全和顺序、每片及总时长。时长比较批准计划（不是用户最初目标），容差 max(0.5秒,期望时长×2%)。受管路径/归属、源 hash 或 manifest 不符即停止。额外压缩副本也核验完整解码、时长和规格。公共交付视图以持久摘要验证缓存，不在GET重新解码；非空损坏同样隐藏输出并允许恢复。QC 不承诺角色一致性或真实审美质量。
 
 Run.delivery（无 StoryPackage 时 null）：
 ```text
