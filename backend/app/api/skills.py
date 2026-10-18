@@ -55,7 +55,8 @@ def _check_references(name, data, owner_id, budget_scope=None):
             if row is not None:
                 job = row.job if model is Artifact else row
                 require_upload_job_owner(job, owner_id)
-                reference_run = (job.config or {}).get("agent_reference_run")
+                reference_run = ((job.config or {}).get("agent_reference_run")
+                                 or (job.config or {}).get("agent_story_preview", {}).get("run_id"))
                 if model is Artifact and row.artifact_type == "agent_reference_image":
                     reference_run = (row.meta or {}).get("reference", {}).get("run_id")
                 if reference_run and reference_run != budget_scope:
