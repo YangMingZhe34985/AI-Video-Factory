@@ -122,3 +122,23 @@
 | ID | 任务 | 负责 | 依赖 | 状态 |
 |---|---|---|---|---|
 | TECH-REPORT | 根据当前代码整理本地私人 Agent 技术报告，并显式排除 Git 跟踪 | Codex | MT-Gate / W-Gate | 完成（仅文档与忽略规则；内容不纳入版本库） |
+
+## Agent v3 真正的多 Agent 规划 + 受控执行
+
+契约：`docs/agent_v3/CONTRACTS.md`（V0 定稿）；决策 D-029 – D-031；方案 `docs/architecture/agent_v3_proposal_claude.md`（r3）。开关 `AGENT_V3_ENABLED` 默认关闭，v1/v2 不受影响。真实调用范围见 D-030（禁止视频生成）。
+
+| ID | 任务 | 负责 | 依赖 | 状态 |
+|---|---|---|---|---|
+| V0 | v3 契约、决策、协作规则修订 | Claude | — | 完成 |
+| V1 | 工具层：更名与垫片、ToolSpec/Context 扩展、函数调用导出、`agent_chat`、qwen_chat tools、ScriptedLLM、`analyze_images`、`list_models`/`estimate_cost` | Codex | V0 | 待开始 |
+| V2 | Skill 库：加载器、`list_skills`/`load_skill`/`read_skill_resource`、首批 Skill | Codex（Claude 审定关键 Skill） | V1 | 待开始 |
+| V3 | Agent 运行时：卡片/目录、循环、委派、提问、工作区、上限、步骤记录、v3 图骨架 | Codex | V1 | 待开始 |
+| V-Gate1 | V1–V3 评审 | Claude | V1–V3 | 待开始 |
+| V4 | Plan IR：编译器、dry-run、通用运行时、预览门、六个 Blueprint、审核动作 | Codex | V2 V3 | 待开始 |
+| V5 | Plan Patch：Repair、Director 审阅、增量报价、低风险自动授权 | Codex | V4 | 待开始 |
+| V-Gate2 | V4–V5 评审 | Claude | V4 V5 | 待开始 |
+| V6 | Agent 上线：七个 Agent 的卡片与提示词、委派策略 | Codex（Claude 审定 Producer/Director/委派策略） | V-Gate2 | 待开始 |
+| V7 | 界面：协作时间线、通用计划视图、规划额度、Patch 审批 | Codex（功能），Claude（美化） | V6（接口） | 待开始 |
+| V-Gate3 | 评审 + 真实 LLM 评测 + v2 对照 | Claude | V6 V7 | 待开始 |
+| V8 | 经典路径：生产意图、系列 + 模板、`run_workflow_template`（契约开工前补写） | Codex | V-Gate3 | 待开始 |
+
