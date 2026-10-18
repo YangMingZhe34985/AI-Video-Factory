@@ -111,3 +111,11 @@ const makePlan = () => ({ recipe: 'story_video', target_duration_sec: 120, scene
   previews.keyframes.s01.estimated_cost = 0
   assert.equal(targetCost(staleTargets(plan, previews), models, previews), 2)
  })
+
+ test('compound Chinese model-family labels match the server normalization', () => {
+  for (const preference of ['wan2.7系列视频模型', 'wan2.7系列的视频生成模型', 'wan2.7 视频生成模型']) {
+    const request = { ...spec, constraints: { model_preferences: [preference] } }
+    assert.deepEqual(eligibleModels(models, 'i2v', request).map((model) => model.model_id), ['wan2.7-i2v'])
+    assert.equal(eligibleModels(models, 'i2i', request).length, 1)
+  }
+ })

@@ -2,7 +2,7 @@
 export const clone = (value) => JSON.parse(JSON.stringify(value))
 const round = (value) => Math.round(value * 10000) / 10000
 const norm = (value) => String(value || '').normalize('NFKC').toLowerCase().replace(/[\s_-]+/g, '')
-const label = (value) => String(value || '').replace(/\s*(系列|模型|family|series|model)\s*$/i, '')
+const label = (value) => String(value || '').replace(/(?:\s*(?:系列|(?:的)?(?:视频|图像|图片)?(?:生成)?模型|family|series|models?))+\s*$/i, '')
 
 export function normalizeStoryRules(rules = {}) {
   return {

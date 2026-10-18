@@ -42,14 +42,15 @@
           <label v-if="character.reference?.source === 'generate' && canEditCharacters" class="field-label mt-2">定妆提示词<textarea v-model="character.reference.generate_prompt" class="field" rows="3" maxlength="2000" /></label>
           <p v-else-if="character.reference?.generate_prompt" class="mt-2 text-xs text-slate-500">{{ character.reference.generate_prompt }}</p>
           <p v-if="previews.characters?.[character.character_id]?.error" class="mt-2 text-xs text-red-600">{{ errorText(previews.characters[character.character_id].error) }}</p>
-          <button v-if="character.reference?.source === 'generate' && reviewable" type="button" class="secondary-btn mt-3" :disabled="locked || dirty || charactersDirty && !canEditCharacters" @click="askRegenerate('character', character.character_id, character.reference.generate_prompt)">重做定妆图</button>
+          <button v-if="character.reference?.source === 'generate' && reviewable" type="button" class="secondary-btn mt-3" :disabled="locked || dirty || charactersDirty" @click="askRegenerate('character', character.character_id, character.reference.generate_prompt)">重做定妆图</button>
         </article>
       </div>
       <div v-if="status === 'awaiting_characters'" class="mt-4 flex flex-wrap gap-3">
-        <button type="button" class="primary-btn" :disabled="locked || charactersIncomplete || charactersInvalid" @click="submitCharacters">确认角色并生成关键帧</button>
+        <button type="button" class="primary-btn" :disabled="locked || charactersIncomplete || charactersInvalid" @click="submitCharacters">{{ charactersDirty ? '保存角色修改' : '确认角色并生成关键帧' }}</button>
+        <button v-if="charactersDirty" type="button" class="secondary-btn" :disabled="locked" @click="characterDraft = clone(story.characters || [])">撤销角色修改</button>
         <button type="button" class="secondary-btn" :disabled="locked" @click="confirmReject">放弃计划</button>
       </div>
-      <p v-if="status === 'awaiting_characters'" class="mt-2 text-xs text-slate-500">请先重做失败的定妆图。确认后会按图片模型计费生成关键帧。</p>
+      <p v-if="status === 'awaiting_characters'" class="mt-2 text-xs text-slate-500">{{ charactersDirty ? '先保存角色修改；改变定妆输入会使旧图过期，不会自动重做图片。然后确认重做费用，再审核角色。' : '请先重做失败或过期的定妆图。角色确认后会按图片模型计费生成关键帧。' }}</p>
     </section>
 
     <section class="mt-6" aria-label="镜头时间线">
@@ -150,6 +151,7 @@ const characterDraft = ref(clone(props.story.characters || [])), characterOrigin
 const actionEstimate = ref(null)
 const drawer = ref(null), shotDraft = ref(null), savedFrame = ref(null), confirmation = ref(null), actionError = ref(''), pendingEdit = ref(false)
 const dirty = computed(() => JSON.stringify(localPlan.value) !== original.value)
+const drawerDirty = computed(() => shotDraft.value && JSON.stringify(shotDraft.value) !== JSON.stringify(localPlan.value.shots.find((shot) => shot.shot_id === shotDraft.value.shot_id)))
 const charactersDirty = computed(() => JSON.stringify(characterDraft.value) !== characterOriginal.value)
 const versionConflict = computed(() => props.planVersion !== baseVersion.value)
 const locked = computed(() => props.disabled || versionConflict.value)
@@ -175,7 +177,7 @@ const charactersInvalid = computed(() => characterDraft.value.some((character) =
 const currentRange = computed(() => props.models.find((model) => model.model_id === shotDraft.value?.motion?.model_id)?.capabilities?.duration)
 const format = (value) => Number.isFinite(value) ? String(Math.round(value * 100) / 100) : '—'
 const money = (value) => value == null ? '待服务器估算' : format(value)
-const errorText = (value) => typeof value === 'string' ? value : value?.message || value?.code || '生成失败'
+const errorText = (value) => typeof value === 'string' ? value : value?.message || value?.summary || value?.code || '生成失败'
 const characterName = (id) => props.story.characters?.find((character) => character.character_id === id)?.name || id
 const previewLabel = (preview, supplied = false) => preview?.stale || preview?.status === 'stale' ? '已过期' : ({ success: '已完成', failed: '失败 · 可局部重做', running: '生成中', pending: '排队中', cancelled: '已取消' }[preview?.status] || (supplied ? '已有参考图' : '待生成'))
 const previewTone = (preview) => preview?.stale || preview?.status === 'stale' ? 'text-amber-600' : preview?.status === 'failed' ? 'text-red-600' : 'text-slate-500'
@@ -194,7 +196,7 @@ function reset() {
 }
 function reload() { reset(); emit('refresh') }
 watch(() => [props.runId, props.planVersion], (next, previous) => {
-  if (next[0] !== previous[0] || !dirty.value && !charactersDirty.value || pendingEdit.value) reset()
+  if (next[0] !== previous[0] || !dirty.value && !charactersDirty.value && !drawerDirty.value || pendingEdit.value) reset()
 })
 async function openShot(id) {
   if (props.disabled) return
@@ -242,8 +244,8 @@ function askRegenerate(type, id, prompt) {
   const preview = previewFor(props.previews, type, id)
   const shot = props.plan.shots.find((item) => item.shot_id === id)
   const frame = type === 'keyframe' ? shot?.first_frame : shot?.end_frame
-  const affected = type === 'character' ? props.plan.shots.filter((item) => item.character_ids.includes(id)).map((item) => item.shot_id) : []
-  confirmation.value = { action: 'regenerate', payload: { target_type: type, target_id: id, ...(prompt ? { prompt } : {}) }, title: `重做${type === 'character' ? '角色定妆图' : type === 'keyframe' ? '关键帧' : '尾帧'} ${type === 'character' ? characterName(id) : id}`, cost: type === 'character' ? (Number.isFinite(preview?.estimated_cost) ? preview.estimated_cost : null) : frame ? targetCost([{ type, id, frame }], props.models, props.previews) : null, description: affected.length ? `会使 ${affected.join('、')} 的角色关联关键帧过期。旧图保留，不自动重做其他图片，后续需单独确认费用。${charactersDirty.value ? '卡片里的外观锁定修改尚未保存；本次只提交定妆提示词。' : ''}` : '仅重做这张预览图片，旧产物保留。不会提交任何视频生成任务。' }
+  const affected = type === 'character' ? props.plan.shots.filter((item) => item.character_ids.includes(id) && (item.first_frame.method === 'generate' || item.end_frame?.method === 'generate')).map((item) => item.shot_id) : []
+  confirmation.value = { action: 'regenerate', payload: { target_type: type, target_id: id, ...(prompt ? { prompt } : {}) }, title: `重做${type === 'character' ? '角色定妆图' : type === 'keyframe' ? '关键帧' : '尾帧'} ${type === 'character' ? characterName(id) : id}`, cost: type === 'character' ? (Number.isFinite(preview?.estimated_cost) ? preview.estimated_cost : null) : frame ? targetCost([{ type, id, frame }], props.models, props.previews) : null, description: affected.length ? `关联镜头 ${affected.join('、')} 中已有的角色关键帧会过期。旧图保留，不自动重做其他图片，后续需单独确认费用。` : '仅重做这张预览图片，旧产物保留。不会提交任何视频生成任务。' }
 }
 function askStale() { confirmation.value = { action: 'regenerate_stale', payload: {}, title: `重做 ${stale.value.length} 张过期关键帧`, cost: staleCost.value, description: `范围：${stale.value.map((item) => `${item.id}${item.type === 'end_frame' ? ' 尾帧' : ''}`).join('、')}。其他已完成预览保持可用。` } }
 function confirmReject() { confirmation.value = { action: 'reject', payload: {}, title: '放弃此计划', description: '将取消本次创作。已有预览与消费记录保留。' } }
