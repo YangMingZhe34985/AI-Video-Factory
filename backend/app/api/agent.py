@@ -6,7 +6,7 @@ from werkzeug.exceptions import RequestEntityTooLarge
 
 from app.agent.clarify import resolve_answers
 from app.agent.attachments import attachment_for_owner, describe_attachment, invalid_attachment, upload_attachment
-from app.agent.protocol import CreateRun, ProductionQuote, RunAction, validate_plan, validate_request, validate_shot
+from app.agent.protocol import CreateRun, ProductionQuote, TransformQuote, RunAction, validate_plan, validate_request, validate_shot
 from app.agent.plan_spec import shot_cost
 from app.agent.release import ensure_admission
 from app.agent.monitoring import run_metrics
@@ -63,7 +63,7 @@ def attachment_metadata(row):
     ids = row.request.get("attachment_ids", [])
     artifacts = Artifact.query.join(Job).filter(
         Artifact.artifact_id.in_(ids),
-        Artifact.artifact_type.in_(["agent_attachment_image", "source_video"]),
+        Artifact.artifact_type.in_(["agent_attachment_image", "source_video", "agent_attachment_audio", "agent_attachment_document"]),
         Job.strategy == "agent_upload",
     ).all()
     owned = {artifact.artifact_id: artifact for artifact in artifacts
@@ -85,6 +85,8 @@ def serialize(row):
     if version == 2:
         plan = snapshot.get("plan") or {}
         total = len(plan["shots"]) if "shots" in plan else sum(plan.get(key) is not None for key in ("image", "video"))
+        if plan.get("recipe") == "video_transform":
+            total = 1
         result.update(text=row.request["text"],
                       attachments=attachment_metadata(row),
                       request_spec=snapshot.get("request_spec"), research_dossier=snapshot.get("research_dossier"), plan=snapshot.get("plan"),
@@ -159,6 +161,12 @@ def approved_plan(row, edited):
     spec = snapshot.get("request_spec")
     if not spec:
         raise AppError("INVALID_PLAN", "Request understanding must finish before approval", 422)
+    if spec["recipe_hint"] == "video_transform":
+        from app.agent.transform_plan import approval_request_spec, validate_transform_plan
+        if edited is None:
+            raise AppError("APPROVAL_REQUIRED", "Transform approval requires the complete quoted plan", 409)
+        approved_spec = approval_request_spec(spec, snapshot["plan"], raw)
+        return validate_transform_plan(raw, approved_spec, run=row, require_quote=True)
     if spec["recipe_hint"] in {"image_edit", "image_create", "single_clip"}:
         from app.agent.simple_plan import approval_request_spec, validate_simple_plan
         approved_spec = approval_request_spec(spec, snapshot["plan"], raw)
@@ -166,6 +174,22 @@ def approved_plan(row, edited):
                                     budget_scope=row.run_id, budget_limit=row.request["budget_limit"])
     from app.agent.recipes import validate_transition_plan
     return validate_transition_plan(raw, snapshot, enforce_duration=edited is None)
+
+
+@bp.post("/runs/<run_id>/transform-quote")
+def transform_quote(run_id):
+    row = get_run(run_id)
+    spec = (row.snapshot or {}).get("request_spec") or {}
+    if row.status != "awaiting_approval" or row.command is not None or spec.get("recipe_hint") != "video_transform":
+        raise AppError("INVALID_AGENT_STATE", "Transform quotes require an idle plan awaiting approval", 409)
+    data = parse(TransformQuote)
+    from app.agent.transform_plan import approval_request_spec, validate_transform_plan
+    approved_spec = approval_request_spec(spec, (row.snapshot or {}).get("plan"), data.plan)
+    try:
+        return api_success(validate_transform_plan(data.plan, approved_spec, run=row))
+    except ValidationError as error:
+        raise AppError("INVALID_PLAN", "Invalid transform plan", 422,
+                       payload={"errors": error.errors(include_url=False, include_context=False, include_input=False)}) from error
 
 
 @bp.post("/runs/<run_id>/actions")

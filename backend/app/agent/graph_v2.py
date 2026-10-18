@@ -24,6 +24,8 @@ from app.skills import build_default_registry
 
 class AgentStateV2(AgentState, IntakeState, ClarifyState, research.ResearchState, story_graph.StoryState, production_graph.ProductionState, delivery_graph.DeliveryState, total=False):
     results: list[dict]
+    transform: dict
+    transform_error: dict | None
 
 
 def _publish_understanding(state):
@@ -65,6 +67,9 @@ def build_graph(checkpointer, registry=None):
         if spec.name not in registry.names():
             registry.register(spec)
     legacy = pipeline_nodes(registry)
+    from app.agent import transform_execution
+    from app.agent.transform_director import transform_director
+    from app.agent.transform_plan import validate_transform_plan, approval_request_spec as transform_approval_spec
 
     def understand(state):
         result = intake(state, registry)
@@ -77,6 +82,43 @@ def build_graph(checkpointer, registry=None):
         result["request_spec"] = spec
         result.update(_publish_understanding({**state, **result}))
         return _queue(state, result, "director", "planning")
+
+    def direct_transform(state):
+        result = transform_director(state, registry)
+        result.update(_publish_understanding({**state, **result}))
+        return _queue(state, result, "director", "planning")
+
+    def transform_validate(state):
+        row = AgentRun.query.filter_by(run_id=state["run_id"]).one()
+        try:
+            plan = validate_transform_plan(state["plan"], state["request_spec"], run=row)
+            return {"plan": plan, "plan_issues": [], "approved": False, "status": "awaiting_approval"}
+        except (AppError, ValidationError) as error:
+            return {"plan_issues": [_plan_issue(error)], "approved": False, "status": "awaiting_approval"}
+
+    def transform_approval(state):
+        decision = interrupt({"kind": "approval", "plan": state["plan"],
+                              "estimated_credits": state["plan"].get("estimated_cost")})
+        receipt = {"last_command_id": decision.get("command_id")}
+        if decision.get("action") == "reject":
+            return {**receipt, "approved": False, "status": "cancelled"}
+        row = AgentRun.query.filter_by(run_id=state["run_id"]).one()
+        try:
+            if decision.get("action") != "approve" or not decision.get("plan"):
+                raise AppError("APPROVAL_REQUIRED", "Transform approval requires the complete quoted plan", 409)
+            raw = decision["plan"]
+            spec = transform_approval_spec(state["request_spec"], state["plan"], raw)
+            plan = validate_transform_plan(raw, spec, run=row, require_quote=True)
+            update = {"request_spec": spec, "plan": plan, "plan_issues": [], "approved": True,
+                      "status": "producing", "shots": {}, "transform_error": None, **receipt}
+            update.update(_publish_understanding({**state, **update}))
+            from app.agent.transform_policy import approve
+            approve(row, plan)
+            update["transform"] = row.snapshot["transform"]
+            return update
+        except (AppError, ValidationError) as error:
+            return {**receipt, "approved": False, "plan_issues": [_plan_issue(error)],
+                    "status": "awaiting_approval"}
 
     def prepare(state):
         result = prepare_transition(state)
@@ -161,6 +203,8 @@ def build_graph(checkpointer, registry=None):
         return _queue(state, result, "director", "planning")
 
     def route(state):
+        if state["request_spec"]["recipe_hint"] == "video_transform":
+            return "transform_director"
         if state["request_spec"]["recipe_hint"] == "story_video" and current_app.config.get("AGENT_STORY_V2_ENABLED"):
             return "story_v2_creative"
         return "simple_director" if state["request_spec"]["recipe_hint"] in {
@@ -172,6 +216,11 @@ def build_graph(checkpointer, registry=None):
         return {}
 
     nodes = {
+        **transform_execution.nodes(registry),
+        "transform_director": direct_transform,
+        "transform_clarify": clarify_gate,
+        "transform_validate": transform_validate,
+        "transform_approval": transform_approval,
         **story_graph.nodes(registry),
         **production_graph.nodes(registry),
         **delivery_graph.nodes(registry),
@@ -227,6 +276,16 @@ def build_graph(checkpointer, registry=None):
         builder.add_edge(source, target)
     builder.add_conditional_edges("research_clarify", lambda s: "research_resolve"
                                   if s["research_dossier"]["open_questions"] else route(s))
+    builder.add_edge("transform_director", "transform_clarify")
+    builder.add_conditional_edges("transform_clarify", lambda s: "transform_director" if s.get("open_questions") else "transform_validate")
+    builder.add_edge("transform_validate", "transform_approval")
+    builder.add_conditional_edges("transform_approval", lambda s: END if s["status"] == "cancelled" else (
+        "transform_production" if s.get("approved") else "transform_approval"))
+    builder.add_edge("transform_production", "transform_collect")
+    builder.add_conditional_edges("transform_collect", transform_execution.after_collect,
+                                  {"wait": "transform_wait", "delivery": "transform_delivery", "end": END})
+    builder.add_edge("transform_wait", "transform_collect")
+    builder.add_edge("transform_delivery", END)
     builder.add_edge("simple_director", "director_clarify")
     builder.add_conditional_edges("director_clarify", lambda s: "simple_director" if s.get("open_questions") else "simple_validate")
     builder.add_conditional_edges("simple_validate", lambda s: "simple_production" if s.get("approved") else "simple_approval")

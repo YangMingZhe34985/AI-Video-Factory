@@ -44,7 +44,25 @@ def mock_request_spec(data):
     motion = any(word in text for word in ("视频", "短片", "影片", "故事片", "动起来", "拍片", "一部片", "动画"))
     editing = bool(videos) and any(word in text for word in ("替换", "保留", "删掉", "剪掉", "修改", "改造", "剪辑", "改成"))
     style_only = any(word in text for word in ("风格", "画风")) and any(word in text for word in ("参考", "按照", "按这", "模仿"))
-    if editing:
+    urls = re.findall(r"https?://[^\s<>\"，。！？；）)]+", text)
+    native_extend = bool(videos) and bool(re.search(r"延长|续写|续拍|extend", text, re.I))
+    montage = bool(re.search(r"保留|剪辑|剪掉|删掉|重排|部分镜头|前半段|后半段", text))
+    native_edit = editing and not montage
+    multimodal = bool(videos or urls or any(item.kind in {"audio", "file"} for item in data.attachments))
+    transform = None
+    story_requested = bool((duration and duration > 30) or any(word in text for word in ("故事", "剧情", "多镜头")))
+    if native_extend or native_edit or (multimodal and (motion or duration) and not story_requested and not editing):
+        recipe = "video_transform"
+        operation = "extend" if native_extend else "edit" if native_edit else "reference"
+        additional = re.search(r"(?:再|继续)?延长\s*(\d+(?:\.\d+)?)\s*秒", text)
+        final = re.search(r"(?:总共|最终|总时长|到|至)\s*(\d+)\s*秒", text)
+        transform = {"operation": operation,
+                     "source_attachment_id": videos[0].attachment_id if operation != "reference" else None,
+                     "additional_duration_sec": float(additional.group(1)) if additional and native_extend else None,
+                     "reference_urls": urls[:1]}
+        if native_extend and additional:
+            duration = int(final.group(1)) if final else None
+    elif editing:
         recipe = "remix"
     elif motion or duration:
         recipe = "story_video" if (duration and duration > 30) or any(word in text for word in ("故事", "剧情", "多镜头")) else "single_clip"
@@ -54,7 +72,13 @@ def mock_request_spec(data):
     identity = any(word in text for word in ("我", "人像", "西装", "证件照", "头像", "脸", "人物"))
     attachment_choice = _answer(data, "attachment_use")
     for item in data.attachments:
-        if item.kind == "video" and recipe == "remix" and item == videos[0]:
+        if transform and item.attachment_id == transform["source_attachment_id"]:
+            role = "transform_source"
+        elif item.kind == "audio":
+            role = "audio_ref"
+        elif item.kind == "file":
+            role = "document_ref"
+        elif item.kind == "video" and recipe == "remix" and item == videos[0]:
             role = "remix_source"
         elif style_only or attachment_choice == "style" or "风格" in (attachment_choice or ""):
             role = "style_ref"
@@ -68,7 +92,7 @@ def mock_request_spec(data):
                      "description": item.description, "reason": "Mock：根据需求和附件类型提出用途，供后续确认。"})
     questions = []
     explicit_use = any(word in text for word in ("参考", "风格", "保留", "修改", "改成", "动起来", "照片", "首帧"))
-    if data.attachments and motion and not explicit_use and not attachment_choice:
+    if data.attachments and motion and not explicit_use and not attachment_choice and not transform:
         questions.append({
             "question_id": "attachment_use", "text": "附件主要用来保留内容，还是参考风格？",
             "why": "附件用途会影响人物一致性和后续制作方案。",
@@ -87,7 +111,7 @@ def mock_request_spec(data):
     aspect = next((value for value in ("16:9", "9:16", "1:1", "4:3", "3:4") if value in text), None)
     compress = bool(re.search(r"(?:需要|请|要求|进行|输出时)压缩", text)) and not re.search(r"(?:不|无需|禁止)[^，。！？]{0,8}压缩", text)
     return {
-        "deliverable": "image" if recipe.startswith("image_") else "video", "recipe_hint": recipe,
+        "deliverable": "image" if recipe.startswith("image_") else "video", "recipe_hint": recipe, "transform": transform,
         "summary": text[:500], "output_count": count if recipe.startswith("image_") else 1, "target_duration_sec": None if recipe.startswith("image_") else duration,
         "aspect_ratio": aspect, "subjects": [{"name": "主要主体", "description": text[:1000],
                                               "source": "user_text", "attachment_ids": []}],

@@ -42,6 +42,21 @@ class DirectorDecision(BaseModel):
 
 
 def model_question(mode, error):
+    from app.agent.model_selection import TRANSFORM_MODES
+    if mode in TRANSFORM_MODES:
+        from app.models import ModelRegistry
+        options = [{"option_id": "keep", "label": "保留当前要求，等待配置"}]
+        for model in ModelRegistry.query.filter_by(enabled=True).order_by(ModelRegistry.model_id):
+            if ((model.capabilities or {}).get("agent_selectable")
+                    and mode in (model.capabilities or {}).get("modes", []) and len(model.model_id) <= 34):
+                options.append({"option_id": f"model:{model.model_id}", "label": f"改用 {model.model_id}",
+                                "detail": "明确调整视频模型要求；禁止使用的模型仍保持排除。"})
+                if len(options) == 4:
+                    break
+        if len(options) > 1:
+            return Question(question_id=f"model_{mode}", text="当前模型不支持此类视频处理，是否明确换用支持的模型？",
+                why=str(error)[:300], options=options, recommended_option_id="keep", default_option_id="keep",
+                blocking=True, allow_free_text=True).model_dump(mode="json")
     return Question(
         question_id=f"model_{mode}", text=f"当前模型要求无法执行 {mode}，是否调整？",
         why=str(error)[:300], blocking=True, allow_free_text=True,
@@ -68,6 +83,8 @@ def resolved_request(state):
         spec.constraints.model_preferences = [item for item in spec.constraints.model_preferences if item not in previous]
         if answer.get("text"):
             spec.constraints.model_preferences.append(answer["text"])
+        elif str(answer.get("option_id", "")).startswith("model:"):
+            spec.constraints.model_preferences.append(answer["option_id"][6:])
         elif answer.get("option_id") != "server_default":
             raise AppError("INVALID_ANSWER", "Unsupported model-selection answer", 422)
         # An unusable answer ends this attempt instead of asking the same paid

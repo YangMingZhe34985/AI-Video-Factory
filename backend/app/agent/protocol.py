@@ -130,6 +130,11 @@ class RunAction(BaseModel):
         return self
 
 
+class TransformQuote(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    plan: dict
+
+
 class ProductionQuote(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
     shot_id: str = Field(pattern=r"^s[0-9]{2,3}$")
