@@ -21,6 +21,7 @@ from app.skills.budget import BudgetGuard
 from app.skills.tools.extract_frame import MOCK_VIDEO_BYTES
 from tests.test_story_media import private_artifact, task
 from tests.test_story_previews import setup
+from tests.test_production_recovery import inline_jobs
 
 pytestmark = pytest.mark.config(AGENT_MODE_ENABLED=True, AGENT_STORY_V2_ENABLED=True,
     AGENT_STORY_PRODUCTION_ENABLED=True, AGENT_MAX_SHOT_AUTO_REPAIRS=0)
@@ -292,3 +293,78 @@ def test_quote_schema_does_not_accept_provider_models_or_retry_edits():
     for extra in ({"model_id": "other"}, {"motion_prompt": "edit"}):
         with pytest.raises(ValidationError):
             ProductionQuote.model_validate({"shot_id": "s01", "base_version": 1, "operation": "retry", **extra})
+
+
+def test_manual_retry_uses_explicit_quote_when_auto_allowance_is_zero(app_ctx, inline_jobs, monkeypatch):
+    from app.adapters.mock import MockAdapter
+    original = MockAdapter.submit
+    calls = {"count": 0}
+    def fail_once(adapter, payload):
+        calls["count"] += 1
+        if calls["count"] == 1:
+            raise AppError("RATE_LIMITED", "Injected rejection before submission", 429)
+        return original(adapter, payload)
+    monkeypatch.setattr(MockAdapter, "submit", fail_once)
+    row, version, registry = fixture(complete=False)
+    actions.apply_command(row, {"action": "start_production", "plan_version": version.version, "request_key": "start"}, registry)
+    assert drive(row, registry) == "production_attention"
+    row.status = "production_attention"
+    db.session.commit()
+    failed = next(item for item in latest_tasks(row, version).values() if item.status == "failed")
+    quoted = priced(row, version, failed.target_id, "retry")
+    assert quoted["can_retry"]
+    assert quoted["estimated_credits"]["only"] >= 5
+    before = ToolInvocation.query.filter_by(tool_name="animate_shot").count()
+    command = {"action": "retry_shot", "base_version": version.version, "shot_id": failed.target_id,
+               "quote_id": quoted["quote_id"], "request_key": "manual-retry"}
+    actions.apply_command(row, command, registry)
+    actions.apply_command(row, command, registry)
+    assert drive(row, registry) == "awaiting_video_review"
+    assert ToolInvocation.query.filter_by(tool_name="animate_shot").count() <= before + 2
+    assert row.snapshot["production_repairs"][str(failed.id)]["automatic"] is False
+    assert row.snapshot["production"]["repair_budget_credits"] == 0
+
+
+def test_missing_finished_video_recovers_original_download_during_review(app_ctx, inline_jobs):
+    row, version, registry = fixture(complete=False)
+    actions.apply_command(row, {"action": "start_production", "plan_version": version.version, "request_key": "start"}, registry)
+    assert drive(row, registry) == "awaiting_video_review"
+    row.status = "awaiting_video_review"
+    db.session.commit()
+    selected = latest_tasks(row, version)["s01"]
+    artifact = usable_artifact(selected)
+    original_api_ids = [item.id for item in ApiTask.query.order_by(ApiTask.id)]
+    before = (BudgetGuard.spent(row.run_id), ToolInvocation.query.filter_by(tool_name="animate_shot").count())
+    StorageService.resolve(artifact.file_path).unlink()
+    with pytest.raises(AppError) as error:
+        priced(row, version)
+    assert error.value.code == "UNSAFE_RETRY"
+    quoted = priced(row, version, "s01", "retry")
+    assert quoted["can_retry"] and quoted["estimated_credits"]["only"] == 0
+    assert selected.status == "success"  # The quote does not mutate persisted tasks.
+    command = {"action": "retry_shot", "base_version": version.version, "shot_id": "s01",
+               "quote_id": quoted["quote_id"], "request_key": "download"}
+    actions.apply_command(row, command, registry)
+    assert drive(row, registry) == "awaiting_video_review", {"snapshot": row.snapshot, "tasks": [t.to_dict() for t in latest_tasks(row, version).values()]}
+    assert usable_artifact(latest_tasks(row, version)["s01"])
+    assert [item.id for item in ApiTask.query.order_by(ApiTask.id)] == original_api_ids
+    assert (BudgetGuard.spent(row.run_id), ToolInvocation.query.filter_by(tool_name="animate_shot").count()) == before
+
+
+def test_price_increase_after_version_commit_never_exceeds_original_authorization(app_ctx, monkeypatch):
+    row, version, registry = fixture()
+    command = redo_command(priced(row, version))
+    original = actions._copy_tasks
+    monkeypatch.setattr(actions, "_copy_tasks", lambda *_a, **_kw: (_ for _ in ()).throw(RuntimeError("crash")))
+    with pytest.raises(RuntimeError):
+        actions.apply_command(row, command, registry)
+    number = versions.current_version(row).version
+    model = ModelService.get_model("wan2.7-i2v")
+    model.capabilities = {**model.capabilities, "pricing": {"unit": "second", "credits_per_unit": 2}}
+    db.session.commit()
+    monkeypatch.setattr(actions, "_copy_tasks", original)
+    with pytest.raises(AppError) as error:
+        actions.apply_command(row, command, registry)
+    assert error.value.code == "PRODUCTION_QUOTE_EXPIRED"
+    assert versions.current_version(row).version == number
+    assert not ToolInvocation.query.filter_by(tool_name="animate_shot").count()
