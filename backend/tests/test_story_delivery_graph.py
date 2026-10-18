@@ -181,3 +181,28 @@ def test_delivery_flag_pauses_active_editor_until_explicit_retry(app_ctx, client
     assert act(client, run_id, "retry_delivery", plan_version=version, request_key="retry").status_code == 202
     assert finish(run_id).status == "success"
     assert paid(run_id) == before
+
+
+def test_polled_delivery_view_does_not_rehash_unchanged_media(app_ctx, client, inline_jobs, monkeypatch):
+    import hashlib
+    run_id, version = clips(app_ctx, client)
+    assert act(client, run_id, "approve_videos", plan_version=version, request_key="clips").status_code == 202
+    assert finish(run_id).status == "success"
+    assert view(client, run_id)["delivery"]["master"]
+    calls = []
+    real_digest, real_testzip = hashlib.file_digest, zipfile.ZipFile.testzip
+    monkeypatch.setattr(hashlib, "file_digest", lambda *args, **kwargs: calls.append("sha256") or real_digest(*args, **kwargs))
+    monkeypatch.setattr(zipfile.ZipFile, "testzip", lambda self: calls.append("testzip") or real_testzip(self))
+    for _ in range(5):
+        shown = view(client, run_id)["delivery"]
+        assert shown["master"] and shown["package"] and not shown["can_retry"]
+        assert client.get("/api/agent/runs").status_code == 200
+    assert calls == []
+    # Same-size in-place corruption still changes the file identity and is detected.
+    master = Artifact.query.filter_by(artifact_id=shown["master"]["artifact_id"]).one()
+    path = StorageService.resolve(master.file_path)
+    data = bytearray(path.read_bytes())
+    data[-16:] = bytes(16)
+    path.write_bytes(bytes(data))
+    shown = view(client, run_id)["delivery"]
+    assert shown["master"] is None and shown["can_retry"]
