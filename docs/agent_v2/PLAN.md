@@ -142,7 +142,7 @@
 | V-Gate3 | 评审 + 真实 LLM 评测 + v2 对照 | Claude | V6 V7 | 有条件通过（D-038；真实评测与 v2 对照见 docs/agent_v3/VGATE3_EVAL.md；后续问题 V9a–V9e） |
 | V9a | 选择门：用户从多个预览候选中选一个，下游引用所选结果（契约先行） | Codex | V-Gate3 | 完成（后端定向289项、前端134项及浏览器通过；最终全量见PROGRESS） |
 | V9b | 上下文管理：裁剪/压缩旧工具结果或精简作者手册，降低长片单轮 token | Codex | V-Gate3 | 完成（正式分支34项上下文/额度回归通过；最终全量见PROGRESS） |
-| V9c | 简单任务开销：Blueprint 参数摘要进 Skill 正文，减少资源读取轮次 | Codex | V-Gate3 | 待开始 |
+| V9c | 简单任务开销：Blueprint 参数摘要进 Skill 正文，减少资源读取轮次 | Codex | V-Gate3 | 完成（正式分支74项通过；Stub简单路径4轮，真实效果待Gate4） |
 | V9d | 死节点检测：不通往交付物的付费节点给出编译问题 | Codex | V-Gate3 | 待开始 |
 | V9e | 多参考图默认选型：多人同框镜头自动引导到支持多参考的模型 | Codex | V-Gate3 | 待开始 |
 | V-Gate4 | V9 评审与真实评测复跑（`backend/scripts/v3_eval`） | Claude | V9a–V9e | 待开始 |

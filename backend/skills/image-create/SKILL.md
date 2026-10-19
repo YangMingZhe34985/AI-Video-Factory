@@ -21,10 +21,28 @@ blueprint:
 
 plan.recipe=image_create，plan.image.mode=t2i，reference_attachment_ids 为空，video 不填。模型能力与参数以目录和 check_plan 为准；默认模型由服务器解析。image.n 是张数，不将其藏入冲突的 params.n；图像按张或目录计价单位估算。
 
-## Blueprint 参数
+## Blueprint 参数摘要（V9c）
 
-先调用 read_skill_resource 读取 resources/params.schema.json（与当前 builder 相同的作者输入 Schema），再读 resources/examples.json。load_skill 不返回 frontmatter，因此不能省略资源读取后猜字段。仅 Producer/Director 可调用 instantiate_blueprint；其他角色只提供对应资料，Skill 不增加工具权限。
+正文包含最小完整参数和演示 JSON。已覆盖所需结构时直接使用，不再为形式重复读取 resources/params.schema.json / resources/examples.json；未覆盖字段、复杂嵌套或具体字段错误才按需深读。仍以实际 Schema、编译结果和用户硬约束为准；Skill 不增加工具权限。
 
-示例全部是演示数据，模型 ID、素材 ID、时长和参数不是服务端配置；必须换成当前工具返回的真实 ID 和合法参数。无模型要求时先用通用 PlanDraft 的 model_id=null 经 check_plan 解析默认，再填写 Blueprint 必需的具体 ID；不得猜测默认。示例的占位工件不能用于编译/审批证据。
+演示数据：REPLACE_* 必须换成本 Run 真实工件及已核验模型 ID；示例秒数、角色和构图不代表用户要求、模型上限、价格或批准。未指定模型时从 check_plan 的 model_id=null 草稿取得 resolved_models，再填写要求具体 ID 的 Blueprint；不能从目录排序猜默认。显式系列/禁用约束须覆盖全部视频节点，不能自行换系列。
 
-instantiate_blueprint 只构建/保存草稿，无模型调用或生成费。返回 issues 后有针对性地修改；最终编译、dry-run、服务端报价和用户批准才决定可执行性。禁止输入估价、manifest、plan_version、quote、许可，或伪造 origin.blueprint 收据。
+- params={plan,goal?}；plan 必填 recipe="image_create"、title、rationale、image，不填 video。
+- image 必填 mode="t2i"、model_id、prompt；可选 reference_attachment_ids=[]、params={}、n=1（整数1–4）。t2i 不带参考，n 不与 params.n 冲突。
+- plan 可选 assumptions=[]（最多10条）；title 1–200、rationale 1–1000、prompt 1–8000字符；goal 可省略。model_id 不放 params。
+
+单张文生图（演示）：
+<!-- blueprint-params-example:0 -->
+```json
+{"plan":{"recipe":"image_create","title":"演示创作","rationale":"根据实际需求决定路线，不直接执行示例","image":{"mode":"t2i","model_id":"REPLACE_DEFAULT_IMAGE_MODEL_ID","prompt":"保持主体身份，柔光下的干净构图","reference_attachment_ids":[],"params":{},"n":1}}}
+```
+
+未指定模型时的 check_plan({plan:下列草稿}) 形状（先替换真实素材、提示词、张数与时长；Plan 完成输出是 image/images/video，不是 Job 回执）：
+<!-- blueprint-default-plan:0 -->
+```json
+{"title":"演示创作","goal":"演示创作","nodes":[{"id":"image","tool":"generate_image","model_id":null,"inputs":{"mode":"t2i","prompt":"保持主体身份，柔光下的干净构图","reference_artifact_ids":[]},"params":{"n":1},"origin":{"agent":"producer","skills":[]},"rationale":"根据实际需求决定路线，不直接执行示例"}],"deliverables":[{"kind":"image","node_id":"image","output":"images"}]}
+```
+
+instantiate_blueprint 只构建并保存草稿，同时返回 issues、estimates、workspace_ref，不调用生成模型。无 issues、费用与已确认需求及预算一致时，Producer 直接 submit_plan({plan_ref:workspace_ref})；无需再读同份草稿或重复 check_plan，Director 返回 plan_ref。提交内部仍会编译及隔离 dry-run，通过后仅进入用户审核，不授予生产许可。
+
+失败或修改后按具体问题修订再校验。禁止输入估价、manifest、plan_version、quote、许可或伪造 origin.blueprint；预算不足不擅自缩短明确时长或放宽指定系列，按既有澄清流程处理。

@@ -7,7 +7,7 @@
 ## 工作效率（V-Gate3 真实评测结论）
 
 - 第一轮就在**同一轮**里并行调用所需的 load_skill 与 read_skill_resource（长片通常是 long-form-video、character-consistency、story-video 及 plan_draft Schema、所用工具合同），不要每轮只读一个文件。读过的内容不要重复读取。
-- 顺序固定为：读取简报/故事 → 一次写出**完整** PlanDraft（write_workspace kind=plan_draft）→ check_plan(plan_ref) 一次拿到全部 issues 与报价 → 按 issues 修改后写入新版本 → 再 check_plan。不要逐节点反复调用 estimate_cost 试探价格，也不要在没有新草稿版本时重复 check_plan。
+- 顺序固定为：读取简报/故事 → 一次写出**完整** PlanDraft（write_workspace kind=plan_draft）→ check_plan({plan:完整草稿}) 一次拿到全部 issues 与报价 → 按 issues 修改后写入新版本 → 再 check_plan。不要逐节点反复调用 estimate_cost 试探价格，也不要在没有新草稿版本时重复 check_plan。
 - 工具被拒时，结果里会给出 errors（字段位置与原因），按字段修正一次；同一错误连续出现时换思路或退回。
 - 报价超出预算或时长与预算冲突时，不要循环试探：在 rationale 中给出 1–2 个具体缩减方案（如缩短到 N 秒、减少镜头、降低分辨率），用 finish(kind="returned") 交给 Producer 询问用户。
 
@@ -29,7 +29,7 @@ analyze_images 仅理解上传/研究图，无法自动视觉质检生成图。�
 
 ## 构建与检查
 
-加载对应六 Blueprint Skill 及 resources/params.schema.json、resources/examples.json。instantiate_blueprint 保存只读构建结果、来源收据和工作区引用；Skill 示例需替换实际 ID/模型，不自填 manifest、quote、授权或估价。用 check_plan 查完整 DAG；不匹配 Blueprint 时可写通用 PlanDraft，但不得声称受验证 Blueprint 来源。
+加载对应 Blueprint Skill；正文摘要和最小 JSON 已覆盖本次结构时直接 instantiate_blueprint，未覆盖字段、复杂嵌套或字段错误再按需读取 resources/params.schema.json / resources/examples.json。构建返回已编译的 issues、estimates、来源收据和工作区引用；无问题且费用与需求一致时直接返回 plan_ref，无需为未变化的草稿重复检查。自写或修改的通用 DAG 仍须 check_plan({plan:完整草稿})。Skill 示例须替换实际 ID/模型，不自填 manifest、quote、授权或估价；不匹配 Blueprint 时可写通用 PlanDraft，但不得声称受验证 Blueprint 来源。
 
 通用草稿为 {title,goal,nodes,deliverables,stages}。节点 {id,tool,inputs,model_id,params,stage,depends_on,gate,origin,rationale}；模型/参数只在顶层，inputs 不能藏 model_id/params/plan_version。媒体输入用 {artifact:真实ID} 或 {ref:"node.output"}；image 是首张，images 是数组；不能把数组当单图。depends_on 表达额外控制依赖，stage 只是展示分组，不授予权限。
 

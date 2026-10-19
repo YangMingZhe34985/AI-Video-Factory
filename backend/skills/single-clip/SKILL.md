@@ -24,10 +24,41 @@ blueprint:
 
 动作复杂度与合法视频秒数匹配，明确的模型系列约束对所有视频路线有效。报价包含实际发生的图像和视频节点；未知或冲突的关键时长才澄清。
 
-## Blueprint 参数
+## Blueprint 参数摘要（V9c）
 
-先调用 read_skill_resource 读取 resources/params.schema.json（与当前 builder 相同的作者输入 Schema），再读 resources/examples.json。load_skill 不返回 frontmatter，因此不能省略资源读取后猜字段。仅 Producer/Director 可调用 instantiate_blueprint；其他角色只提供对应资料，Skill 不增加工具权限。
+正文包含最小完整参数和演示 JSON。已覆盖所需结构时直接使用，不再为形式重复读取 resources/params.schema.json / resources/examples.json；未覆盖字段、复杂嵌套或具体字段错误才按需深读。仍以实际 Schema、编译结果和用户硬约束为准；Skill 不增加工具权限。
 
-示例全部是演示数据，模型 ID、素材 ID、时长和参数不是服务端配置；必须换成当前工具返回的真实 ID 和合法参数。无模型要求时先用通用 PlanDraft 的 model_id=null 经 check_plan 解析默认，再填写 Blueprint 必需的具体 ID；不得猜测默认。示例的占位工件不能用于编译/审批证据。
+演示数据：REPLACE_* 必须换成本 Run 真实工件及已核验模型 ID；示例秒数、角色和构图不代表用户要求、模型上限、价格或批准。未指定模型时从 check_plan 的 model_id=null 草稿取得 resolved_models，再填写要求具体 ID 的 Blueprint；不能从目录排序猜默认。显式系列/禁用约束须覆盖全部视频节点，不能自行换系列。
 
-instantiate_blueprint 只构建/保存草稿，无模型调用或生成费。返回 issues 后有针对性地修改；最终编译、dry-run、服务端报价和用户批准才决定可执行性。禁止输入估价、manifest、plan_version、quote、许可，或伪造 origin.blueprint 收据。
+- params={plan,goal?}；plan 必填 recipe="single_clip"、title、rationale、video，可选 assumptions=[]。
+- video 必填 model_id、prompt、first_frame；mode 省略即 i2v，params 是模型参数（时长写 params.duration）。已有首帧：first_frame="user_attachment"、必填 first_frame_attachment_id，不填 image。
+- 生成首帧：first_frame="generated_image"，不填 first_frame_attachment_id；image 必填 mode/model_id/prompt，n=1。t2i 参考为空；i2i 需非空且唯一的 reference_attachment_ids，params 可省略。
+- title 1–200、rationale 1–1000、两类prompt 1–8000字符；goal 可省略。model_id 位于 image/video 顶层，不放 params。
+
+已有首帧直接生视频（演示）：
+<!-- blueprint-params-example:0 -->
+```json
+{"plan":{"recipe":"single_clip","title":"演示创作","rationale":"根据实际需求决定路线，不直接执行示例","video":{"model_id":"REPLACE_ALLOWED_VIDEO_MODEL_ID","prompt":"主体缓慢向前行走，稳定镜头","params":{"duration":5},"first_frame":"user_attachment","first_frame_attachment_id":"REPLACE_OWNED_IMAGE_ARTIFACT_ID"}}}
+```
+
+未指定模型时的 check_plan({plan:下列草稿}) 形状（先替换真实素材、提示词、张数与时长；Plan 完成输出是 image/images/video，不是 Job 回执）：
+<!-- blueprint-default-plan:0 -->
+```json
+{"title":"演示创作","goal":"演示创作","nodes":[{"id":"video","tool":"animate_shot","model_id":null,"inputs":{"first_frame_artifact_id":{"artifact":"REPLACE_OWNED_IMAGE_ARTIFACT_ID"},"prompt":"主体缓慢向前行走，稳定镜头"},"params":{"duration":5},"origin":{"agent":"producer","skills":[]},"rationale":"根据实际需求决定路线，不直接执行示例"}],"deliverables":[{"kind":"video","node_id":"video","output":"video"}]}
+```
+
+先生成一张首帧再生视频（演示）：
+<!-- blueprint-params-example:1 -->
+```json
+{"plan":{"recipe":"single_clip","title":"演示创作","rationale":"根据实际需求决定路线，不直接执行示例","image":{"mode":"t2i","model_id":"REPLACE_DEFAULT_IMAGE_MODEL_ID","prompt":"保持主体身份，柔光下的干净构图","reference_attachment_ids":[],"params":{},"n":1},"video":{"model_id":"REPLACE_ALLOWED_VIDEO_MODEL_ID","prompt":"主体缓慢向前行走，稳定镜头","params":{"duration":5},"first_frame":"generated_image"}}}
+```
+
+未指定模型时的 check_plan({plan:下列草稿}) 形状（先替换真实素材、提示词、张数与时长；Plan 完成输出是 image/images/video，不是 Job 回执）：
+<!-- blueprint-default-plan:1 -->
+```json
+{"title":"演示创作","goal":"演示创作","nodes":[{"id":"image","tool":"generate_image","model_id":null,"inputs":{"mode":"t2i","prompt":"保持主体身份，柔光下的干净构图","reference_artifact_ids":[]},"params":{"n":1},"origin":{"agent":"producer","skills":[]},"rationale":"根据实际需求决定路线，不直接执行示例"},{"id":"video","tool":"animate_shot","model_id":null,"inputs":{"first_frame_artifact_id":{"ref":"image.image"},"prompt":"主体缓慢向前行走，稳定镜头"},"params":{"duration":5},"origin":{"agent":"producer","skills":[]},"rationale":"根据实际需求决定路线，不直接执行示例"}],"deliverables":[{"kind":"video","node_id":"video","output":"video"}]}
+```
+
+instantiate_blueprint 只构建并保存草稿，同时返回 issues、estimates、workspace_ref，不调用生成模型。无 issues、费用与已确认需求及预算一致时，Producer 直接 submit_plan({plan_ref:workspace_ref})；无需再读同份草稿或重复 check_plan，Director 返回 plan_ref。提交内部仍会编译及隔离 dry-run，通过后仅进入用户审核，不授予生产许可。
+
+失败或修改后按具体问题修订再校验。禁止输入估价、manifest、plan_version、quote、许可或伪造 origin.blueprint；预算不足不擅自缩短明确时长或放宽指定系列，按既有澄清流程处理。

@@ -26,10 +26,23 @@ blueprint:
 
 plan.target_duration_sec 与 shots[].duration_sec 的总和匹配需求/容差，每个生成秒数符合模型能力。场景/角色/beat 引用和镜头顺序必须有效。默认 compress_output=false；builder 输出有序拼接、probe、QC、打包链，不能声称 QC 已验证艺术质量。
 
-## Blueprint 参数
+## Blueprint 参数摘要（V9c）
 
-先调用 read_skill_resource 读取 resources/params.schema.json（与当前 builder 相同的作者输入 Schema），再读 resources/examples.json。load_skill 不返回 frontmatter，因此不能省略资源读取后猜字段。仅 Producer/Director 可调用 instantiate_blueprint；其他角色只提供对应资料，Skill 不增加工具权限。
+正文包含最小完整参数和演示 JSON。已覆盖所需结构时直接使用，不再为形式重复读取 resources/params.schema.json / resources/examples.json；未覆盖字段、复杂嵌套或具体字段错误才按需深读。仍以实际 Schema、编译结果和用户硬约束为准；Skill 不增加工具权限。
 
-示例全部是演示数据，模型 ID、素材 ID、时长和参数不是服务端配置；必须换成当前工具返回的真实 ID 和合法参数。无模型要求时先用通用 PlanDraft 的 model_id=null 经 check_plan 解析默认，再填写 Blueprint 必需的具体 ID；不得猜测默认。示例的占位工件不能用于编译/审批证据。
+演示数据：REPLACE_* 必须换成本 Run 真实工件及已核验模型 ID；示例秒数、角色和构图不代表用户要求、模型上限、价格或批准。未指定模型时从 check_plan 的 model_id=null 草稿取得 resolved_models，再填写要求具体 ID 的 Blueprint；不能从目录排序猜默认。显式系列/禁用约束须覆盖全部视频节点，不能自行换系列。
 
-instantiate_blueprint 只构建/保存草稿，无模型调用或生成费。返回 issues 后有针对性地修改；最终编译、dry-run、服务端报价和用户批准才决定可执行性。禁止输入估价、manifest、plan_version、quote、许可，或伪造 origin.blueprint 收据。
+- params={plan,story,goal?,compress_output?}；compress_output 默认 false。
+- plan 必填 title/target_duration_sec/scenes/shots。scene 必填 scene_id/location/time_of_day/summary；shot 必填 shot_id/scene_id/order/summary/framing/duration_sec/transition_in/first_frame/motion，并关联真实 beat_ids/character_ids。
+- story 是 StoryPackage：story.story 含 logline/synopsis/acts/beats，另含 characters/style；角色声明身份锁定与 reference；style 必填 visual_style/palette/lighting/camera_language/prompt_prefix。下例为完整最小结构。
+- first_frame.method=generate 需 image_mode/model_id/prompt；motion 含 model_id/prompt/params，时长取 shot.duration_sec。tail_frame 不填图像模型/引用；首尾帧、多参考、未覆盖可选字段或复杂嵌套按需读取完整 Schema 和对应示例。
+
+同场景尾帧串行承接（演示）：
+<!-- blueprint-params-example:0 -->
+```json
+{"plan":{"title":"演示：寻找星光","target_duration_sec":10.0,"scenes":[{"scene_id":"forest","location":"森林","time_of_day":"夜晚","summary":"寻找星光"}],"shots":[{"shot_id":"s01","scene_id":"forest","order":1,"beat_ids":["b1"],"character_ids":["hero"],"summary":"走入森林","framing":"中景","duration_sec":5.0,"transition_in":"start","first_frame":{"method":"generate","image_mode":"i2i","model_id":"REPLACE_DEFAULT_IMAGE_MODEL_ID","prompt":"参考角色位于月光森林入口，蓝发白衣和圆形肩章保持一致"},"motion":{"mode":"i2v","model_id":"REPLACE_ALLOWED_VIDEO_MODEL_ID","prompt":"主角缓慢走入森林，平稳跟拍","params":{"duration":5}},"rationale":"建立主角与场景"},{"shot_id":"s02","scene_id":"forest","order":2,"beat_ids":["b1"],"character_ids":["hero"],"summary":"发现星光","framing":"近景","duration_sec":5.0,"transition_in":"tail_frame","first_frame":{"method":"tail_frame"},"motion":{"mode":"i2v","model_id":"REPLACE_ALLOWED_VIDEO_MODEL_ID","prompt":"主角转头望向树后的星光，镜头轻推","params":{"duration":5}},"rationale":"动作承接或有意切换景别"}]},"story":{"story":{"logline":"小岚寻找星光","synopsis":"小岚走进森林并发现树后的星光。","acts":[{"act_id":"a1","title":"发现","summary":"寻找并发现星光"}],"beats":[{"beat_id":"b1","act_id":"a1","summary":"走进森林发现星光","duration_sec":10,"character_ids":["hero"],"location":"森林","emotion":"好奇"}]},"characters":[{"character_id":"hero","name":"小岚","role":"主角","lock_description":"蓝发白衣，圆形肩章","personality":"好奇而坚定","reference":{"source":"generate","artifact_ids":[],"generate_prompt":"蓝发白衣主角的正面定妆，圆形肩章，干净背景"}}],"style":{"visual_style":"二维动画","palette":"蓝绿","lighting":"柔和月光","camera_language":"平稳跟拍","prompt_prefix":"统一二维动画风格"}},"compress_output":false}
+```
+
+instantiate_blueprint 只构建并保存草稿，同时返回 issues、estimates、workspace_ref，不调用生成模型。无 issues、费用与已确认需求及预算一致时，Producer 直接 submit_plan({plan_ref:workspace_ref})；无需再读同份草稿或重复 check_plan，Director 返回 plan_ref。提交内部仍会编译及隔离 dry-run，通过后仅进入用户审核，不授予生产许可。
+
+失败或修改后按具体问题修订再校验。禁止输入估价、manifest、plan_version、quote、许可或伪造 origin.blueprint；预算不足不擅自缩短明确时长或放宽指定系列，按既有澄清流程处理。

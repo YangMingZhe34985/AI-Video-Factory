@@ -26,10 +26,23 @@ Wan3 的估价按服务端媒体检查得到的输入视频 I 和完整输出 G�
 
 该 Blueprint 产出单个 transform_video 节点及视频交付；不承诺尚未测过的质量、音画保真或任意格式支持。
 
-## Blueprint 参数
+## Blueprint 参数摘要（V9c）
 
-先调用 read_skill_resource 读取 resources/params.schema.json（与当前 builder 相同的作者输入 Schema），再读 resources/examples.json。load_skill 不返回 frontmatter，因此不能省略资源读取后猜字段。仅 Producer/Director 可调用 instantiate_blueprint；其他角色只提供对应资料，Skill 不增加工具权限。
+正文包含最小完整参数和演示 JSON。已覆盖所需结构时直接使用，不再为形式重复读取 resources/params.schema.json / resources/examples.json；未覆盖字段、复杂嵌套或具体字段错误才按需深读。仍以实际 Schema、编译结果和用户硬约束为准；Skill 不增加工具权限。
 
-示例全部是演示数据，模型 ID、素材 ID、时长和参数不是服务端配置；必须换成当前工具返回的真实 ID 和合法参数。无模型要求时先用通用 PlanDraft 的 model_id=null 经 check_plan 解析默认，再填写 Blueprint 必需的具体 ID；不得猜测默认。示例的占位工件不能用于编译/审批证据。
+演示数据：REPLACE_* 必须换成本 Run 真实工件及已核验模型 ID；示例秒数、角色和构图不代表用户要求、模型上限、价格或批准。未指定模型时从 check_plan 的 model_id=null 草稿取得 resolved_models，再填写要求具体 ID 的 Blueprint；不能从目录排序猜默认。显式系列/禁用约束须覆盖全部视频节点，不能自行换系列。
 
-instantiate_blueprint 只构建/保存草稿，无模型调用或生成费。返回 issues 后有针对性地修改；最终编译、dry-run、服务端报价和用户批准才决定可执行性。禁止输入估价、manifest、plan_version、quote、许可，或伪造 origin.blueprint 收据。
+- params={plan,goal?}；plan 必填 operation/title/model_id/prompt/media/rationale，recipe 省略即 video_transform；可选 params={}、assumptions=[]。
+- operation=reference/edit/extend；media 为1–20项 {type,artifact_id}，type=reference_image/reference_video/reference_audio/file；仅用真实受控的当前 Run 工件。
+- edit/extend 必填 source_artifact_id 且指向 media 中唯一主视频；reference 不填主视频。params.duration 是完整输出 G，输入 I 由服务器测量；model_id 不放 params。
+- title 1–200、prompt 1–8000、rationale 1–1000字符；goal 可省略。下例覆盖 reference；编辑/延长或组合媒体不确定时按需读取完整 Schema 和对应示例。
+
+reference：I+G 费用由服务器计算（演示）：
+<!-- blueprint-params-example:0 -->
+```json
+{"plan":{"operation":"reference","title":"演示原生视频变换","model_id":"REPLACE_ALLOWED_TRANSFORM_MODEL_ID","prompt":"按原素材角色与风格延续场景","params":{"duration":10},"media":[{"type":"reference_image","artifact_id":"REPLACE_OWNED_IMAGE_ARTIFACT_ID"}],"rationale":"能力、输入与完整输出时长需服务器验证"}}
+```
+
+instantiate_blueprint 只构建并保存草稿，同时返回 issues、estimates、workspace_ref，不调用生成模型。无 issues、费用与已确认需求及预算一致时，Producer 直接 submit_plan({plan_ref:workspace_ref})；无需再读同份草稿或重复 check_plan，Director 返回 plan_ref。提交内部仍会编译及隔离 dry-run，通过后仅进入用户审核，不授予生产许可。
+
+失败或修改后按具体问题修订再校验。禁止输入估价、manifest、plan_version、quote、许可或伪造 origin.blueprint；预算不足不擅自缩短明确时长或放宽指定系列，按既有澄清流程处理。
