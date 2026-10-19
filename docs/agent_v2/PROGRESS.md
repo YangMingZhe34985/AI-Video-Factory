@@ -790,3 +790,40 @@ V6提交2681f1c已快进合入本地feat/agent-v2，未推送；当前从该基�
 3. AGENT_V3_ENABLED仍默认false。真实LLM自主规划、视觉一致性/首尾帧质量、真实单价、MySQL迁移与并发、600秒墙钟含人工等待的取舍仍未验收。不得据Mock全绿直接打开付费生产或宣称Gate完成。
 4. 本轮仅本地提交/合并，无远程推送、无PR；V8尚未开始，需要在V-Gate3后按用户指令推进。
 需要用户决定：本轮无新增；后续真实测试须遵循用户当轮授权，不沿用历史授权自动调用。
+
+
+## 2026-10-19 · Claude · V-Gate3 评审与真实 LLM 评测（含 V-Gate1/2）
+状态：**有条件通过**，分支 `agent-v3/V-Gate3`，已合入本地 `feat/agent-v2`；未推送。V7 美化尚未做。
+评审范围：V1–V7 代码、D-032 – D-037、Producer/Director 提示词与四个关键 Skill（本该在 V-Gate1/2 做的审定一并完成）。
+代码评审要点：
+- 生成类工具对 Agent 不可见：`ToolSpec` 构造时断言，Registry 导出时再过滤，两处都有。v3 只通过批准后的 Plan IR 执行；check、dry-run、批准回执、补丁审阅链路与契约一致。
+- Producer / Director 提示词方向正确（简单任务不委派、不猜默认模型、外部内容当数据），但信息密度高、前置读取多；按真实评测结果做了修订并审定。
+真实评测（D-030；详见 `docs/agent_v3/VGATE3_EVAL.md`，脚本在 `backend/scripts/v3_eval/`）：
+- 范围：6 个用例（证件照改图、8 秒单镜头、两分钟拟人长片、模糊需求、三选一再做动画、模型约束），并在 v2 上用同一模型做对照。
+- 用量：v3 共 15 个 Run，234 次 LLM/视觉调用，约 672 万输入 token、26 万输出 token；v2 共 14 次调用。**图片生成 0 次，视频生成 0 次**：评测进程替换了视频适配器，所有计划都没有批准执行。演示价合计 v3 117.8 credits、v2 14 credits，实际人民币费用未估算。
+- 结论：
+  - 简单任务全部由 Producer 独立完成，没有委派；多图理解只调用一次。
+  - 模糊需求先提问；模型约束得到遵守。
+  - 两分钟长片在第 5 次运行时由 Producer → Director 产出 27 节点计划：定妆图与关键帧都设预览门，10 镜头 i2v 合计正好 120 秒，含拼接、质检、打包；规划 8.9 credits，用时 311 秒。
+  - 与 v2 相比：简单任务 v2 更快（少 20–40 秒、少约 7 轮调用）；复杂任务和非模板任务 v3 明显更强。
+修复（D-038，契约 V.2.1 / V.3 / V.6.1 / V.13 已同步）：
+1. 计价：`deepseek-v4.1-flash` / `qwen3.7-plus` 增加演示 token 单价（0.01 / 0.02 每千 token），只在价格仍为出厂默认时回填，运营者改过的价格不动；v2 按次估价不变。（`model_service.py`）
+2. 工具拒绝对 Agent 返回清洗后的字段级 `errors`（不含提交值），工作区 Schema 错误与 finish 契约错误带上具体字段。（`agents/runtime.py`、`schemas.py`、`tools.py`）
+3. 编译器节点问题写明原因与可选模型，例如“请求 2 张参考图，模型最多 1 张”。（`plans/compiler.py`、`agent/model_selection.py`）
+4. `check_plan` 对 Agent 只返回 issues / estimates / experimental / resolved_models / order；计划版本持久化的检查结果保持完整。（`plans/tools.py`）
+5. 上限只累计 Agent 自身回合的活跃时间，不再包含等待用户和子 Agent 的时间；新增 `AGENT_V3_DELEGATION_ACTIVE_SEC`（默认 600，已写入 `.env.example`）。此前用户超过 10 分钟才回答问题，Producer 会立即停止。（`runtime.py`、`config.py`）
+6. 审定并修订：Producer / Director 提示词（工作效率、先写草稿再检查、预算冲突时退回、显式划拨额度），`delegation-policy`（此前与 Producer 冲突：简单任务应由 Producer 直接规划）、`long-form-video`（补充生成方式取舍表、衔接与预览门），以及 `intent-analysis`、`character-consistency`。
+新增与调整的测试：字段错误不回显提交值、等待用户不计活跃时间、活跃时间上限、token 计价回填与运营者价格保护；三项依赖“每次 1 credit”的测试改为显式固定或调低额度；审定标记测试改为断言“已由 Claude 审定”；场景测试改用 `resolved_models`。
+测试：
+- Codex 交付代码基线全量：2098 项中 2096 通过，失败的 2 项是审定标记测试（我中途修改了 Skill 文件，旧断言读到了新文件），在交付代码上本应通过。
+- 最终代码全量：**2101 passed**（50 分 45 秒；原 2098 项加新增 3 项；PYTHONPATH 提供 pypdf，FFMPEG_BINARY 指向本机 FFmpeg 7.1）
+- 前端 129 项通过，`npm run build` 通过。
+留给 Codex（PLAN V9a – V9e，之后由我做 V-Gate4 复跑评测）：
+- V9a 选择门：Plan IR 不能表达“从多个预览候选中选一个”（c5 中动画固定引用第 1 张海报，Agent 已在 rationale 中如实说明）。需要契约先行（DECISIONS → CONTRACTS）。
+- V9b 上下文管理：加载过的 Skill 和资源永久留在历史中，长片单轮输入最高约 11 万 token、单轮 30–40 秒。
+- V9c 简单任务开销：约 9 轮调用，主要是读取 Blueprint 资源。
+- V9d 死节点检测：c3 计划中有一张没有被下游引用的双人设定图。
+- V9e 多参考图默认选型：默认图片模型只支持 1 张参考图，多人同框需要能接受多张参考图的模型。
+- 复跑评测：`python backend/scripts/v3_eval/eval_v3.py all`；`EVAL_V2=1` 跑 v2 对照。需要按 D-030 记录调用量。
+未验证：真实图片和视频生成质量、角色视觉一致性、MySQL 上 v3 迁移与并发、V7 界面美化。
+需要用户决定：无新增。

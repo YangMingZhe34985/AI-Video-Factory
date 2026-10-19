@@ -252,3 +252,20 @@ retry_shot 允许服务端识别的 blocked 子镜头恢复本地尾帧提取：
 - 页面按公开 Run/steps/patch-quote 契约呈现协作树、时间线、规划/总/修复额度、通用 Plan stages、关键帧/镜头节点、审核门、具体 Patch 前后差异与产物。所有估价标注演示，未知费用不显示为免费。
 - 所有 v3 动作使用稳定 request_key；网络重试复用同key，版本/动作内容变化生成新key。Patch scope改变、Run切换或版本变化立即清旧报价；只能批准当前服务端报价与人工准入结果，only保留风险需要明确勾选。
 - 手机布局只做必要功能适配；如共用布局需调整，使用Agent Studio选择的响应式选项，不替换经典页面风格。视觉美化仍归Claude。本轮浏览器使用拦截API的Mock场景，后端权限/恢复由隔离回归单独验证，不进行任何真实模型调用。
+
+## D-038 · 2026-10-19 · V-Gate3 真实评测后的运行时与目录修订
+- 原因：V-Gate3 首次用真实 LLM（D-030：`deepseek-v4.1-flash` 加 `qwen3.7-plus`）评测 v3。简单任务表现良好，但两分钟长片前四次运行都失败，暴露出五个 Mock 测不出的问题：
+  1. 默认模型按次计价 1 credit，每轮约 2–10 万 token 的长上下文也只算 1 次，20 额度只够约 20 轮；
+  2. 运行时把所有工具拒绝替换成笼统一句，Agent 看不到字段级错误，只能盲改，导致循环；
+  3. 编译器的问题文本丢失原因（例如参考图数量超限、可选模型），规划无法收敛；
+  4. `check_plan` 回显整份计划与 DAG，单次 5–7 万字符，加剧上下文膨胀；
+  5. 墙钟上限从委派开始累计，包含等待用户和等待子 Agent 的时间，而且硬编码为 600 秒。
+- 决定：
+  1. 目录给 `deepseek-v4.1-flash`、`qwen3.7-plus` 增加演示 token 单价（0.01 / 0.02 credits 每千 token），只在价格仍为出厂默认时回填，运营者改过的价格不动；v2 的按次估价不变。
+  2. 工具拒绝返回 `code`、`message`、清洗后的 `errors`（字段位置、原因、类型，不含提交值）及少量安全字段；工作区 Schema 错误与 finish 契约错误带上具体字段。
+  3. 编译器节点问题在 message 中追加字段位置、能力原因（例如“请求 2 张参考图，模型最多 1 张”）与可选模型。
+  4. `check_plan` 对 Agent 只返回 `issues`、`estimates`、`experimental`、`resolved_models`、`order`；计划版本中持久化的检查结果保持完整。
+  5. 上限改为只累计 Agent 自身回合的活跃时间，新增配置 `AGENT_V3_DELEGATION_ACTIVE_SEC`（默认 600）。
+- 审定：Producer / Director 提示词及 `intent-analysis`、`delegation-policy`、`long-form-video`、`character-consistency` 已由 Claude 审定。修订内容：委派按需；长片生成方式取舍表；先写草稿再检查；预算冲突时退回；显式划拨规划额度。
+- 影响：契约 V.2.1、V.3、V.6.1、V.13；V-Gate3 之后的 Codex 修订任务见 PLAN。
+

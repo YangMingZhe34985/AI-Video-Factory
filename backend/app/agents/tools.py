@@ -253,7 +253,8 @@ def _finish(data, ctx):
         if delegation.agent == "producer" and data.outcome == "plan_submitted":
             required = required | {"plan_ref"}
         if fields != required:
-            raise AppError("INVALID_AGENT_OUTPUT", "Completed output does not match this Agent's contract", 422)
+            raise AppError("INVALID_AGENT_OUTPUT", "Completed output does not match this Agent's contract", 422,
+                           payload={"field": sorted(fields), "allowed": sorted(required)})
         if delegation.agent == "producer" and data.outcome == "plan_submitted":
             submission = (_run.snapshot or {}).get("v3_plan_submission", {})
             from app.agent.plan_versions import require_current_version

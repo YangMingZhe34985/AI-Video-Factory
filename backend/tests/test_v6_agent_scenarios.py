@@ -75,10 +75,9 @@ def test_single_clip_uses_default_or_literal_family_and_explicit_seconds(app_ctx
         scenario.step("producer", [call("check_plan", {"plan": unresolved})])
         resolved = scenario.output("producer", "check_plan")
         assert resolved["issues"] == [], resolved["issues"]
-        resolved_nodes = {item["id"]: item for item in resolved["plan"]["nodes"]}
-        model = resolved_nodes["video"]["model_id"]
+        model = resolved["resolved_models"]["video"]
         selected_plan = clip_plan(model, duration)
-        selected_plan["image"]["model_id"] = resolved_nodes["image"]["model_id"]
+        selected_plan["image"]["model_id"] = resolved["resolved_models"]["image"]
     assert model in {entry["model_id"] for entry in catalog}
     ref = scenario.blueprint("producer", "single-clip", {"plan": selected_plan})
     version = scenario.submit(ref)

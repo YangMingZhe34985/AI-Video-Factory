@@ -183,6 +183,7 @@ def validate_payload(kind, payload):
             value = model.model_validate(value).model_dump(mode="json")
         except ValidationError as error:
             raise AppError("INVALID_WORKSPACE_PAYLOAD", "Workspace entry does not match its kind", 422,
-                           payload={"kind": kind}) from error
+                           payload={"kind": kind, "errors": error.errors(
+                               include_url=False, include_context=False, include_input=False)}) from error
     # Defaults can enlarge the normalized entry; enforce the bound again.
     return finite_json(value)

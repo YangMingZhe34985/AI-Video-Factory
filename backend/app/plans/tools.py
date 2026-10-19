@@ -88,9 +88,25 @@ def public_check(compiled):
     return {name: deepcopy(compiled[name]) for name in ("plan", "issues", "estimates", "experimental", "dag")}
 
 
+def agent_check(compiled):
+    """Compact check_plan result for Agents (V.2.1: issues, estimate, experimental).
+
+    Echoing the whole normalized plan and DAG doubled every planning turn's
+    context (~50–70k characters per call in V-Gate3 real runs). The caller
+    already holds its draft; it only needs issues, cost and resolved defaults.
+    Persisted version checks keep the full public_check projection.
+    """
+    plan = compiled.get("plan") or {}
+    return {"issues": deepcopy(compiled["issues"]), "estimates": deepcopy(compiled["estimates"]),
+            "experimental": compiled["experimental"],
+            "resolved_models": {node["id"]: node.get("model_id") for node in plan.get("nodes", [])
+                                if node.get("model_id")},
+            "order": list((compiled.get("dag") or {}).get("order", []))}
+
+
 def check_plan(data, ctx):
     run, _delegation = require_context(ctx)
-    return public_check(compile_plan(data.plan, run))
+    return agent_check(compile_plan(data.plan, run))
 
 
 def instantiate_blueprint(data, ctx):

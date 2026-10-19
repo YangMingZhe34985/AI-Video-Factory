@@ -71,7 +71,7 @@ V1 新工具接口精化（D-032）：
 | `capture_reference_page` | 已有 | |
 | `list_models` | **新**（只读） | 按 mode / family 过滤，返回能力、参数、单价，标注“已接入 / 未实测” |
 | `estimate_cost` | **新**（只读） | 对节点或计划片段估价，与编译器同一算法 |
-| `check_plan` | **新**（只读） | 调用计划编译器，返回 issues、估价、`experimental` 标记，不保存 |
+| `check_plan` | **新**（只读） | 调用计划编译器，只返回 `issues`、`estimates`、`experimental`、`resolved_models`（节点→服务器解析的模型）、`order`，不回显计划、不保存（D-038） |
 | `list_skills` / `load_skill` / `read_skill_resource` | **新** | V.4 |
 | `instantiate_blueprint` | **新** | V.4.2 |
 | `list_agents` / `delegate` / `ask_user` | **新** | V.6 |
@@ -98,7 +98,7 @@ agent_chat(role, messages, tools: list[function_schema], *, ctx, max_tool_calls=
 - 模型解析（D-032）：`AGENT_<ROLE>_MODEL → AGENT_PLANNER_MODEL → AGENT_V3_DEFAULT_TEXT_MODEL`；最后一项默认 `deepseek-v4.1-flash`，显式置空才回退 `DEFAULT_PROMPT_REWRITE_MODEL`。vision 对应 `AGENT_V3_DEFAULT_VISION_MODEL`（默认 `qwen3.7-plus`）。v2解析与经典默认不变。
 - `qwen_chat` 适配器增加 `tools`、`tool_choice`，并解析 `tool_calls`（包括一次返回多个调用的情况）。参数 JSON 解析失败时返回结构化错误给 Agent 自我纠正，最多纠正 2 次，然后终止该 Agent 循环。
 - 回合错误（D-032）：返回可选 `tool_call_errors:[{index,id?,name?,code,message,arguments}]`；任一错误使整轮工具请求不可执行。一次 `agent_chat` 只请求一次；纠错 helper 为下一step构建受控错误消息，最多两次修正，V3负责实际循环。已完成错误响应也持久化并结算，恢复不重复请求。
-- **计费**：按 usage × 模型目录 `pricing.credits_per_1k_tokens`（新增可选字段；缺失时回退到原按次估价）。调用前先按 `max_tokens` 预估占用预算，调用后按实际 usage 结算。`credits_per_1k_tokens` 为非负有限标量，输入/输出同价；预留包括保守输入估计和输出max_tokens。缺失/无效usage不能当0退款；异常实际费超过预留时记录实际费并停止后续执行（D-032）。
+- **计费**：按 usage × 模型目录 `pricing.credits_per_1k_tokens`（新增可选字段；缺失时回退到原按次估价）。调用前先按 `max_tokens` 预估占用预算，调用后按实际 usage 结算。`credits_per_1k_tokens` 为非负有限标量，输入/输出同价；预留包括保守输入估计和输出max_tokens。缺失/无效usage不能当0退款；异常实际费超过预留时记录实际费并停止后续执行（D-032）。v3 默认文本/视觉模型的目录带演示 token 单价（D-038）。
 - **多图调用**（D-032）：`analyze_images`在预留时冻结模型、消息、参数及价格，一次调用内不重新解析角色配置或单价；Mock使用独立`vision`脚本身份与服务端step，避免复用调用方的函数调用响应。
 - **Mock**：`ScriptedLLM`。测试按 `(agent, step)` 预设返回值：文本或 tool_calls 序列。脚本耗尽时报错，**不得**静默返回空。`MODEL_ADAPTER_MODE=mock` 时 v3 的所有 LLM 都走脚本；没有脚本的 Agent 使用内置的最小“直接完成”脚本，供端到端 Mock 演示，并标注为示例结果。
 
@@ -180,7 +180,7 @@ run_agent(card, task, context_refs, delegation) :
 ```
 
 - `finish` 是每个 Agent 都有的工具，参数为该 Agent 的输出契约（V.6.3），经 Schema 校验后结束循环。
-- **上限**（任一触发都停止，返回 `status=limit` 和已有的部分结果）：`max_steps`、`max_llm_calls`、委派额度、Run 规划额度、单次委派墙钟时间（默认 10 分钟）。
+- **上限**（任一触发都停止，返回 `status=limit` 和已有的部分结果）：`max_steps`、`max_llm_calls`、委派额度、Run 规划额度、单次委派的**活跃时间**（只累计本 Agent 回合，不含等待用户与子 Agent；`AGENT_V3_DELEGATION_ACTIVE_SEC`，默认 600 秒，D-038）。工具拒绝向 Agent 返回清洗后的字段级 `errors`（不含提交值）。
 - **循环检测**：同一工具、同样参数连续 3 次，或连续 5 轮没有新的工作区写入、委派或 finish，就注入一条“请换一种方式或结束”的系统消息；再次触发则停止。
 - **持久化**：每个委派是一个 LangGraph 子图实例，每轮都写 checkpoint。工具结果靠 Registry 账本回放，恢复时不重复执行。worker 只运行一个 v3 Run 的一个就绪步骤，然后让出（沿用现有 tick 模型）。
 
@@ -353,6 +353,7 @@ PlanPatch
 | `AGENT_V3_PREVIEW_MAX_CREDITS` | 3 | V.11 |
 | `AGENT_V3_MAX_VIDEO_SECONDS` | 600 | V.8 |
 | `AGENT_V3_MAX_DELEGATION_DEPTH` | 3 | V.6.2 |
+| `AGENT_V3_DELEGATION_ACTIVE_SEC` | 600 | V.6.1（D-038） |
 | `AGENT_PRODUCER_MODEL` / `AGENT_RESEARCH_MODEL` / … / `AGENT_REPAIR_MODEL` | 空 | 回退链见 V.3 |
 
 ---

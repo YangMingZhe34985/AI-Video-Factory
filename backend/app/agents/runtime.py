@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import time
 from copy import deepcopy
 
 from flask import current_app
@@ -129,6 +130,31 @@ def _stop(delegation, status, code):
         if child.status not in TERMINAL:
             _stop(child, "cancelled", "PARENT_STOPPED")
     db.session.commit()
+
+
+AGENT_ERROR_DETAIL_KEYS = ("kind", "issues", "plan_issues", "targets", "field", "allowed")
+
+
+def agent_error(error):
+    """Tool rejection the model can act on (V-Gate3).
+
+    A bare code made real models retry schema errors blindly until the loop
+    guard stopped them. Field locations and validator messages are returned;
+    submitted values (``input``) and URLs are stripped, and sizes are bounded.
+    """
+    result = {"code": error.code, "message": str(error.message)[:400],
+              "hint": "Fix the listed fields and retry once, or finish with partial results."}
+    payload = error.payload if isinstance(error.payload, dict) else {}
+    errors = payload.get("errors")
+    if isinstance(errors, list):
+        result["errors"] = [{"loc": [str(part) for part in item.get("loc", ())][:8],
+                             "msg": str(item.get("msg", ""))[:200], "type": str(item.get("type", ""))[:60]}
+                            for item in errors[:12] if isinstance(item, dict)]
+    for key in AGENT_ERROR_DETAIL_KEYS:
+        if key in payload:
+            value = json.dumps(payload[key], ensure_ascii=False, default=str)
+            result[key] = json.loads(value) if len(value) <= 2000 else value[:2000]
+    return result
 
 
 def _loop_check(delegation, state):
@@ -311,10 +337,14 @@ def _round(delegation_id, expected_step, registry):
     state = deepcopy(delegation.state or {})
     step = delegation.steps
     pending = state.get("pending_turn")
+    turn_started = time.monotonic()
     if not pending:
         prior_turn = ToolInvocation.query.filter_by(idempotency_key=f"{run.run_id}:{delegation.id}:{step}").first()
-        elapsed = (utc_now() - as_utc(delegation.started_at)).total_seconds()
-        if prior_turn is None and (step >= card.limits.max_steps or delegation.llm_calls >= card.limits.max_llm_calls or elapsed >= 600):
+        # Only this Agent's own turns count (V-Gate3): time spent waiting for a
+        # user answer or for child delegations is not runaway execution.
+        active = float(state.get("active_seconds", 0.0))
+        limit = float(current_app.config.get("AGENT_V3_DELEGATION_ACTIVE_SEC", 600))
+        if prior_turn is None and (step >= card.limits.max_steps or delegation.llm_calls >= card.limits.max_llm_calls or active >= limit):
             _stop(delegation, "limit", "AGENT_EXECUTION_LIMIT")
             return result()
         if "messages" not in state:
@@ -387,10 +417,11 @@ def _round(delegation_id, expected_step, registry):
             if error.code in {"RECOVERY_REQUIRED", "BUDGET_SETTLEMENT_EXCEEDED"}:
                 _stop(delegation, "failed", error.code)
                 return result()
-            output = {"error": {"code": error.code, "message": "Tool request was rejected; correct the request or finish."}}
+            output = {"error": agent_error(error)}
             succeeded = False
         except (ValueError, TypeError) as error:
-            output = {"error": {"code": "INVALID_AGENT_OUTPUT", "message": "Output failed its typed contract."}}
+            output = {"error": {"code": "INVALID_AGENT_OUTPUT", "message": "Output failed its typed contract.",
+                                "detail": str(error)[:300]}}
             succeeded = False
         # A coordination handler may update the persisted state itself.
         external_state = deepcopy(delegation.state or {})
@@ -425,6 +456,7 @@ def _round(delegation_id, expected_step, registry):
             break
     state.pop("pending_turn", None)
     state["no_progress"] = 0 if pending["progress"] else state.get("no_progress", 0) + 1
+    state["active_seconds"] = round(float(state.get("active_seconds", 0.0)) + time.monotonic() - turn_started, 3)
     delegation.steps += 1
     if delegation.status not in TERMINAL and delegation.status != "awaiting_input":
         children = AgentDelegation.query.filter_by(run_id=run.run_id, parent_id=delegation.id).all()

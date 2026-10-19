@@ -448,6 +448,18 @@ for _seed in DEFAULT_MODELS:
                 "input_plus_output_seconds_max": 30},
             notes="演示 credits，非供应商报价；按分辨率及输入视频秒数+输出秒数估算。Prime为能力对齐的高速版，画质未实测。当前Agent只接入图片参考；视频/音频/file/link/编辑延长不自动启用，首尾画质未实测。")
 
+# v3 agent turns settle by token usage (CONTRACTS V.3). A flat per-call price
+# made one long-context turn cost as much as a second of video and exhausted
+# the 20-credit planning allowance after ~20 turns (V-Gate3 real evaluation).
+# Demo rates only; only the D-030 default text/vision models get them.
+FACTORY_CALL_PRICING = {"unit": "call", "credits_per_unit": 1.0}
+V3_TOKEN_RATES = {"deepseek-v4.1-flash": 0.01, "qwen3.7-plus": 0.02}
+for _seed in DEFAULT_MODELS:
+    if _seed["model_id"] in V3_TOKEN_RATES and _seed["capabilities"].get("pricing") == FACTORY_CALL_PRICING:
+        _seed["capabilities"]["pricing"] = {**FACTORY_CALL_PRICING,
+                                            "credits_per_1k_tokens": V3_TOKEN_RATES[_seed["model_id"]]}
+
+
 # Recognize only the previous factory capability profile when upgrading existing
 # rows. Preserve operator pricing, agent selection, limits and custom mode lists.
 WAN3_LEGACY_CAPABILITIES = {item["model_id"]: deepcopy(item["capabilities"])
@@ -533,6 +545,11 @@ class ModelService:
                 # Backfill legacy rows, but never overwrite operator pricing/selection.
                 if not existing.capabilities:
                     existing.capabilities = deepcopy(data["capabilities"])
+                    changed = True
+                caps = existing.capabilities or {}
+                if (existing.model_id in V3_TOKEN_RATES and caps.get("pricing") == FACTORY_CALL_PRICING):
+                    # Untouched factory price only; operator edits are preserved.
+                    existing.capabilities = {**deepcopy(caps), "pricing": deepcopy(data["capabilities"]["pricing"])}
                     changed = True
                 legacy = WAN3_LEGACY_CAPABILITIES.get(existing.model_id)
                 caps = existing.capabilities or {}

@@ -56,7 +56,7 @@ def test_repository_library_has_twenty_guides_and_six_implemented_blueprints():
     assert {skill["name"] for skill in result.list_skills() if skill["blueprint"]} == {
         "image-edit", "image-create", "single-clip", "story-video", "video-remix", "video-transform"}
     for name in ("intent-analysis", "delegation-policy", "long-form-video", "character-consistency"):
-        assert "待 Claude 审定" in result.load_skill(name)["body"]
+        assert "已由 Claude 审定" in result.load_skill(name)["body"]
     assert "演示数据" in result.read_skill_resource("budget-planning", "resources/duration-and-cost.md")["content"]
 
 
