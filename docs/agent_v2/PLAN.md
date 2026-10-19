@@ -146,7 +146,7 @@
 | V9d | 死节点检测：不通往交付物的付费节点给出编译问题 | Codex | V-Gate3 | 完成（正式分支72项通过；未消费付费节点阻止提交） |
 | V9e | 多参考图默认选型：多人同框镜头自动引导到支持多参考的模型 | Codex | V-Gate3 | 完成（29项定向、V9集成后端全量2218项通过；本地合并未推送） |
 | V-Gate4 | V9 评审与真实评测复跑（`backend/scripts/v3_eval`） | Claude | V9a–V9e | 进行中：V9 代码边界已看过；依据 V10 报告完成 |
-| V10a | 真实评测复跑（D-030）：`v3_eval all` 一次，c3、c5 各再跑 2 次；按 PROGRESS“V10 测试任务”的量化目标对照 VGATE3_EVAL | Codex | V9a–V9e | 待开始 |
+| V10a | 真实评测复跑（D-030）：`v3_eval all` 一次，c3、c5 各再跑 2 次；按 PROGRESS“V10 测试任务”的量化目标对照 VGATE3_EVAL | Codex | V9a–V9e | 测试完成；长片审核 3/3、选择门 3/3；简单轮次、长片 token 与角色参考部分未达，详见 V10 报告 |
 | V10b | 混合执行测试：真实 LLM 规划 + Mock 媒体执行（零生成费用），端到端覆盖批准、预览门、选择门、生产、内容失败→Repair→Director Patch、用户修订、交付、worker 中断恢复 | Codex | V9a–V9e | 待开始 |
 | V10c | MySQL 迁移与并发验证（一次性独立 Docker 容器，绝不连接 .env 中的数据库） | Codex | 用户已批准（2026-10-19） | 待开始 |
 | V10-Report | `docs/agent_v3/V10_TEST_REPORT.md`：逐项指标、失败根因、调用量与费用 | Codex | V10a V10b | 待开始 |

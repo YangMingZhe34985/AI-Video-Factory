@@ -1,14 +1,14 @@
-"""V-Gate3 real-LLM evaluation of Agent v3 planning (D-030).
+"""V10 real-LLM evaluation of Agent v3 planning (D-030).
 
 Isolation and spend guards:
-- dotenv auto-loading is disabled; only DashScope credentials/URLs are read from the
-  root .env (never printed). Everything else is set explicitly here.
+- dotenv auto-loading is disabled; only allowlisted DashScope credential lines
+  can be read (never printed). Database/Redis values are never parsed.
 - temp SQLite + storage; MQ off; auth off (owner "local").
 - every video adapter's submit() raises: video generation is impossible in this process.
-- image generation is capped process-wide (IMAGE_CAP); plans are never approved.
+- all image/video generation is blocked; durable HTTP reservations cap the whole round at 800.
 Usage (conda video-factory; PDF tests need pypdf on PYTHONPATH):
   python backend/scripts/v3_eval/eval_v3.py <case_id> [...] | all   (EVAL_V2=1 for the v2 baseline)
-Results land in %TEMP%/cinecrew_v3_eval/results (or cinecrew_v2_eval). Real calls follow D-030.
+Results land in EVAL_WORK_DIR/results (default %TEMP%/cinecrew-v10). Real calls follow D-030.
 """
 import json
 import os
@@ -20,21 +20,16 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 BACKEND = ROOT / "backend"
-WORK = Path(tempfile.gettempdir()) / ("cinecrew_v2_eval" if os.environ.get("EVAL_V2") else "cinecrew_v3_eval")
+WORK = Path(os.environ.get("EVAL_WORK_DIR") or (Path(tempfile.gettempdir()) / "cinecrew-v10"))
 WORK.mkdir(parents=True, exist_ok=True)
 HERE = WORK / "results"
 HERE.mkdir(exist_ok=True)
-IMAGE_CAP = int(os.environ.get("EVAL_IMAGE_CAP", "4"))
-TEXT_MODEL, VISION_MODEL = "deepseek-v4.1-flash", "qwen3.7-plus"
+from safety import configure_environment, install_guards
+from metrics import delegation_tree, history_issues, issue_codes, plan_metrics, summarize_turns
 
-import dotenv  # noqa: E402
-secrets = dotenv.dotenv_values(ROOT / ".env")
-dotenv.load_dotenv = lambda *a, **k: False  # nothing else from .env may leak in
+TEXT_MODEL, VISION_MODEL = "deepseek-v4.1-flash", "qwen3.7-plus"
+configure_environment(ROOT, WORK)
 os.environ.update({
-    "DASHSCOPE_API_KEY": secrets.get("DASHSCOPE_API_KEY") or "",
-    "DASHSCOPE_API_BASE_URL": secrets.get("DASHSCOPE_API_BASE_URL") or "https://dashscope.aliyuncs.com/api/v1",
-    "DASHSCOPE_OPENAI_BASE_URL": secrets.get("DASHSCOPE_OPENAI_BASE_URL") or "https://dashscope.aliyuncs.com/compatible-mode/v1",
-    "DEEPSEEK_API_KEY": "", "OPENAI_API_KEY": "",
     "DATABASE_URL": f"sqlite:///{(WORK / 'eval.db').as_posix()}",
     "STORAGE_ROOT": str(WORK / "storage"), "UPLOAD_FOLDER": str(WORK / "storage" / "uploads"),
     "MODEL_ADAPTER_MODE": "real", "MQ_ENABLED": "false", "JOB_QUEUE_ENABLED": "true",
@@ -50,37 +45,14 @@ os.environ.update({
     "AGENT_CHECKPOINT_PATH": str(WORK / "checkpoints.sqlite"), "AGENT_POLL_INTERVAL_SEC": "0.2",
     "FAILURE_AGENT_ENABLED": "false", "VIDEO_COMPRESSION_ENABLED": "false",
 })
-assert os.environ["DASHSCOPE_API_KEY"], "DASHSCOPE_API_KEY missing in root .env"
+assert os.environ["DASHSCOPE_API_KEY"], "DASHSCOPE_API_KEY missing"
 sys.path.insert(0, str(BACKEND))
 os.chdir(BACKEND)
 
 from app import create_app  # noqa: E402
 
+METER = install_guards(WORK)
 app = create_app("development")
-
-# ---- spend guards -------------------------------------------------------
-from app.adapters import dashscope_i2v, dashscope_r2v, dashscope_t2v, dashscope_wan3  # noqa: E402
-
-
-def _blocked(self, payload):
-    raise RuntimeError("VIDEO GENERATION BLOCKED IN V-GATE3 EVAL (D-030)")
-
-
-for cls in (dashscope_i2v.DashScopeI2VAdapter, dashscope_r2v.DashScopeR2VFlashAdapter,
-            dashscope_t2v.DashScopeT2VAdapter, dashscope_wan3.DashScopeWan3Adapter):
-    cls.submit = _blocked
-
-from app.adapters import dashscope_image, dashscope_qwen_image  # noqa: E402
-IMAGE_CALLS = []
-for cls in (dashscope_image.DashScopeImageAdapter, dashscope_qwen_image.DashScopeQwenImageAdapter):
-    original = cls.submit
-
-    def guarded(self, payload, _original=original, _name=cls.__name__):
-        if len(IMAGE_CALLS) >= IMAGE_CAP:
-            raise RuntimeError("IMAGE CAP REACHED IN V-GATE3 EVAL")
-        IMAGE_CALLS.append(_name)
-        return _original(self, payload)
-    cls.submit = guarded
 
 # ---- cases --------------------------------------------------------------
 CASES = {
@@ -115,6 +87,7 @@ def make_portrait(path):
 
 def run_case(client, worker, case_id, case):
     started, notes = time.time(), []
+    METER.set_label(case_id)
     attachment_ids = []
     for name in case.get("attach", []):
         path = WORK / name
@@ -128,13 +101,18 @@ def run_case(client, worker, case_id, case):
                                                    "attachment_ids": attachment_ids, "request_key": uuid.uuid4().hex})
     assert response.status_code in (200, 201, 202), response.json
     run_id = response.json["data"]["run_id"]
+    METER.set_label(f"{case_id}:{run_id}")
+    print(json.dumps({"event": "created", "case": case_id, "run_id": run_id}), flush=True)
+    (HERE / f"active_{case_id}.json").write_text(json.dumps({"run_id": run_id, "started": started}), encoding="utf-8")
     answered = 0
     for _ in range(400):
-        worker.tick()
+        worker.advance(run_id)
         from app.extensions import db
         db.session.remove()
         view = client.get(f"/api/agent/runs/{run_id}").json["data"]
         status = view["status"]
+        print(json.dumps({"event": "tick", "case": case_id, "status": status,
+                          "elapsed_sec": round(time.time() - started, 1)}), flush=True)
         if status == "awaiting_input" and case_id != "c4_vague" and answered < 1 and view.get("pending_card"):
             card = view["pending_card"]
             notes.append({"question_card": [q.get("text") for q in card.get("questions", [])]})
@@ -169,9 +147,14 @@ def collect(client, run_id, case_id, case, elapsed, notes):
               "duration": (n.get("params") or {}).get("duration"), "gate": n.get("gate"),
               "deps": n.get("depends_on"), "prompt": str((n.get("inputs") or {}).get("prompt", ""))[:160]}
              for n in plan.get("nodes", [])]
+    metrics = summarize_turns(ledger)
+    metrics.update(history_issues([row.state or {} for row in delegations]))
     return {
         "case": case_id, "purpose": case["purpose"], "run_id": run_id, "status": view["status"],
         "elapsed_sec": round(elapsed, 1), "notes": notes,
+        "metrics": metrics, "delegation_tree": delegation_tree(delegations),
+        "plan_metrics": plan_metrics(plan), "full_plan": plan,
+        "final_compile_issue_codes": issue_codes(view.get("plan_issues")),
         "pending_questions": [q.get("text") for q in ((view.get("pending_card") or {}).get("questions") or [])],
         "delegations": [{"id": d.id, "parent": d.parent_id, "agent": d.agent, "status": d.status, "depth": d.depth,
                          "llm_calls": d.llm_calls, "steps": d.steps, "credits_limit": d.credits_limit,
@@ -196,17 +179,22 @@ def main(ids):
     from app.agent.graph_v2 import build_graph as build_graph_v2
     from app.agent.worker import AgentWorker
     with app.app_context():
-        app.test_cli_runner().invoke(args=["init-db"])
+        initialized = app.test_cli_runner().invoke(args=["init-db"])
+        assert initialized.exit_code == 0, initialized.output
         app.config["FAILURE_AGENT_ENABLED"] = False
         app.config["AGENT_WORKER_ACTIVE"] = True
         client = app.test_client()
         with SqliteSaver.from_conn_string(os.environ["AGENT_CHECKPOINT_PATH"]) as saver:
             worker = AgentWorker(build_graph(saver), build_graph_v2(saver), v3_saver=saver)
             for case_id in ids:
+                if METER.snapshot()["real_calls"] >= METER.snapshot()["call_limit"]:
+                    print(json.dumps({"event": "stopped", "reason": "V10_CALL_LIMIT", "safety": METER.snapshot()}), flush=True)
+                    break
                 result = run_case(client, worker, case_id, CASES[case_id])
-                result["image_generation_calls_so_far"] = len(IMAGE_CALLS)
-                out = HERE / (f"v2_result_{case_id}.json" if os.environ.get("EVAL_V2") else f"result_{case_id}.json")
+                result["safety"] = METER.snapshot()
+                out = HERE / f"result_{case_id}_{result['run_id']}.json"
                 out.write_text(json.dumps(result, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
+                (HERE / f"result_{case_id}.json").write_text(out.read_text(encoding="utf-8"), encoding="utf-8")
                 print(json.dumps({k: result[k] for k in ("case", "status", "elapsed_sec", "spent_total")}, ensure_ascii=False), flush=True)
 
 
