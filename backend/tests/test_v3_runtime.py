@@ -250,13 +250,24 @@ def test_card_limits_stop_before_another_llm_submission(env, monkeypatch, field)
     assert len(llm.calls) == 1
 
 
-def test_delegation_wallclock_limit(env):
+def test_delegation_active_time_limit(env):
     _app, run, root = env
-    root.started_at = utc_now() - timedelta(minutes=11)
+    root.state = {**(root.state or {}), "active_seconds": 601.0}
     db.session.commit()
     llm = script(env, {"producer": [done()]})
     drain(run)
     assert root.status == "limit" and not llm.calls
+
+
+def test_waiting_for_user_or_children_does_not_consume_active_time(env):
+    """V-Gate3: an answer given 30 minutes later must not stop the Producer."""
+    _app, run, root = env
+    root.started_at = utc_now() - timedelta(minutes=30)
+    db.session.commit()
+    llm = script(env, {"producer": [done()]})
+    drain(run)
+    assert run.status == "success" and len(llm.calls) == 1
+    assert 0 <= root.state["active_seconds"] < 60
 
 
 @pytest.mark.parametrize("turn", ["still thinking", [call("list_agents", {})]])
@@ -271,7 +282,8 @@ def test_loop_warning_then_stops(env, turn):
 
 def test_planning_budget_stops_paid_turn_before_submission(env):
     _app, run, root = env
-    root.credits_limit = 0.5
+    # Below any reservation, per-call or per-token (default models settle by tokens).
+    root.credits_limit = 0.001
     db.session.commit()
     llm = script(env, {"producer": [done()]})
     drain(run)
@@ -420,3 +432,17 @@ def test_cancel_stops_all_children_and_preserves_action_receipts(env):
     assert run.status == "cancelled"
     assert all(row.status == "cancelled" for row in AgentDelegation.query.all())
     assert run.snapshot["v3_action_receipts"]["request"]["command_id"] == "c"
+
+
+def test_tool_rejections_show_field_errors_without_echoing_values(env):
+    """V-Gate3: real models retried schema errors blindly when only a code was returned."""
+    _app, run, root = env
+    bad = {"key": "brief", "kind": "brief", "payload": {
+        "deliverable": "image", "summary": "cat", "confidence": "SECRET_VALUE_SHOULD_NOT_ECHO"}}
+    script(env, {"producer": [[call("write_workspace", bad)], done()]})
+    drain(run)
+    rejection = next(message["content"] for message in root.state["messages"]
+                     if message.get("role") == "tool" and message.get("name") == "write_workspace")
+    assert "INVALID_WORKSPACE_PAYLOAD" in rejection
+    assert '"loc": ["confidence"]' in rejection
+    assert "SECRET_VALUE_SHOULD_NOT_ECHO" not in rejection

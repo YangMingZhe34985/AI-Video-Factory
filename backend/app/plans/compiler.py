@@ -346,6 +346,31 @@ def _provenance(plan, run):
     return False
 
 
+def _issue_message(error):
+    """Actionable node issue text (V-Gate3): real planners could not converge on
+    bare "cannot execute" / "does not match" messages. Field locations, catalog
+    reasons and allowed models are appended; submitted values are never echoed."""
+    base = getattr(error, "message", "Node input or output does not match the executable contract")
+    details = []
+    if isinstance(error, ValidationError):
+        details = [f"{'.'.join(str(part) for part in item.get('loc', ()))}: {item.get('msg', '')}"
+                   for item in error.errors(include_url=False, include_context=False, include_input=False)[:6]]
+    elif isinstance(error, AppError):
+        payload = error.payload if isinstance(error.payload, dict) else {}
+        raw = payload.get("errors") or []
+        for item in raw[:6]:
+            if isinstance(item, dict):
+                details.append(f"{'.'.join(str(part) for part in item.get('loc', ()))}: {item.get('msg', '')}")
+            elif item and str(item) not in base:
+                details.append(str(item))
+        if payload.get("allowed_model_ids"):
+            details.append("allowed models: " + ", ".join(map(str, payload["allowed_model_ids"][:8])))
+    elif isinstance(error, KeyError):
+        details = [f"missing key {error}"]
+    text = base + (" — " + "; ".join(details) if details else "")
+    return text[:600]
+
+
 def compile_plan(raw, run, *, registry=None, plan_version=1):
     """Compile without writes, launches, LLM calls or any authority mutation."""
     with db.session.no_autoflush:
@@ -442,7 +467,7 @@ def _compile(raw, run, *, registry, plan_version):
             validated[node_id], outputs[node_id] = payload, output
             estimates.append(estimate)
         except (AppError, ValidationError, KeyError, TypeError, ValueError) as error:
-            issue(getattr(error, "code", "INVALID_NODE_INPUT"), getattr(error, "message", "Node input or output does not match the executable contract"), node_id)
+            issue(getattr(error, "code", "INVALID_NODE_INPUT"), _issue_message(error), node_id)
     ancestors = {}
     for node_id in dag["order"]:
         ancestors[node_id] = set(dependencies[node_id]).union(*(ancestors.get(source, set()) for source in dependencies[node_id]))

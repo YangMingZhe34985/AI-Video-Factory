@@ -120,6 +120,6 @@ def test_pending_human_audits_are_not_claimed_complete(app_ctx):
     catalog = get_catalog()
     library = get_skill_library()
     for role in ("producer", "director"):
-        assert "待 Claude 审定" in catalog.prompts[role]
+        assert "已由 Claude 审定" in catalog.prompts[role]
     for name in ("intent-analysis", "delegation-policy", "long-form-video", "character-consistency"):
-        assert "待 Claude 审定" in library.load_skill(name)["body"]
+        assert "已由 Claude 审定" in library.load_skill(name)["body"]

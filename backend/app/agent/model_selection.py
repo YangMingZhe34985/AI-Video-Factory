@@ -153,10 +153,11 @@ def validate_generation_model(model, mode, params=None, reference_count=0):
         errors.append("agent prompt extension is not available with reference images")
     maximum = (capabilities.get("reference_images") or {}).get("max", 0)
     if reference_count > maximum or (mode in {"i2i", "i2v", "r2v"} and reference_count < 1):
-        errors.append("reference image count is not supported")
+        errors.append(f"reference image count is not supported (requested {reference_count}, model max {maximum})")
     if mode in {"t2i", "t2v"} and reference_count:
         errors.append("text-only generation does not accept reference images")
     if errors:
-        raise AppError("MODEL_CAPABILITY_MISMATCH", f"Model {model.model_id} cannot execute this step", 422,
+        raise AppError("MODEL_CAPABILITY_MISMATCH",
+                       f"Model {model.model_id} cannot execute this step: {'; '.join(errors)}", 422,
                        payload={"errors": errors, "mode": mode})
     return effective

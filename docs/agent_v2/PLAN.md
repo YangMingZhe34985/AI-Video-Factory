@@ -131,14 +131,20 @@
 |---|---|---|---|---|
 | V0 | v3 契约、决策、协作规则修订 | Claude | — | 完成 |
 | V1 | 工具层：更名与垫片、ToolSpec/Context 扩展、函数调用导出、`agent_chat`、qwen_chat tools、ScriptedLLM、`analyze_images`、`list_models`/`estimate_cost` | Codex | V0 | 完成（后端全量1505项、前端64项与构建通过；D-032，见PROGRESS） |
-| V2 | Skill 库：加载器、`list_skills`/`load_skill`/`read_skill_resource`、首批 Skill | Codex（Claude 审定关键 Skill） | V1 | Codex 实现及 Mock 回归完成（20 项 Skill）；关键 Skill 待 Claude 审定 |
+| V2 | Skill 库：加载器、`list_skills`/`load_skill`/`read_skill_resource`、首批 Skill | Codex（Claude 审定关键 Skill） | V1 | 完成（关键 Skill 已由 Claude 审定，V-Gate3） |
 | V3 | Agent 运行时：卡片/目录、循环、委派、提问、工作区、上限、步骤记录、v3 图骨架 | Codex | V1 | 完成（后端全量 1732 项、前端 64 项与构建通过；D-033，见 PROGRESS） |
-| V-Gate1 | V1–V3 评审 | Claude | V1–V3 | 待开始 |
+| V-Gate1 | V1–V3 评审 | Claude | V1–V3 | 并入 V-Gate3 完成 |
 | V4 | Plan IR：编译器、dry-run、通用运行时、预览门、六个 Blueprint、审核动作 | Codex | V2 V3 | 完成（D-034；后端1906项、前端64项与构建通过；Gate待Claude） |
 | V5 | Plan Patch：Repair、Director 审阅、增量报价、低风险自动授权 | Codex | V4 | 完成（D-035；后端2000项、前端64项与构建通过；Gate待Claude） |
-| V-Gate2 | V4–V5 评审 | Claude | V4 V5 | 待开始 |
-| V6 | Agent 上线：七个 Agent 的卡片与提示词、委派策略 | Codex（Claude 审定 Producer/Director/委派策略） | V-Gate2 | Codex实现与Mock回归完成（D-036；后端2098项；真实评测、策略审定及Gate待Claude） |
-| V7 | 界面：协作时间线、通用计划视图、规划额度、Patch 审批 | Codex（功能），Claude（美化） | V6（接口） | 功能完成（D-037；前端129项/构建、18组浏览器Mock、后端API26项通过；美化与Gate待Claude） |
-| V-Gate3 | 评审 + 真实 LLM 评测 + v2 对照 | Claude | V6 V7 | 待开始 |
+| V-Gate2 | V4–V5 评审 | Claude | V4 V5 | 并入 V-Gate3 完成 |
+| V6 | Agent 上线：七个 Agent 的卡片与提示词、委派策略 | Codex（Claude 审定 Producer/Director/委派策略） | V-Gate2 | 完成（Producer/Director 提示词与委派策略已由 Claude 审定；真实评测见 VGATE3_EVAL） |
+| V7 | 界面：协作时间线、通用计划视图、规划额度、Patch 审批 | Codex（功能），Claude（美化） | V6（接口） | 功能完成；美化待 Claude |
+| V-Gate3 | 评审 + 真实 LLM 评测 + v2 对照 | Claude | V6 V7 | 有条件通过（D-038；真实评测与 v2 对照见 docs/agent_v3/VGATE3_EVAL.md；后续问题 V9a–V9e） |
+| V9a | 选择门：用户从多个预览候选中选一个，下游引用所选结果（契约先行） | Codex | V-Gate3 | 待开始 |
+| V9b | 上下文管理：裁剪/压缩旧工具结果或精简作者手册，降低长片单轮 token | Codex | V-Gate3 | 待开始 |
+| V9c | 简单任务开销：Blueprint 参数摘要进 Skill 正文，减少资源读取轮次 | Codex | V-Gate3 | 待开始 |
+| V9d | 死节点检测：不通往交付物的付费节点给出编译问题 | Codex | V-Gate3 | 待开始 |
+| V9e | 多参考图默认选型：多人同框镜头自动引导到支持多参考的模型 | Codex | V-Gate3 | 待开始 |
+| V-Gate4 | V9 评审与真实评测复跑（`backend/scripts/v3_eval`） | Claude | V9a–V9e | 待开始 |
 | V8 | 经典路径：生产意图、系列 + 模板、`run_workflow_template`（契约开工前补写） | Codex | V-Gate3 | 待开始 |
 

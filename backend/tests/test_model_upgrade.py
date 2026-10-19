@@ -31,6 +31,22 @@ def test_new_seeds_preserve_old_records_and_operator_prices(app_ctx):
     updated = ModelService.get_model("wan2.7-i2v").to_dict()
     assert all(old[key] == updated[key] for key in ("default_params", "parameter_schema", "capabilities", "adapter_name"))
 
+def test_v3_default_models_get_token_pricing_without_overriding_operator_prices(app_ctx):
+    chat, vision = ModelService.get_model("deepseek-v4.1-flash"), ModelService.get_model("qwen3.7-plus")
+    assert chat.capabilities["pricing"] == {"unit": "call", "credits_per_unit": 1.0, "credits_per_1k_tokens": 0.01}
+    assert vision.capabilities["pricing"]["credits_per_1k_tokens"] == 0.02
+    # v2 per-call estimates are unchanged by the extra key.
+    assert estimate_model_cost(chat, {}) == 1.0
+    # An upgraded database with the old factory price is backfilled ...
+    chat.capabilities = {**chat.capabilities, "pricing": {"unit": "call", "credits_per_unit": 1.0}}
+    # ... but an operator-edited price is never touched.
+    vision.capabilities = {**vision.capabilities, "pricing": {"unit": "call", "credits_per_unit": 4.0}}
+    db.session.commit()
+    ModelService.seed_defaults()
+    db.session.commit()
+    assert chat.capabilities["pricing"]["credits_per_1k_tokens"] == 0.01
+    assert vision.capabilities["pricing"] == {"unit": "call", "credits_per_unit": 4.0}
+
 @pytest.mark.parametrize("mode,task", [("t2v", "text_to_video"), ("i2v", "image_to_video"), ("r2v", "reference_to_video")])
 def test_unified_wan_modes_in_guard_api_and_both_agents(app_ctx, client, mode, task):
     video = ModelService.get_model("wan3.0-video")

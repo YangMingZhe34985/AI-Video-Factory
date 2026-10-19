@@ -218,6 +218,9 @@ def test_multi_image_freezes_model_and_price_during_request(app_ctx, monkeypatch
 def test_multi_image_dispatched_failures_keep_cost_and_never_repeat(app_ctx, monkeypatch, case):
     ids = [image_attachment().artifact_id]
     row = make_run(ids)
+    model = ModelService.get_model("qwen3.7-plus")  # this test pins per-call pricing
+    model.capabilities = {**model.capabilities, "pricing": {"unit": "call", "credits_per_unit": 1}}
+    db.session.commit()
     app_ctx.config.update(MODEL_ADAPTER_MODE="real", DASHSCOPE_API_KEY="stub-only")
     calls = []
 
