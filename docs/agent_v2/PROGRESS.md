@@ -960,3 +960,12 @@ Codex 的 2218 项全量回归与前端 134 项记录完整。真实效果待 V1
 边界：并发覆盖两个不同 Run，不涵盖同 Run 抢占、Redis/MQ 或压力测试；checkpoint 使用独立内存 saver，MySQL 验证针对应用持久化表，不声称 MySQL 存储 LangGraph checkpoint。未读取真实 .env/MySQL/Redis，私人未跟踪技术笔记保留。
 下一步：完成 V10_TEST_REPORT、逐项达标/未达根因与累计调用核算，更新看板，交给 Claude V-Gate4。
 
+## 2026-10-19 · Codex · V10-Report 完成，交给 Claude V-Gate4
+状态：V10a/V10b/V10c 与报告均完成；测试任务完成不等于全部量化目标通过。各阶段按任务分支本地验证合并：V10a f1e4eb8、V10b 2170c5e、V10c d3ab5f5；本条与 V10_TEST_REPORT.md 随 agent-v3/V10-Report 提交合入 feat/agent-v2。不推送、不开 PR、不进入 V8，V7 美化未改动。
+已达成：c1/c2/c6 均不委派并进入审核；c2 六轮达标。c3 三次均进入审核、规划均低于20 credits、最终无付费死节点；c4 只提问；c5 三次选择结构正确，B 验证显式选第二张/改第三张与旧批准失效。B 六个控制流场景通过（完整交付、两种Repair→Director分支、审核B局部修订、选择/改选、已结算窗口强杀恢复）。C 四项真实 MySQL 8.4.4 测试通过，临时容器和数据卷已删除。
+未达及根因：c1/c6 各8轮，brief/模型/重复节点纠错超过六轮目标；c3 峰值69481/64185/82588，软字符投影仍保留长计划参数、错误与目录，均超过60k token；第二份长片子Agent参数JSON持续错误且出现8000输出token截断迹象，Producer兜底省掉多人关键帧，仅一个身份参考，故多角色结构2/3。c5 单prompt n=3未保证逐张三风格；自动修复弱化“猫跳舞”意图；第三镜Patch来源标签repair与Director实际流程不一致。报告逐项记录中间失败和证据，不以最终编译通过代替语义验收。
+最终用量：187次 deepseek-v4.1-flash + 1次 qwen3.7-plus，共188/800；真实输入4843479、输出226490 token，真实调用演示credits50.72617。B Mock媒体356+C Mock媒体2=358，合计演示账本408.72617；迁移夹具历史1.25排除，不是真实货币账单。真实图片/视频/HappyHorse调用均0，缺失usage/未知HTTP/越界尝试均0。
+回归：V10a护栏与指标25项；V10b计时/修复/执行集成154项；后补局部范围守卫33项及重跑混合脚本12项合计45项；V10c离线护栏5项，均通过。没有把重复12项算新增；未将V9的2218项旧全量结果冒充本轮复验。仅两处D-038计时实现修复，无提示词/Skill/契约调整。
+证据与边界：docs/agent_v3/V10_TEST_REPORT.md；TEMP/cinecrew-v10-20261019 为A/B原始账本、HTTP审计、逐Run归档；TEMP/cinecrew-v10c-run-01 为MySQL/清理证据。强杀只覆盖成功回执已提交而checkpoint未推进，未验证HTTP在途结算；活跃时间未提交区间可能丢失。MySQL是不同Run双线程与内存checkpoint，非同Run多worker压力测试；未验Redis/MQ吞吐、真实媒体质量与身份一致性。scope守卫在真实修订后加入，原结果经独立事后范围审计通过、守卫经离线回归，不声称已付费重跑。
+交给Claude：完成V-Gate4，优先判定长片身份输入语义退化、自动修复意图保真、结构化参数/输出截断与上下文开销，并审查计时修复；结合报告决定后续修复任务。所有真实测试均已结束，无新增调用安排。用户未跟踪的AI_Video_Factory_Technical_Notes_CN.md保留；真实.env/MySQL/Redis未修改或连接；没有新的用户决策阻塞。
+
