@@ -330,6 +330,29 @@ def complete_committed_turn(run, delegation):
 
 def _round(delegation_id, expected_step, registry):
     delegation = db.session.get(AgentDelegation, delegation_id)
+    if (delegation.steps > expected_step or delegation.status in TERMINAL
+            or delegation.status == "awaiting_input"):
+        return _execute_round(delegation_id, expected_step, registry)
+    started = time.monotonic()
+    interrupted = True
+    try:
+        output = _execute_round(delegation_id, expected_step, registry)
+        interrupted = False
+        return output
+    finally:
+        elapsed = max(0.0, time.monotonic() - started)
+        if interrupted:
+            # Do not publish an unfinished local mutation while recording time.
+            db.session.rollback()
+        delegation = db.session.get(AgentDelegation, delegation_id)
+        state = deepcopy(delegation.state or {})
+        state["active_seconds"] = round(float(state.get("active_seconds", 0.0)) + elapsed, 3)
+        delegation.state = state
+        db.session.commit()
+
+
+def _execute_round(delegation_id, expected_step, registry):
+    delegation = db.session.get(AgentDelegation, delegation_id)
     run = AgentRun.query.filter_by(run_id=delegation.run_id).one()
     def result():
         return {"delegation_id": delegation.id, "completed_steps": delegation.steps, "status": delegation.status}
@@ -349,7 +372,6 @@ def _round(delegation_id, expected_step, registry):
     state = deepcopy(delegation.state or {})
     step = delegation.steps
     pending = state.get("pending_turn")
-    turn_started = time.monotonic()
     if not pending:
         prior_turn = ToolInvocation.query.filter_by(idempotency_key=f"{run.run_id}:{delegation.id}:{step}").first()
         # Only this Agent's own turns count (V-Gate3): time spent waiting for a
@@ -468,7 +490,6 @@ def _round(delegation_id, expected_step, registry):
             break
     state.pop("pending_turn", None)
     state["no_progress"] = 0 if pending["progress"] else state.get("no_progress", 0) + 1
-    state["active_seconds"] = round(float(state.get("active_seconds", 0.0)) + time.monotonic() - turn_started, 3)
     delegation.steps += 1
     if delegation.status not in TERMINAL and delegation.status != "awaiting_input":
         children = AgentDelegation.query.filter_by(run_id=run.run_id, parent_id=delegation.id).all()

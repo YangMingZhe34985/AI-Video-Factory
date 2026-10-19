@@ -1,13 +1,14 @@
 """Durable, bounded Repair/Director coordination outside creative planning."""
 from copy import deepcopy
 
+from flask import current_app
+
 from app.agent.plan_versions import _lock_run, inputs_hash, require_current_version
 from app.agents.budget import TERMINAL
 from app.api import AppError
 from app.extensions import db
 from app.models import AgentDelegation, AgentWorkspaceItem, PlanNodeTask
 from app.utils.ids import new_id
-from app.utils.time_utils import as_utc, utc_now
 
 ALLOWED_FAILURES = {"content_policy", "invalid_parameters", "qc_failed"}
 
@@ -203,8 +204,10 @@ def _delegate(run, flow, registry, *, review):
     from app.agents.runtime import _context, _recover_local_receipt
     root = _root(run)
     card = get_catalog().cards["producer"]
+    active = float((root.state or {}).get("active_seconds", 0.0))
+    limit = float(current_app.config.get("AGENT_V3_DELEGATION_ACTIVE_SEC", 600))
     if (root.steps >= card.limits.max_steps or root.llm_calls >= card.limits.max_llm_calls
-            or (utc_now() - as_utc(root.started_at)).total_seconds() >= 600):
+            or active >= limit):
         return _finish_flow(run, flow, stage="stopped", code="AGENT_EXECUTION_LIMIT")
     role = "director" if review else flow["author_role"]
     phase = "review" if review else "author"

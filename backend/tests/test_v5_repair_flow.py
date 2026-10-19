@@ -1,6 +1,5 @@
 """Offline Agent collaboration and repair side-effect recovery."""
 from copy import deepcopy
-from datetime import timedelta
 from dataclasses import replace
 
 import pytest
@@ -12,7 +11,6 @@ from app.extensions import db
 from app.models import AgentDelegation, AgentPlanVersion, AgentWorkspaceItem, PlanNodeTask, ToolInvocation
 from app.plans import runtime as execution
 from app.tools.scripted_llm import ScriptedLLM
-from app.utils.time_utils import utc_now
 from tests.test_v4_execution import setup, image_node
 from tests.test_v3_runtime import call, done
 
@@ -197,7 +195,7 @@ def test_revision_after_ended_checkpoint_runs_same_producer_new_epoch(app_ctx):
 
 def test_revision_does_not_reset_timeout_or_hard_constraints(app_ctx):
     run, root, _task, registry = failure()
-    root.started_at = utc_now() - timedelta(seconds=601)
+    root.state = {**(root.state or {}), "active_seconds": 601.0}
     db.session.commit()
     assert repair_flow.advance_repair_flow(run, registry)
     assert repair_flow.advance_repair_flow(run, registry)
@@ -274,7 +272,7 @@ def test_patch_proposal_rejects_foreign_evidence_before_creating_receipt(app_ctx
 
 def test_retained_failure_lineage_does_not_trigger_second_repair(app_ctx):
     run, root, task, registry = failure()
-    root.started_at = utc_now() - timedelta(seconds=601)
+    root.state = {**(root.state or {}), "active_seconds": 601.0}
     db.session.commit()
     assert repair_flow.advance_repair_flow(run, registry)
     assert repair_flow.advance_repair_flow(run, registry)
