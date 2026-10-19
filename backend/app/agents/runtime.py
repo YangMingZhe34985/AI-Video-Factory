@@ -553,7 +553,7 @@ def _approval_rejected(run, command, error, admitted_status):
             "PLAN_VERSION_CONFLICT", "PATCH_SUPERSEDED", "PATCH_REJECTED",
             "PATCH_ALREADY_APPLIED", "PATCH_REVIEW_REQUIRED", "INVALID_PATCH_EVIDENCE",
             "PATCH_BASE_NOT_APPROVED", "MODEL_PRICE_CHANGED", "PLAN_INPUT_CHANGED",
-            "INVALID_EXECUTION_PLAN", "INVALID_GATE"}:
+            "INVALID_EXECUTION_PLAN", "INVALID_GATE", "INVALID_CHOICE", "CHOICE_CHANGED"}:
         raise error
     # No execution belongs in this exception boundary. Unknown submissions and
     # unexpected failures retain their original command for explicit recovery.
@@ -610,7 +610,8 @@ def advance(run, saver=None):
                 if action == "approve_plan":
                     execution_runtime.begin(run, command["plan_version"], command.get("repair_budget_credits", 0), registry=registry)
                 elif action == "approve_gate":
-                    execution_runtime.approve_gate(run, command["plan_version"], command["gate_node_id"])
+                    execution_runtime.approve_gate(run, command["plan_version"], command["gate_node_id"],
+                        selected_artifact_id=command.get("selected_artifact_id"), choice_digest=command.get("choice_digest"))
                 else:
                     execution_runtime.approve_results(run, command["plan_version"])
             except AppError as error:

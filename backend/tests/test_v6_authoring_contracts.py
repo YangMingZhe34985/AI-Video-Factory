@@ -110,8 +110,10 @@ def test_plan_tool_resources_match_private_resolved_inputs_and_named_completion_
     assert resource["io_types"] == spec.io_types
     authoring = resource["authoring"]
     assert set(authoring["plan_node_fields"]) == ({"model_id", "params"} if name in GENERATION_TOOLS else set())
-    assert set(authoring["server_injected_fields"]) == ({"plan_version"} if name in VERSION_TOOLS else set())
-    assert set(authoring["forbidden_input_fields"]) == {"model_id", "params", "template_id", "plan_version"}
+    injected = {"plan_version"} if name in VERSION_TOOLS else {"selected_artifact_id"} if name == "select_image" else set()
+    assert set(authoring["server_injected_fields"]) == injected
+    forbidden = {"model_id", "params", "template_id", "plan_version"} | ({"selected_artifact_id"} if name == "select_image" else set())
+    assert set(authoring["forbidden_input_fields"]) == forbidden
     for field in authoring["forbidden_input_fields"]:
         with pytest.raises(AppError) as misplaced:
             node_inputs({"tool": name, "inputs": {field: None}})

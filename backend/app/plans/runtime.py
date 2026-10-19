@@ -321,6 +321,10 @@ def advance(run, registry=None):
         try:
             if any(not execution.usable(run, tasks[dep]) for dep in dag["dependencies"].get(node_id, [])):
                 raise AppError("PLAN_INPUT_CHANGED", "A predecessor output changed before use", 409)
+            if node.get("gate") == "choice" and node_id not in receipt.get("approved_gates", []):
+                from app.plans.choices import prepare
+                prepare(run, version, node, task, tasks)
+                continue
             if not task.state.get("resolved"):
                 outputs = {key: value.output for key, value in tasks.items() if value.status == "success"}
                 data, sources, digest = execution.resolve_node(run, node, version.version, outputs, registry)
@@ -330,7 +334,7 @@ def advance(run, registry=None):
                 task.inputs, task.inputs_hash = data, digest
                 task.state = {**task.state, "resolved": True, "input_fingerprints": sources}
                 db.session.commit()
-            existing = None if task.state.get("force_execute") else execution.reusable(run, task)
+            existing = None if task.state.get("force_execute") or node["tool"] == "select_image" else execution.reusable(run, task)
             if existing:
                 execution.reuse(task, existing)
                 continue
@@ -341,6 +345,8 @@ def advance(run, registry=None):
         return _update(run, status="attention").status
     gates = [key for key, node in nodes.items() if node.get("gate") == "preview" and tasks[key].status == "success"
              and key not in receipt.get("approved_gates", [])]
+    gates.extend(key for key, node in nodes.items() if node.get("gate") == "choice" and tasks[key].status == "pending"
+                 and tasks[key].state.get("choice_pending") and key not in receipt.get("approved_gates", []))
     if not gates and all(item.status == "success" for item in tasks.values()):
         return _update(run, status="awaiting_result_review").status
     status = "awaiting_gate" if gates else "delivering" if any(item.status == "running" and nodes[key]["tool"] in TERMINAL_TOOLS
@@ -348,10 +354,15 @@ def advance(run, registry=None):
     return _update(run, status=status).status
 
 
-def approve_gate(run, version, gate_node_id):
+def approve_gate(run, version, gate_node_id, *, selected_artifact_id=None, choice_digest=None):
     version = versions.require_current_version(run, version)
     receipt = _frozen(run, version)
     node = next((item for item in version.plan["nodes"] if item["id"] == gate_node_id), None)
+    if node and node.get("gate") == "choice":
+        from app.plans.choices import approve
+        return approve(run, version.version, gate_node_id, selected_artifact_id, choice_digest)
+    if selected_artifact_id is not None or choice_digest is not None:
+        raise AppError("INVALID_CHOICE", "Preview approval does not accept a selected candidate", 422)
     task = latest_tasks(run, version).get(gate_node_id)
     if not node or node.get("gate") != "preview" or not execution.usable(run, task):
         raise AppError("INVALID_GATE", "A preview gate needs a completed valid image", 409)
@@ -359,6 +370,19 @@ def approve_gate(run, version, gate_node_id):
         raise AppError("INVALID_AGENT_STATE", "No preview gate is awaiting approval", 409)
     gates = list(dict.fromkeys([*receipt.get("approved_gates", []), gate_node_id]))
     return _update(run, status="executing", approved_gates=gates).status
+
+
+def feedback_gate(run, version, gate_node_id):
+    """Both completed previews and ready, still-pending choices accept feedback."""
+    node = next((item for item in version.plan["nodes"] if item["id"] == gate_node_id), {})
+    if node.get("gate") == "choice":
+        from app.plans.choices import pending
+        return pending(run, version, gate_node_id)[0]
+    task = latest_tasks(run, version).get(gate_node_id)
+    if (node.get("gate") != "preview" or not execution.usable(run, task)
+            or gate_node_id in (run.snapshot or {}).get("v3_execution", {}).get("approved_gates", [])):
+        raise AppError("INVALID_GATE", "Feedback requires an unapproved ready gate", 409)
+    return task
 
 
 def approve_results(run, version):

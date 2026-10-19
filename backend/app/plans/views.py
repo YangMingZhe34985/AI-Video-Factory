@@ -47,6 +47,7 @@ def repair_budget(run):
 
 
 def public_plan(run):
+    from app.plans.choices import public_choice
     version = current_version(run)
     if version is None:
         return {"plan": None, "plan_issues": _safe((run.snapshot or {}).get("plan_issues", [])), "estimates": None, "experimental": False,
@@ -66,6 +67,7 @@ def public_plan(run):
             "status": task.status if task else "pending", "attempt": task.attempt if task else 0,
             "job_id": task.job_id if task else None, "estimated_cost": task.estimated_cost if task else 0,
             "gate": node.get("gate"), "gate_approved": node["id"] in approvals,
+            "choice": public_choice(run, version, node, task),
             "artifacts": artifacts, "error": _safe(task.error) if task else None,
             "reused_from_task_id": task.reused_from_task_id if task and hasattr(task, "reused_from_task_id") else (task.state or {}).get("reused_from") if task else None,
             "retained": bool((task.state or {}).get("retained_by_only")) if task else False,

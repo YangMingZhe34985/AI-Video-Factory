@@ -14,7 +14,7 @@ from app.services.storage_service import StorageService
 
 _dispatch = ContextVar("plan_dispatch", default=None)
 PAID_TOOLS = {"generate_image", "animate_shot", "generate_video", "transform_video", "produce_shot", "remix_shot"}
-PLAN_TOOLS = PAID_TOOLS | {"extract_frame", "retain_video_segment", "compose_video", "probe_media", "qc_video", "package_story"}
+PLAN_TOOLS = PAID_TOOLS | {"extract_frame", "retain_video_segment", "compose_video", "probe_media", "qc_video", "package_story", "select_image"}
 POLL_NODES = {"poll_first_frame_image", "poll_i2v", "poll_t2v", "poll_r2v_flash"}
 
 
@@ -55,6 +55,9 @@ def authorize_tool(name, data, ctx):
             or task.inputs_hash != versions.inputs_hash({"tool": name, "inputs": payload,
                 "sources": task.state.get("input_fingerprints", {})})):
         raise AppError("PLAN_INPUT_CHANGED", "Node inputs differ from the frozen submission", 409)
+    if name == "select_image":
+        from app.plans.choices import validate_execution
+        validate_execution(run, task, node, payload)
     previous = ToolInvocation.query.filter_by(idempotency_key=ctx.idempotency_key).first()
     if previous:
         if previous.budget_scope != run.run_id or previous.tool_name != name or previous.input_payload != payload:

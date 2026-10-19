@@ -38,3 +38,9 @@ load_skill 后用 read_skill_resource(name="plan-review",path="resources/README.
 对照交付总时长、生成计费秒数、原片选择范围和 Wan3 输入 I+完整输出 G。费用来自服务端，演示数据不能当真实账单。首尾帧质量未实测对等；媒体 QC 不能证明角色相似度或艺术质量。
 
 Critic 返回 verdict=pass|revise 和 issues[{severity,message,node_id?}]，明确最小修改范围。pass 不是付费批准，也不代替指定 Director 的 review_patch。只有 Producer 调 submit_plan 提交用户审核；已批准版本必须走 Patch，不能改工作区草稿绕过版本授权。
+
+## 多候选选择
+
+需要用户从多张预览中选一张时，使用 `select_image` 节点并设 `gate="choice"`，inputs 只有 `candidate_artifact_ids`：例如 `{ref:"posters.images"}`，或 `[{ref:"a.image"},{ref:"b.image"}]`。必须有 2–20 张唯一候选；下游引用 `{ref:"choice.image"}`。不要固定引用第一张替代用户选择，也不要同时为这些候选增加不必要的逐张 preview 门。完整合同见 resources/tools/select_image.json。
+
+selected_artifact_id 只由用户审核后服务端注入，禁止写入计划。无选择时下游等待；选择免费但所有候选生成均计费。候选重做或变化需重新选择；已批准后改选走 Patch，保留历史下游时需展示衔接风险。

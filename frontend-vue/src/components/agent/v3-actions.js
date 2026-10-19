@@ -5,7 +5,7 @@ const reviewStates = new Set(['awaiting_plan_review', 'awaiting_result_review', 
 const fieldSets = {
   answer: ['card_id', 'answers', 'use_defaults'],
   approve_plan: ['plan_version', 'repair_budget_credits'],
-  approve_gate: ['plan_version', 'gate_node_id'],
+  approve_gate: ['plan_version', 'gate_node_id', 'selected_artifact_id', 'choice_digest'],
   approve_results: ['plan_version'],
   revise_plan: ['plan_version', 'message', 'gate_node_id'],
   approve_patch: ['patch_id', 'quote_id', 'scope'],
@@ -15,7 +15,7 @@ const fieldSets = {
 }
 const labels = {
   queued: '等待规划', understanding: '理解与规划中', awaiting_input: '等待补充选择',
-  awaiting_plan_review: '等待计划审核', executing: '执行中', awaiting_gate: '等待关键帧确认',
+  awaiting_plan_review: '等待计划审核', executing: '执行中', awaiting_gate: '等待预览或候选确认',
   delivering: '整理交付中', awaiting_result_review: '等待验收结果', attention: '需要处理',
   success: '已完成', partial_success: '部分完成', failed: '失败', cancelled: '已取消',
   pending: '等待执行', running: '进行中', completed: '已完成', returned: '已退回', limit: '达到额度或次数上限',
@@ -44,8 +44,10 @@ function gate(run, nodeId) {
   const identity = text(nodeId, '关键帧节点', 40)
   const planNode = run.plan?.nodes?.find((node) => node.id === identity)
   const task = run.nodes?.find((node) => node.node_id === identity)
-  requireValue(planNode?.gate === 'preview' && task?.gate === 'preview'
-    && task.status === 'success' && task.gate_approved === false, '请选择已完成且尚未确认的关键帧。')
+  requireValue(task?.gate_approved === false && (
+    (planNode?.gate === 'preview' && task?.gate === 'preview' && task.status === 'success')
+    || (planNode?.gate === 'choice' && task?.gate === 'choice' && task.status === 'pending' && task.choice?.ready === true)
+  ), '请选择已就绪且尚未确认的审核节点。')
   return identity
 }
 function validateAnswers(run, payload) {
@@ -115,15 +117,25 @@ function normalizeAction(run, action, payload = {}) {
     return { action, plan_version: version, repair_budget_credits: repair }
   }
   if (action === 'approve_gate') {
-    requireValue(run.status === 'awaiting_gate', '当前没有待确认关键帧。')
-    return { action, plan_version: version, gate_node_id: gate(run, payload.gate_node_id) }
+    requireValue(run.status === 'awaiting_gate', '当前没有待确认预览或候选。')
+    const nodeId = gate(run, payload.gate_node_id)
+    const task = run.nodes.find((node) => node.node_id === nodeId)
+    const body = { action, plan_version: version, gate_node_id: nodeId }
+    if (task.gate === 'choice') {
+      const selected = text(payload.selected_artifact_id, '候选图片', 100)
+      const digest = text(payload.choice_digest, '候选摘要', 128)
+      requireValue(digest === task.choice?.choice_digest && task.choice?.candidates?.some((item) => item.artifact_id === selected), '候选已变化，请重新选择。')
+      return { ...body, selected_artifact_id: selected, choice_digest: digest }
+    }
+    requireValue(!has(payload, 'selected_artifact_id') && !has(payload, 'choice_digest'), '普通预览不接受候选选择。')
+    return body
   }
   if (action === 'approve_results') {
     requireValue(run.status === 'awaiting_result_review', '当前没有待验收结果。')
     requireValue(Array.isArray(run.nodes) && Array.isArray(run.plan.nodes) && run.nodes.length > 0
       && run.nodes.length === run.plan.nodes.length && new Set(run.nodes.map((node) => node.node_id)).size === run.nodes.length
       && run.plan.nodes.every((node) => run.nodes.some((task) => task.node_id === node.id))
-      && run.nodes.every((node) => node.status === 'success' && (node.gate !== 'preview' || node.gate_approved === true)), '任务尚未全部完成或关键帧尚未确认。')
+      && run.nodes.every((node) => node.status === 'success' && (!['preview', 'choice'].includes(node.gate) || node.gate_approved === true)), '任务尚未全部完成或审核门尚未确认。')
     return { action, plan_version: version }
   }
   requireValue(action === 'revise_plan' && reviewStates.has(run.status), '当前阶段不能修改计划。')

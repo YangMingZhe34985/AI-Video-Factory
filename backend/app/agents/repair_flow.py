@@ -121,13 +121,10 @@ def revise_plan(run, command):
         trigger = {"kind": "gate_feedback" if command.get("gate_node_id") else "user_revision",
             "base_version": version.version, "request_key": key, "task_ids": [], "node_ids": []}
         if command.get("gate_node_id"):
-            from app.plans.runtime import latest_tasks
-            from app.plans.execution import usable
-            task = latest_tasks(run, version).get(command["gate_node_id"])
-            node = next((item for item in version.plan["nodes"] if item["id"] == command["gate_node_id"]), None)
-            if (admitted_status != "awaiting_gate" or not node or node.get("gate") != "preview" or command["gate_node_id"] in approval.get("approved_gates", [])
-                    or not task or task.status != "success" or not usable(run, task)):
-                raise AppError("INVALID_GATE", "Only a successful unapproved preview gate can receive feedback", 409)
+            from app.plans.runtime import feedback_gate
+            if admitted_status != "awaiting_gate":
+                raise AppError("INVALID_GATE", "Gate feedback requires a pending gate", 409)
+            task = feedback_gate(run, version, command["gate_node_id"])
             trigger.update(task_ids=[task.id], node_ids=[task.node_id], category="qc_failed")
         flow = _start(run, trigger, message=command["message"], return_status=return_status, author="director")
         result = {"input_hash": signature, "flow_id": flow["flow_id"]}

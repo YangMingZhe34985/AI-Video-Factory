@@ -33,6 +33,7 @@
             <div v-if="row.input_video_seconds > 0"><span>计费输入视频</span><strong>{{ secondsLabel(row.input_video_seconds) }}</strong></div>
           </div>
           <p v-if="row.gate === 'preview'" class="gate-note">{{ row.gate_approved ? '预览已确认' : row.status === 'success' ? '等待确认预览；后续依赖暂不执行' : '此节点生成后需要确认预览' }}</p>
+          <p v-if="row.gate === 'choice'" class="gate-note">{{ row.gate_approved ? `已选择：${row.choice?.selected || '已确认候选'}` : '请选择一张候选，再确认用于后续生成。选择本身免费，所有候选的生成费已计入计划。' }}</p>
           <p v-if="row.error" class="notice error" role="alert">{{ row.error }}</p>
           <details @toggle="setExpanded(row.id, $event.target.open)">
             <summary>提示词、参数与输入引用</summary>
@@ -51,7 +52,21 @@
               <figcaption>{{ asset.file_name || asset.artifact_id }}</figcaption>
             </figure>
           </div>
-          <div v-if="waitingGate(row)" class="actions">
+          <fieldset v-if="row.gate === 'choice' && waitingGate(row)" class="choice-list" :disabled="locked">
+            <legend>选择后续使用的图片（必选）</legend>
+            <label v-for="(asset, index) in row.choice.candidates" :key="asset.artifact_id" class="choice-item">
+              <input v-model="selections[row.id]" type="radio" :name="`choice-${run.run_id}-${row.id}`" :value="asset.artifact_id" :aria-label="`候选 ${index + 1}`" />
+              <span>候选 {{ index + 1 }}</span>
+              <AuthedImage v-if="asset.kind === 'image' && asset.preview" :src="asset.preview" :alt="`候选 ${index + 1}`" class="node-image" />
+              <span v-else class="hint">预览暂不可用，请确认图片内容后再选择。</span>
+              <span class="hint">{{ asset.file_name || asset.artifact_id }}</span>
+            </label>
+          </fieldset>
+          <div v-if="waitingGate(row) && row.gate === 'choice'" class="actions">
+            <button type="button" class="primary" :disabled="!canAction('approve_gate', choiceValues(row))" @click="submit('approve_gate', choiceValues(row))">确认所选图片</button>
+            <button type="button" :disabled="locked" @click="selectGateRevision(row.id)">候选都不满意</button>
+          </div>
+          <div v-if="waitingGate(row) && row.gate === 'preview'" class="actions">
             <button type="button" class="primary" :disabled="!canAction('approve_gate', { gateNodeId: row.id })" @click="submit('approve_gate', { gateNodeId: row.id })">确认此预览</button>
             <button type="button" :disabled="locked" @click="selectGateRevision(row.id)">提出修改</button>
           </div>
@@ -86,12 +101,13 @@ import { computed, reactive, ref, watch } from 'vue'
 import AuthedImage from './AuthedImage.vue'
 import AuthedVideo from './AuthedVideo.vue'
 import { creditLabel, v3StatusLabel } from './v3-actions.js'
-import { buildPlanAction, dependencyState, initialApprovalCost, planGroups, planRows, planTotals, planVersion, readableJson, secondsLabel, toolLabel } from './v3-plan.js'
+import { buildPlanAction, choiceIdentity, dependencyState, gateReady, initialApprovalCost, planGroups, planRows, planTotals, planVersion, readableJson, secondsLabel, toolLabel } from './v3-plan.js'
 
 const props = defineProps({ run: { type: Object, required: true }, disabled: { type: Boolean, default: false } })
 const emit = defineEmits(['action'])
 const repairCredits = ref(''), revisionMessage = ref(''), selectedGate = ref(''), actionError = ref('')
 const expanded = reactive({})
+const selections = reactive({}), choiceKeys = reactive({})
 const version = computed(() => planVersion(props.run))
 const rows = computed(() => planRows(props.run))
 const groups = computed(() => planGroups(props.run, rows.value))
@@ -108,11 +124,20 @@ const approvalIssue = computed(() => {
 watch([() => props.run.run_id, () => version.value], () => {
   repairCredits.value = ''; revisionMessage.value = ''; selectedGate.value = ''; actionError.value = ''
   for (const key of Object.keys(expanded)) delete expanded[key]
+  for (const key of Object.keys(selections)) delete selections[key]
+  for (const key of Object.keys(choiceKeys)) delete choiceKeys[key]
 })
+watch(() => rows.value.map((row) => [row.id, choiceIdentity(row)]), (keys) => {
+  const current = Object.fromEntries(keys)
+  for (const id of Object.keys(selections)) if (!current[id] || current[id] !== choiceKeys[id]) delete selections[id]
+  for (const id of Object.keys(choiceKeys)) if (!(id in current)) delete choiceKeys[id]
+  Object.assign(choiceKeys, current)
+}, { immediate: true })
 watch(() => props.run.status, (status) => { if (status !== 'awaiting_gate') selectedGate.value = '' })
 const readiness = (row) => dependencyState(row, rows.value)
 const setExpanded = (id, value) => { expanded[id] = value }
-const waitingGate = (row) => props.run.status === 'awaiting_gate' && row.gate === 'preview' && row.status === 'success' && !row.gate_approved
+const waitingGate = (row) => props.run.status === 'awaiting_gate' && gateReady(row)
+const choiceValues = (row) => ({ gateNodeId: row.id, selectedArtifactId: selections[row.id], choiceDigest: row.choice?.digest })
 function canAction(action, values) { try { buildPlanAction(props.run, action, { ...values, expectedVersion: version.value }, locked.value); return true } catch { return false } }
 function submit(action, values) {
   actionError.value = ''
@@ -141,6 +166,9 @@ h3,h4,p,figure { margin:0; } h3 { font-size:1.1rem; } h4 { font-size:.95rem; } s
 details { margin-top:.7rem; border-top:1px solid var(--border); padding-top:.65rem; } summary { cursor:pointer; font-size:.8rem; } .details-body { min-width:0; padding-top:.65rem; } .prompt { white-space:pre-wrap; font-size:.82rem; line-height:1.7; }
 pre { margin:.3rem 0 .8rem; white-space:pre-wrap; overflow-wrap:anywhere; word-break:break-word; font-size:.72rem; background:var(--subtle); border-radius:.4rem; padding:.6rem; max-width:100%; }
 .assets { display:grid; gap:.65rem; margin-top:.7rem; } figure { min-width:0; } .node-image,.node-video { width:100%; max-width:100%; max-height:22rem; object-fit:contain; border-radius:.5rem; background:var(--subtle); } figcaption { margin-top:.25rem; }
+.choice-list { min-width:0; border:1px solid var(--border); border-radius:.5rem; margin:.7rem 0 0; padding:.65rem; display:grid; gap:.7rem; }
+.choice-list legend { font-size:.8rem; } .choice-item { padding:.5rem; border:1px solid var(--border); border-radius:.4rem; cursor:pointer; }
+.choice-item input { width:auto; justify-self:start; } .choice-item:has(input:checked) { border-color:#2563eb; outline:1px solid #2563eb; }
 .review-box { margin-top:1rem; border:1px solid var(--border); border-radius:.7rem; padding:1rem; display:grid; gap:.7rem; min-width:0; }
 label { display:grid; gap:.4rem; font-size:.8rem; min-width:0; } input,textarea { box-sizing:border-box; min-width:0; width:100%; border:1px solid var(--border); border-radius:.4rem; padding:.6rem; background:var(--subtle); color:var(--ink); font:inherit; } input { max-width:16rem; } textarea { resize:vertical; }
 .actions { justify-content:flex-start; margin-top:.65rem; } button { min-height:2.3rem; max-width:100%; border:1px solid var(--border); border-radius:.45rem; padding:.45rem .75rem; font-size:.8rem; color:var(--ink); background:var(--subtle); cursor:pointer; overflow-wrap:anywhere; }

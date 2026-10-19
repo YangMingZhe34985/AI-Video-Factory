@@ -63,12 +63,15 @@ def input_fingerprints(run, data, spec):
     return result
 
 
-def resolve_node(run, node, version, outputs, registry):
+def resolve_node(run, node, version, outputs, registry, *, choice_receipt=None):
     from app.plans.compiler import node_inputs, resolve_inputs
     spec = registry.get(node["tool"])
     resolved = resolve_inputs(node_inputs(node, plan_version=version), outputs)
     data = registry._validate_input(spec, resolved).model_dump(mode="json")
     sources = input_fingerprints(run, data, spec)
+    if node["tool"] == "select_image":
+        from app.plans.choices import resolved_selection
+        data["selected_artifact_id"] = resolved_selection(run, node, version, data, sources, receipt=choice_receipt)
     digest = inputs_hash({"tool": node["tool"], "inputs": data, "sources": sources})
     return data, sources, digest
 
@@ -104,6 +107,11 @@ def validate_outputs(run, task, spec, output):
             raise AppError("PLAN_OUTPUT_COUNT_MISMATCH", "Image outputs differ from the approved count", 502)
     if spec.name == "qc_video" and result.get("passed") is not True:
         raise AppError("PLAN_QC_FAILED", "The video did not pass structural quality checks", 422)
+    if spec.name == "select_image":
+        from app.plans.choices import receipt_for_task
+        receipt = receipt_for_task(run, task)
+        if result != {"image": receipt["selected_artifact_id"]}:
+            raise AppError("INVALID_CHOICE", "Choice output differs from the approved image", 409)
     return result, artifacts
 
 
@@ -145,6 +153,9 @@ def usable(run, task):
     if set(expected) != set(task.artifact_ids or []):
         return False
     try:
+        if task.state.get("tool") == "select_image":
+            from app.plans.choices import receipt_for_task
+            receipt_for_task(run, task)
         return all(fingerprint(run, artifact_id) == record for artifact_id, record in expected.items())
     except (AppError, OSError, ValueError):
         return False

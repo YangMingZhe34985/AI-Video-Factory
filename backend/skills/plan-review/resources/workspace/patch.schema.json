@@ -132,7 +132,10 @@
         "gate": {
           "anyOf": [
             {
-              "const": "preview",
+              "enum": [
+                "preview",
+                "choice"
+              ],
               "type": "string"
             },
             {

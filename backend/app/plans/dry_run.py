@@ -29,6 +29,13 @@ def dry_run(compiled, *, registry=None):
             spec.input_model.model_validate(inputs)
             output = {field: _placeholder(node_id, field, info)
                       for field, info in compiled["output_metadata"][node_id].items()}
+            if node["tool"] == "select_image":
+                # Exercise a non-first candidate without persisting user
+                # authority or invoking the production selector.
+                selected = inputs["candidate_artifact_ids"][-1]
+                spec.input_model.model_validate({**inputs, "selected_artifact_id": selected})
+                output = {"image": selected}
+                result.setdefault("simulated_choices", {})[node_id] = selected
             result["outputs"][node_id] = output
             result["order"].append(node_id)
         except (AppError, ValidationError, KeyError, TypeError, ValueError) as error:

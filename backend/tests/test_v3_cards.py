@@ -72,7 +72,7 @@ def test_agent_function_visibility_excludes_execution_and_limits_patch_roles(app
     catalog = get_catalog()
     registry = build_v3_registry()
     forbidden = {"agent_llm_turn", "generate_image", "generate_video", "animate_shot", "transform_video",
-                 "retain_video_segment", "compose_video", "extract_frame", "probe_media", "qc_video", "package_story"}
+                 "retain_video_segment", "compose_video", "extract_frame", "probe_media", "qc_video", "package_story", "select_image"}
     for card in catalog.cards.values():
         assert not forbidden.intersection(card.tools)
         assert all(registry.get(name).agent_visible for name in card.tools)

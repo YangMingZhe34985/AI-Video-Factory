@@ -103,8 +103,18 @@ def activate_patch_locked(run, version, compiled, decisions, *, patch_id, repair
                 raise AppError("INVALID_PATCH", "Patch contains an invalid execution decision", 409)
         db.session.add(task)
         created[node["id"]] = task
+    # Choice bindings include actual task IDs, including newly carried tasks.
+    db.session.flush()
+    choice_receipts = {}
+    for node in version.plan["nodes"]:
+        task = created[node["id"]]
+        if node.get("gate") == "choice" and task.status == "success":
+            from app.plans.choices import rebind
+            source = db.session.get(PlanNodeTask, decisions["nodes"][node["id"]]["source_task_id"])
+            choice_receipts[node["id"]] = rebind(run, version, node, task, created, source)
     approved_gates = [key for key in previous.get("approved_gates", []) if key in created
-        and created[key].status == "success" and decisions["nodes"][key]["action"] in {"reuse", "retain"}]
+        and created[key].status == "success" and decisions["nodes"][key]["action"] in {"reuse", "retain"}
+        and (created[key].state.get("tool") != "select_image" or key in choice_receipts)]
     snapshot["v3_execution"] = {"approved_version": version.version,
         "approval_hash": versions.inputs_hash(version.plan), "patch_id": patch_id,
         "node_costs": {key: item.estimated_cost for key, item in created.items()},
@@ -112,6 +122,8 @@ def activate_patch_locked(run, version, compiled, decisions, *, patch_id, repair
         "approved_gates": approved_gates, "results_approved": False, "dag": deepcopy(compiled["dag"]),
         "output_metadata": deepcopy(compiled.get("output_metadata", {})),
         "source_fingerprints": {key: deepcopy(approved_sources[key]) for key in compiled.get("source_artifact_ids", [])}}
+    if choice_receipts:
+        snapshot["v3_execution"]["choice_receipts"] = choice_receipts
     snapshot["v3_repair"] = deepcopy(repair_state)
     snapshot["plan_version"] = version.version
     run.snapshot = snapshot

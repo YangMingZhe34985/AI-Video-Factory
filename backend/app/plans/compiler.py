@@ -26,7 +26,7 @@ from app.tools.spec import ToolContext
 from app.tools.specs.list_models import public_pricing
 
 PLAN_TOOLS = frozenset({"generate_image", "animate_shot", "generate_video", "transform_video",
-    "extract_frame", "retain_video_segment", "compose_video", "probe_media", "qc_video", "package_story"})
+    "extract_frame", "retain_video_segment", "compose_video", "probe_media", "qc_video", "package_story", "select_image"})
 GENERATION_TOOLS = frozenset({"generate_image", "animate_shot", "generate_video", "transform_video"})
 VERSION_TOOLS = frozenset({"compose_video", "probe_media", "qc_video", "package_story"})
 MEDIA_TYPES = frozenset({"image", "video", "audio", "document", "package"})
@@ -64,6 +64,8 @@ def node_inputs(node, *, plan_version=1):
     inputs = deepcopy(value.get("inputs") or {})
     if set(inputs) & {"model_id", "params", "template_id", "plan_version"}:
         raise AppError("RESERVED_INPUT", "Model, parameters, template and version cannot be supplied inside inputs", 422)
+    if value["tool"] == "select_image" and "selected_artifact_id" in inputs:
+        raise AppError("RESERVED_INPUT", "Only a user choice can supply the selected image", 422)
     if value["tool"] in GENERATION_TOOLS:
         inputs.update(model_id=value.get("model_id"), params=deepcopy(value.get("params") or {}))
     elif value.get("model_id") is not None or value.get("params"):
@@ -460,6 +462,8 @@ def _compile(raw, run, *, registry, plan_version):
                 payload, input_metadata = _typed_inputs(node, spec, outputs, run, cache, plan_version)
                 payload = spec.input_model.model_validate(payload).model_dump(mode="json")
             output = _output_metadata(node, spec, payload, input_metadata, estimate)
+            if (node["gate"] == "choice") != (node["tool"] == "select_image"):
+                raise AppError("INVALID_CHOICE_GATE", "select_image requires a choice gate, and only select_image may use it", 422)
             if node["gate"] and not any(info["type"] in {"image", "image[]"} for info in output.values()):
                 raise AppError("INVALID_PREVIEW_GATE", "Preview gates require an image-producing node", 422)
             if node["tool"] == "compose_video" and payload.get("compress_output") and request_spec and not request_spec["constraints"]["compress_output"]:

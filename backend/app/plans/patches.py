@@ -145,6 +145,9 @@ def _safe_success(run, task, registry):
         return False
     found = set()
     try:
+        if task.state.get("tool") == "select_image":
+            from app.plans.choices import receipt_for_task
+            receipt_for_task(run, task)
         spec = registry.get(task.state["tool"])
         for field, kind in spec.io_types.get("outputs", {}).items():
             if kind.removesuffix("[]") in execution.MEDIA_TYPES:
@@ -317,7 +320,12 @@ def _quote(run, record, *, scope, registry):
                     action = "reuse"
                 else:
                     try:
-                        data, fingerprints, _digest = execution.resolve_node(run, node, base.version + 1, known_outputs, registry)
+                        selection = None
+                        if node["tool"] == "select_image":
+                            from app.plans.choices import receipt_for_task
+                            selection = receipt_for_task(run, task)
+                        data, fingerprints, _digest = execution.resolve_node(run, node, base.version + 1,
+                            known_outputs, registry, choice_receipt=selection)
                         if (_semantic_inputs(data) == _semantic_inputs(task.inputs)
                                 and fingerprints == task.state.get("input_fingerprints", {})):
                             action = "reuse"

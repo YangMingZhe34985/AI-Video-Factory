@@ -30,6 +30,8 @@ class RuntimeAction(BaseModel):
     plan_version: int | None = Field(default=None, ge=1, strict=True)
     repair_budget_credits: float = Field(default=0, ge=0, allow_inf_nan=False)
     gate_node_id: str | None = Field(default=None, min_length=1, max_length=80)
+    selected_artifact_id: str | None = Field(default=None, min_length=1, max_length=100)
+    choice_digest: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
     message: str | None = Field(default=None, min_length=1, max_length=4000)
     patch_id: str | None = Field(default=None, min_length=1, max_length=128)
     quote_id: str | None = Field(default=None, min_length=1, max_length=128)
@@ -41,7 +43,7 @@ class RuntimeAction(BaseModel):
             raise ValueError("An answer needs card_id")
         fields = {"answer": {"card_id", "answers", "use_defaults"},
             "approve_plan": {"plan_version", "repair_budget_credits"},
-            "approve_gate": {"plan_version", "gate_node_id"}, "approve_results": {"plan_version"},
+            "approve_gate": {"plan_version", "gate_node_id", "selected_artifact_id", "choice_digest"}, "approve_results": {"plan_version"},
             "revise_plan": {"plan_version", "message", "gate_node_id"},
             "approve_patch": {"patch_id", "quote_id", "scope"},
             "reject_patch": {"patch_id", "quote_id", "scope"}}
@@ -116,6 +118,10 @@ def admit_action(run, data):
     from app.agents.tools import validate_answers
     run = _lock_run(run)
     body = data.model_dump(mode="json", exclude={"request_key"})
+    # Optional V9 fields must not alter pre-V9 action receipt hashes.
+    for field in ("selected_artifact_id", "choice_digest"):
+        if body[field] is None:
+            body.pop(field)
     digest = hashlib.sha256(json.dumps(body, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
     snapshot = deepcopy(run.snapshot or {})
     receipts = snapshot.setdefault("v3_action_receipts", {})
@@ -147,12 +153,8 @@ def admit_action(run, data):
             raise AppError("INVALID_AGENT_STATE", "Revision is not available", 409)
         assert_patch_idle(run)
         if run.status == "awaiting_gate":
-            from app.plans.runtime import latest_tasks
-            tasks = latest_tasks(run, version)
-            task = tasks.get(data.gate_node_id)
-            node = next((node for node in version.plan["nodes"] if node["id"] == data.gate_node_id), {})
-            if not node.get("gate") or task is None or task.status != "success" or data.gate_node_id in snapshot.get("v3_execution", {}).get("approved_gates", []):
-                raise AppError("INVALID_AGENT_STATE", "Revision must identify an unapproved completed gate", 409)
+            from app.plans.runtime import feedback_gate
+            feedback_gate(run, version, data.gate_node_id)
         elif data.gate_node_id is not None:
             raise AppError("INVALID_AGENT_STATE", "Gate feedback needs a pending gate", 409)
     elif data.action in {"approve_plan", "approve_gate", "approve_results"}:
@@ -172,7 +174,12 @@ def admit_action(run, data):
             from app.plans.runtime import latest_tasks
             task = latest_tasks(run, version).get(data.gate_node_id)
             node = next((node for node in version.plan["nodes"] if node["id"] == data.gate_node_id), {})
-            if not node.get("gate") or task is None or task.status != "success" or not usable(run, task) or data.gate_node_id in snapshot.get("v3_execution", {}).get("approved_gates", []):
+            if node.get("gate") == "choice":
+                from app.plans.choices import validate_action
+                validate_action(run, version, data.gate_node_id, data.selected_artifact_id, data.choice_digest)
+            elif data.model_fields_set & {"selected_artifact_id", "choice_digest"}:
+                raise AppError("INVALID_CHOICE", "Preview approval does not accept a selected candidate", 422)
+            elif not node.get("gate") or task is None or task.status != "success" or not usable(run, task) or data.gate_node_id in snapshot.get("v3_execution", {}).get("approved_gates", []):
                 raise AppError("INVALID_GATE", "Approve a completed unapproved preview gate", 409)
     elif run.status in {"success", "partial_success", "failed", "cancelled"}:
         raise AppError("INVALID_AGENT_STATE", "This run has already ended", 409)

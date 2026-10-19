@@ -39,6 +39,7 @@
 | transform_video | resources/tools/transform_video.json |
 | extract_frame | resources/tools/extract_frame.json |
 | retain_video_segment | resources/tools/retain_video_segment.json |
+| select_image | resources/tools/select_image.json |
 | compose_video | resources/tools/compose_video.json |
 | probe_media | resources/tools/probe_media.json |
 | qc_video | resources/tools/qc_video.json |
@@ -49,6 +50,8 @@
 媒体字段使用单键 `{artifact:真实ID}` 或 `{ref:"node.output"}`。单图输出不能当数组，数组输出不能放进数组元素再期待自动展开；数组字段可整体引用同类型数组输出，也可由单媒体引用组成。只有工具声明且编译器支持的输入位置可以使用类型匹配的引用，prompt/params 中不允许。json 输出是结构数据，不能当作媒体；json 输入还须符合对应 Schema 与特殊映射，并非任意字典都能接引用。transform_video.media 虽标为 json，仍要求有序数组，内部每项 `{type,artifact_id}` 的 artifact_id 按 reference_image→image、reference_video→video、reference_audio→audio、file→document 特殊校验。
 
 probe_media.media 与 qc_video.passed/checks/warnings 是 json 输出。当前 qc_video 没有 probe 输入，使用 depends_on 指向 probe 表达控制依赖；不要自行添加 probe 字段或把结构数据当视频 ID。
+
+select_image 必须 gate=choice，只写 candidate_artifact_ids；selected_artifact_id 由用户选择后服务端注入。下游用 select_image 节点的 image 输出，不提前固定使用第一张。所有候选都收费，选择本身免费；候选变化需要重选。
 
 引用名必须来自 io_types.outputs：例如 generate_image.image 是首张，images 是数组；animate_shot.video 是视频；extract_frame.artifact_id 是图片；compose_video.artifact_id 是成片；package_story.artifact_id 是包。不要引用 Job 的 job_id/status/artifacts。compose_video.compressed_artifact_id 只在 inputs.compress_output=true 时可用，默认不压缩；打包可选压缩副本必须来自同一 compose。
 

@@ -20,7 +20,7 @@ from tests.test_v3_workspace import make_context, next_context
 BACKEND = Path(__file__).resolve().parents[1]
 ROLES = ("producer", "research", "creative", "director", "prompt_smith", "critic", "repair")
 PRODUCTION_TOOLS = {"generate_image", "animate_shot", "generate_video", "transform_video",
-                    "retain_video_segment", "extract_frame", "compose_video", "probe_media", "qc_video", "package_story"}
+                    "retain_video_segment", "extract_frame", "compose_video", "probe_media", "qc_video", "package_story", "select_image"}
 
 
 @pytest.mark.parametrize("role", ROLES)

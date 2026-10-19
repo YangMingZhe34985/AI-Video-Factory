@@ -470,3 +470,39 @@ patches.diff_preview 为逐操作 {op,node_id,before,after}：输入更新仅展
 - 浏览器验收覆盖亮/暗主题、约400px无横向溢出、分页步骤、计划/门/交付动作、only/cascade和旧报价失效；仅Mock。UI不声称已通过真实模型质量评估。
 
 - 同一Run同版本的普通轮询不重置编辑、范围或进行中的动作/下载；正在切换到另一Run时，旧任务回执不能取消新选择，动作确认前的迟到轮询不能回滚历史列表。
+
+## V.20 V9 评测问题修订（D-039）
+
+### V.20.1 选择门（V9a）
+- PlanDraftNode.gate 扩展为 preview|choice|null；choice 仅允许 select_image，select_image 必须带 choice。现有字段默认值不变，旧计划摘要不因扩展改变。
+- select_image 是 v3 私有、Plan 可执行、需要批准、permission=read 的零费用本地工具，Agent 函数目录和经典 Registry 不变。作者 inputs 只有 candidate_artifact_ids：2–20 张唯一图片，可为单个 image[] 引用或 image 引用/本 Run 工件的列表；输出 image:image。服务端执行输入另注入 selected_artifact_id，作者禁止填入。
+- 依赖成功且祖先门已批准后，selector 保持 pending，冻结候选顺序、文件指纹、来源任务、节点摘要与版本；Run 进入 awaiting_gate，无关分支仍可调度。没有选择时不得调用 selector 或下游，也不默认第一项。
+- approve_gate 增加 selected_artifact_id 与 choice_digest：choice 必填，preview 禁填。服务端复验当前版本/未批准门、候选归属/文件/顺序/来源与摘要；接收后记录 snapshot.v3_execution.choice_receipts，选定 ID 进入实际 inputs_hash，后续 tick 通过 Registry 执行。选择不扩大预算；全部候选成本均纳入计划估价。
+- 同一动作重放沿用原收据，不同选择需要 Patch；旧版本、过期摘要、非候选、文件或来源变更均拒绝。确定性拒绝消费动作箱，未知异常保留恢复证据。revise_plan 的门反馈同时接受已就绪且未批准的 pending choice。
+- Patch 仅在节点、所有候选（含未选候选）、来源和原审批证明均保持一致时继承选择并重新绑定版本。候选重做、增删、重排或内容变化均重选；only 保留的旧下游产物保持旧 provenance 与明确风险确认，不能归因于新的选择。
+- 公开节点增加 choice:{ready,choice_digest,candidates:[公开工件],selected_artifact_id}（非选择节点可省略/null）；不暴露文件路径或私有证明。前端展示所有候选、不预选，选中后显式确认；版本/摘要/候选变化清空本地选择，普通轮询不清空。
+- 范围：agents schema/API/动作消费；plans 编译/私有工具/dry-run/执行/许可/选择证明/Patch/修订/公开视图；plan-review 作者资源；V3PlanBoard/v3-plan/v3-actions 与回归。不改变经典页面，不做整体美化。
+
+### V.20.2 上下文投影（V9b）
+- 原 state.messages、账本和工作区原文不删改；只生成模型请求视图，不改变 assistant tool_calls 的参数、顺序和调用/回复配对。
+- 60,000 Unicode 字符为软目标、2,000 字符为候选下限；按旧到新压缩成功回执：read_skill_resource、重复 load_skill、read_workspace/write_workspace 的旧 payload。保留每个 Skill 最新正文、最近两个完整工具回合、system/user、错误、澄清/委派、付费理解、检索与计划问题。
+- 替代回执明确不完整，提供原长度/SHA-256、精确免费重读工具及参数；工作区必须有不可变版本，不能用最新值代替原材料。无法安全重读则保留。软目标未达到不截断受保护消息，不宣称硬 token 限制。
+- 每个 LLM step 在调用前保存单一 pending_context={step,policy_version,source_hash,messages_hash,messages,metrics}。已有账本优先恢复原 messages，否则同 step 校验消息摘要并用原冻结请求；新 step 才重算。原额度快照及工具 Schema 摘要校验保留，active_seconds 仍按 D-038。
+- 范围：新增 agents/context.py、runtime 的请求投影与恢复、相关隔离测试；不引入摘要模型或额外 LLM 调用。
+
+### V.20.3 简单任务读取（V9c）
+- 六个 Blueprint Skill 正文加入最小完整参数例及必填/默认/引用说明；完整 Schema 与复杂示例按需读取。只精确调整 Producer/Director 的效率说明，不改 Claude 审定的职责、安全、预算与四个关键 Skill。
+- 实例化返回可审核草稿及 issues 后，可直接 submit_plan；内部继续编译/dry-run，无需机械地再次读取/检查/finish。不能跳过缺失参数、模型能力或需求约束验证。
+- 不更改 Blueprint 版本/接口；正文例通过实际 Params 与 Registry 回归防漂移。Stub 验证简单任务少量回合、无委派、审核前不生成，不宣称真实 LLM 延迟改善。
+
+### V.20.4 付费死节点（V9d）
+- 从 deliverables 经 inputs 数据 ref 反向追踪；不在可达集合的生成类付费节点报 PLAN_UNUSED_PAID_NODE（阻塞，含 node_id）。depends_on 仅控制顺序，不证明产物被消费；免费 QC/probe 等保障节点不受此限制。
+- selector 的全部候选都是数据依赖，不因最终未选中误报。确需交付额外图则显式列 deliverable；单纯预览 gate 或说明文字不能掩盖无用收费。
+- 范围：plans/compiler、plan-review 指引与编译/Blueprint/Patch 回归；不自动删节点或改变用户预算。
+
+### V.20.5 多参考图选型（V9e）
+- 仅 v3 generate_image/i2i、参考图大于一张且用户需求没有精确型号约束时允许容量回退。正常策略模型已满足容量则沿用原选型；只有其容量明确不足才扩展到启用、agent_selectable、适配器已接入且符合用户系列/排除的 i2i 模型。默认配置禁用、未知、排除或适配器未接入不能触发回退。禁止丢图或合成一张绕过限制。
+- 空节点 model_id 按候选 model_id 稳定排序，逐个用真实 validate_generation_model 验证全部参数后选择；具体节点 ID 只在同一合格池内原样接受，不静默替换。用户需求中的精确 ID/显示名/规范别名永不放宽，明确系列只能系列内。保留全部模型参数，支持规范化计划再次编译；无可用候选返回问题，不吞掉预算或内部异常。视频与经典/v2 策略不变。
+- v3 story-video 先收集并去重全部角色参考，再选择关键帧模型；生成帧 model_id 可为 null。各候选按其真实能力生成并校验画幅参数，编译及后续提交仍复验同一具体型号。
+- 编译后冻结具体 ID 与成本，审核展示最终选择；批准后模型/参数/费用变化仍需原有重新校验/审批。不声称能力匹配等于画质验证。
+- 范围：v3 compiler/选型辅助、story-video Blueprint/指南与能力/费用/约束回归，不修改共享默认配置。

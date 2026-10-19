@@ -119,9 +119,9 @@ test('gate approval and feedback are bound to one successful unapproved current 
   assert.deepEqual(buildPlanAction(run, 'revise_plan', { expectedVersion: 3, gateNodeId: 'frame', message: '  保持原角色发型  ' }).payload,
     { plan_version: 3, gate_node_id: 'frame', message: '保持原角色发型' })
   assert.throws(() => buildPlanAction(run, 'revise_plan', { expectedVersion: 3, message: '换造型' }), /预览节点/)
-  assert.throws(() => buildPlanAction(run, 'approve_gate', { expectedVersion: 3, gateNodeId: 'clip' }), /预览门/)
+  assert.throws(() => buildPlanAction(run, 'approve_gate', { expectedVersion: 3, gateNodeId: 'clip' }), /审核门/)
   run.nodes[0].gate_approved = true
-  assert.throws(() => buildPlanAction(run, 'approve_gate', { expectedVersion: 3, gateNodeId: 'frame' }), /预览门/)
+  assert.throws(() => buildPlanAction(run, 'approve_gate', { expectedVersion: 3, gateNodeId: 'frame' }), /审核门/)
 })
 
 test('revision is intent-only and never admits a new model or an unsafe execution state', () => {
