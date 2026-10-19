@@ -35,7 +35,7 @@ plan.target_duration_sec 与 shots[].duration_sec 的总和匹配需求/容差�
 - params={plan,story,goal?,compress_output?}；compress_output 默认 false。
 - plan 必填 title/target_duration_sec/scenes/shots。scene 必填 scene_id/location/time_of_day/summary；shot 必填 shot_id/scene_id/order/summary/framing/duration_sec/transition_in/first_frame/motion，并关联真实 beat_ids/character_ids。
 - story 是 StoryPackage：story.story 含 logline/synopsis/acts/beats，另含 characters/style；角色声明身份锁定与 reference；style 必填 visual_style/palette/lighting/camera_language/prompt_prefix。下例为完整最小结构。
-- first_frame.method=generate 需 image_mode/model_id/prompt；motion 含 model_id/prompt/params，时长取 shot.duration_sec。tail_frame 不填图像模型/引用；首尾帧、多参考、未覆盖可选字段或复杂嵌套按需读取完整 Schema 和对应示例。
+- first_frame.method=generate 需 image_mode/prompt；model_id 可为 null，由服务端解析；motion 含 model_id/prompt/params，时长取 shot.duration_sec。tail_frame 不填图像模型/引用；首尾帧、多参考、未覆盖可选字段或复杂嵌套按需读取完整 Schema 和对应示例。
 
 同场景尾帧串行承接（演示）：
 <!-- blueprint-params-example:0 -->
@@ -46,3 +46,5 @@ plan.target_duration_sec 与 shots[].duration_sec 的总和匹配需求/容差�
 instantiate_blueprint 只构建并保存草稿，同时返回 issues、estimates、workspace_ref，不调用生成模型。无 issues、费用与已确认需求及预算一致时，Producer 直接 submit_plan({plan_ref:workspace_ref})；无需再读同份草稿或重复 check_plan，Director 返回 plan_ref。提交内部仍会编译及隔离 dry-run，通过后仅进入用户审核，不授予生产许可。
 
 失败或修改后按具体问题修订再校验。禁止输入估价、manifest、plan_version、quote、许可或伪造 origin.blueprint；预算不足不擅自缩短明确时长或放宽指定系列，按既有澄清流程处理。
+
+多角色关键帧保留全部去重后的身份参考；未指定型号时可将 first_frame/end_frame.model_id 设为 null。v3 仅在默认 i2i 模型容量不足且用户没有精确型号约束时，按当前能力和参数选择可容纳全部参考的模型；单参考仍沿用默认。已填具体型号不会被静默替换，用户指定系列/禁用、预算和实际参数验证均保持。

@@ -10,9 +10,8 @@ import re
 from flask import current_app
 from pydantic import ValidationError
 
-from app.adapters import ADAPTERS
-from app.agent.model_selection import TRANSFORM_MODES, validate_generation_model
-from app.agent.production_plan import select_plan_model
+from app.agent.model_selection import TRANSFORM_MODES
+from app.plans.model_selection import select_generation_model
 from app.agents.schemas import PlanDraft, RequirementBrief, finite_json
 from app.agents.workspace import require_artifact
 from app.api import AppError
@@ -285,13 +284,11 @@ def _generation(node, payload, input_metadata, request_spec, run):
         mode = payload.get("mode", "t2i" if tool == "generate_image" else None)
         count = (len(payload.get("reference_artifact_ids") or []) if mode != "i2v" else int(bool(payload.get("first_frame_artifact_id"))))
     model_id = ModelService.canonical_model_id(node.get("model_id")) if node.get("model_id") else None
-    model = select_plan_model(request_spec, mode, model_id, run=run)
-    if model.adapter_name not in ADAPTERS:
-        raise AppError("MODEL_CAPABILITY_MISMATCH", "Model adapter is not integrated", 422)
     params = deepcopy(node["params"])
     if tool == "generate_image" and payload.get("n") is not None:
         params["n"] = payload["n"]
-    params = validate_generation_model(model, mode, params, reference_count=count)
+    model, params = select_generation_model(request_spec, mode, model_id, params,
+        reference_count=count, run=run)
     if tool != "generate_image" and params.get("n_outputs", 1) != 1:
         raise AppError("INVALID_OUTPUT_COUNT", "Each video node must produce exactly one video", 422)
     if tool == "animate_shot":

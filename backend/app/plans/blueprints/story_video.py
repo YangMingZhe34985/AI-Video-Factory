@@ -2,7 +2,7 @@
 from pydantic import Field
 
 from app.agent.plan_check import frame_params
-from app.agent.production_plan import select_plan_model
+from app.plans.model_selection import select_generation_model
 from app.agent.request_spec import StrictModel
 from app.agent.story_spec import StoryPackage
 from app.plans.blueprints.common import StoryDraft, artifact, delivery_nodes, node, ref, result
@@ -33,13 +33,14 @@ def build(params, *, run, caller_agent="director"):
     for index, character in enumerate(story.characters, 1):
         references = [artifact(value) for value in character.reference.artifact_ids]
         if character.reference.source == "generate" and not references:
-            model = select_plan_model(spec, "t2i", None, run=run)
+            model, image_params = select_generation_model(spec, "t2i", None, run=run,
+                params_factory=lambda candidate: frame_params(candidate, plan.aspect_ratio))
             cid = f"character_{index:03d}"
             prompt = (f"{story.style.prompt_prefix}。角色外观固定为：{character.lock_description}。"
                       f"{character.reference.generate_prompt}")
             nodes.append(node(cid, "generate_image", {"mode": "t2i", "prompt": prompt},
                 "story-video", caller_agent, model_id=model.model_id,
-                params=frame_params(model, plan.aspect_ratio), stage="characters", gate="preview",
+                params=image_params, stage="characters", gate="preview",
                 rationale=f"确认角色 {character.name} 的外观，再生成依赖此身份的画面。"))
             references = [ref(cid, "image")]
         identities[character.character_id] = references
@@ -82,15 +83,16 @@ def build(params, *, run, caller_agent="director"):
                     for value in identities[character_id]:
                         if value not in references:
                             references.append(value)
-                if frame.image_mode not in {"t2i", "i2i"} or not frame.model_id or not frame.prompt:
-                    raise ValueError("Generated keyframes require a model, image mode and prompt")
+                if frame.image_mode not in {"t2i", "i2i"} or not frame.prompt:
+                    raise ValueError("Generated keyframes require an image mode and prompt")
                 if (frame.image_mode == "i2i") != bool(references):
                     raise ValueError("Character keyframes require i2i with every selected identity reference")
-                model = select_plan_model(spec, frame.image_mode, frame.model_id, run=run,
-                                          slot=f"{shot.shot_id}:{field}")
+                model, image_params = select_generation_model(spec, frame.image_mode, frame.model_id,
+                    reference_count=len(references), run=run, slot=f"{shot.shot_id}:{field}",
+                    params_factory=lambda candidate: frame_params(candidate, plan.aspect_ratio))
                 nodes.append(node(fid, "generate_image", {"mode": frame.image_mode, "prompt": frame.prompt,
                     "reference_artifact_ids": references}, "story-video", caller_agent,
-                    model_id=model.model_id, params=frame_params(model, plan.aspect_ratio),
+                    model_id=model.model_id, params=image_params,
                     stage=stage, gate="preview", rationale=shot.rationale))
                 frames[field] = ref(fid, "image")
         inputs = {"prompt": shot.motion.prompt, "first_frame_artifact_id": frames["first_frame"]}
