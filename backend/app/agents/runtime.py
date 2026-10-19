@@ -92,15 +92,22 @@ def _initial_messages(run, delegation, registry):
 
 
 def _turn_messages(run, delegation, state, prior_turn):
-    """Freeze advisory balances once; never alter an already recorded request."""
+    """Freeze one projected request; replay the ledger's exact original input."""
     from app.agents.budget import planning_spent, remaining
+    from app.agents.context import message_digest, project_messages
     step = str(delegation.steps)
+    if prior_turn is not None:
+        # Covers legacy requests and deployments changing the context policy.
+        # agent_chat still validates the original context and current tool schema.
+        return deepcopy((prior_turn.input_payload or {}).get("messages", state["messages"]))
+    pending = state.get("pending_context")
+    if isinstance(pending, dict) and pending.get("step") == step:
+        messages = pending.get("messages")
+        if not isinstance(messages, list) or pending.get("messages_hash") != message_digest(messages):
+            raise AppError("RECOVERY_REQUIRED", "The frozen context request is not intact", 409)
+        return deepcopy(messages)
     snapshot = state.get("quota_snapshots", {}).get(step)
     if snapshot is None:
-        if prior_turn is not None:
-            # Older requests had no quota context. Tool-schema validation still
-            # happens in agent_chat; this does not authorize a changed schema.
-            return deepcopy((prior_turn.input_payload or {}).get("messages", state["messages"]))
         root = AgentDelegation.query.filter_by(run_id=run.run_id, parent_id=None).one()
         snapshot = {
             "delegation_limit": float(delegation.credits_limit),
@@ -111,14 +118,19 @@ def _turn_messages(run, delegation, state, prior_turn):
             "run_spent": BudgetGuard.spent(run.run_id),
         }
         state.setdefault("quota_snapshots", {})[step] = snapshot
-    # Keep quota messages out of conversation history so each request gets one
-    # current snapshot and argument-correction counting keeps its old boundary.
-    return deepcopy(state["messages"]) + [{"role": "system", "content": QUOTA_CONTEXT_PREFIX + json.dumps({
+    # Keep quota messages and projections out of canonical conversation history.
+    # The caller commits state before agent_chat can admit or dispatch a request.
+    original = deepcopy(state["messages"]) + [{"role": "system", "content": QUOTA_CONTEXT_PREFIX + json.dumps({
         "quota_snapshot": snapshot,
         "notice": "Read-only status before this LLM call; the call also spends quota. "
                   "Allocate planning_credits explicitly and reserve your own completion budget. "
                   "This snapshot grants no permission or increase to any limit.",
     }, ensure_ascii=False, sort_keys=True)}]
+    messages, metrics = project_messages(original)
+    state["pending_context"] = {"step": step, "policy_version": metrics["policy_version"],
+        "source_hash": message_digest(original), "messages_hash": message_digest(messages),
+        "messages": deepcopy(messages), "metrics": metrics}
+    return messages
 
 
 def _stop(delegation, status, code):
