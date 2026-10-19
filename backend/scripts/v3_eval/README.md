@@ -35,3 +35,15 @@ python backend/scripts/v3_eval/hybrid.py crash
 `story` 在批准前还会使用同 Run 的原始 Plan 与审阅后的 PatchDraft 校验范围：仅允许目标视频及其专属首/尾帧提示词变化，拒绝修改其他镜头、共享角色、型号、时长或引用；报价与实际账本也必须匹配。公开 `diff_preview` 会脱敏，不作为引用未变的唯一证据。此检查不能替代对提示词语义和真实画质的人工判断。
 
 强杀用例只覆盖“付费成功回执已提交、Agent/checkpoint 尚未推进”的边界，检查重启第一步不发新请求、不增费用，然后继续新规划回合。HTTP 在途强杀的供应商结算不在此用例范围；未知请求仍禁止盲目重发。活跃计时在强杀前未提交的区间可能丢失，不能据此声称任意中断的时间统计精确。
+
+## 一次性 MySQL 验证
+
+用户批准后，在 Docker Desktop 可用且本地已有固定镜像 `mysql:8.4.4` 时执行；脚本不会隐式拉取镜像。`Work` 必须是 TEMP 下尚不存在的目录，端口必须空闲且不能为 3306。
+
+```powershell
+./backend/scripts/v3_eval/Docker.ps1 -Backend "$PWD/backend" -Work "$env:TEMP/cinecrew-v10c-<唯一标识>" -Port 3307
+```
+
+脚本仅创建带 `cinecrew-v10c` 前缀的本次容器与数据卷，绑定 `127.0.0.1`；`finally` 删除这两个对象并记录结果。`mysql_verify.py` 完全禁用 dotenv，不读取项目配置，网络仅允许本次 loopback MySQL 端口，全部模型调用用 Stub/Mock。临时自签名 TLS 只用于此隔离容器，不是生产 TLS 配置示例。
+
+验证实际 `db upgrade`（不使用 `create_all` 或自动补表）：空库到 `20261019_005`；从 v2 头 `20261018_002` 插入四条历史记录再升级并比对；一个 v3 Mock 交付；两个独立线程/会话的 Run 同时规划。`mysql-evidence.json` 和 `docker-lifecycle.json` 保存证据。`--sqlite-self-check` 仅用于检查脚本自身，不算 MySQL 验收。双 Run 测试不代表同 Run 多 worker 抢占、Redis/MQ 吞吐或生产压力测试。

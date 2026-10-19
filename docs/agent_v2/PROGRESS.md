@@ -952,3 +952,11 @@ Codex 的 2218 项全量回归与前端 134 项记录完整。真实效果待 V1
 边界：强杀仅覆盖“成功账本已提交、checkpoint 未推进”；不覆盖 HTTP 在途结算，活跃时间未提交区间仍可能丢失。同步 Mock 调度不能验证 Redis/MQ 并行吞吐或真实画质。固定零计数字段不是独立抓包证据，零生成结论同时依据白名单、实际 HTTP 审计及拒绝测试。未连接真实数据库/Redis，未改 .env，私人未跟踪笔记保留。
 下一步：按已批准范围执行 V10c，一次性 MySQL 8 容器和数据卷用 cinecrew-v10c 前缀、非默认端口，结束删除；再交付报告给 Claude V-Gate4。
 
+## 2026-10-19 · Codex · V10c 一次性 MySQL 验证完成
+状态：agent-v3/V10c 完成，验证后本地合入 feat/agent-v2；未推送。
+完成内容：新增 Docker.ps1 / mysql_verify.py，禁止 dotenv 与外部 HTTP，模型全部 Stub/Mock；只允许 loopback 非默认 MySQL 端口。固定本地 mysql:8.4.4 镜像，在 127.0.0.1:3307 创建 cinecrew-v10c-20261019202619-cb8ab880 容器及同前缀 -data 卷，使用一次性密码与临时存储。
+测试：离线护栏 5 项通过。真实 MySQL 8.4.4 四项全部通过：空库实际 db upgrade 到 20261019_005；新库先到 v2 头 20261018_002、插入四表 UTF-8/JSON 历史记录再升到 head，记录完整保留；v3 三轮 Stub 规划、Mock 图片生产与人工两次审批到 success；两个独立线程/SQLAlchemy 会话 Run 重叠规划，各三轮到审核，委派/工作区/版本/账本 ID 不串用。未使用 create_all/自动补表，不修改迁移或业务代码。
+证据：TEMP/cinecrew-v10c-run-01/mysql-evidence.json 与 docker-lifecycle.json。容器/数据卷删除退出码均 0；独立 Docker 精确名称查询均不存在。测试真实 LLM/视觉/媒体/外部 HTTP 调用均 0；本次 Mock 媒体演示 credits 2，迁移夹具历史 1.25 不计为新消耗。
+边界：并发覆盖两个不同 Run，不涵盖同 Run 抢占、Redis/MQ 或压力测试；checkpoint 使用独立内存 saver，MySQL 验证针对应用持久化表，不声称 MySQL 存储 LangGraph checkpoint。未读取真实 .env/MySQL/Redis，私人未跟踪技术笔记保留。
+下一步：完成 V10_TEST_REPORT、逐项达标/未达根因与累计调用核算，更新看板，交给 Claude V-Gate4。
+
