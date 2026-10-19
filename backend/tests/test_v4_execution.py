@@ -90,7 +90,9 @@ def test_image_video_dag_uses_shared_jobs_and_typed_outputs(app_ctx, monkeypatch
 
 
 def test_preview_gate_only_blocks_descendants(app_ctx, monkeypatch):
-    run, version, registry = setup([image_node(gate="preview"), video_node(), image_node("other")])
+    run, version, registry = setup([image_node(gate="preview"), video_node(), image_node("other")],
+        deliverables=[{"kind": "video", "node_id": "clip", "output": "video"},
+                      {"kind": "image", "node_id": "other", "output": "image"}])
     monkeypatch.setattr(JobRunService, "start", JobRunService.run_inline)
     runtime.begin(run, version, registry=registry)
     assert runtime.advance(run, registry) == "awaiting_gate"
@@ -319,7 +321,10 @@ def test_independent_nodes_finish_while_one_content_failure_stops_its_branch(app
                            payload={"code": "DataInspectionFailed"})
         return original(self, payload)
     monkeypatch.setattr(MockAdapter, "submit", failure)
-    run, version, registry = setup(nodes)
+    run, version, registry = setup(nodes, deliverables=[
+        {"kind": "image", "node_id": "one", "output": "image"},
+        {"kind": "image", "node_id": "three", "output": "image"},
+        {"kind": "video", "node_id": "clip", "output": "video"}])
     runtime.begin(run, version, registry=registry)
     assert runtime.advance(run, registry) == "executing"
     tasks = runtime.latest_tasks(run)

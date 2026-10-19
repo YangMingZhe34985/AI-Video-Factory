@@ -47,8 +47,8 @@ def failed(run, node_id="image", category="invalid_parameters", code="INVALID_IN
     return task
 
 
-def failed_case(*, nodes=None, allowance=20):
-    run, version, registry = setup(nodes)
+def failed_case(*, nodes=None, allowance=20, deliverables=None):
+    run, version, registry = setup(nodes, deliverables=deliverables)
     runtime.begin(run, version, repair_budget_credits=allowance, registry=registry)
     task = failed(run)
     record = reviewed(run, draft(evidence=[{"task_id": task.id}]),
@@ -82,7 +82,11 @@ def test_patch_schema_requires_typed_evidence_and_unique_targets(app_ctx):
 
 
 def test_apply_is_shallow_independent_and_before_is_only_a_control_edge(app_ctx):
-    run, version, _registry = setup([image_node(), image_node("other")])
+    run, version, _registry = setup([image_node(), image_node("other")],
+        deliverables=[
+            {"kind": "image", "node_id": "image", "output": "image"},
+            {"kind": "image", "node_id": "other", "output": "image"},
+        ])
     original = deepcopy(version.plan)
     value = draft()
     value["ops"].append({"op": "insert_node", "node": image_node("inserted"), "before": "other"})
@@ -98,7 +102,11 @@ def test_apply_is_shallow_independent_and_before_is_only_a_control_edge(app_ctx)
 
 
 def test_invalid_removal_stays_editable_with_compiler_issues(app_ctx):
-    run, version, registry = setup([image_node(), image_node("other")])
+    run, version, registry = setup([image_node(), image_node("other")],
+        deliverables=[
+            {"kind": "image", "node_id": "image", "output": "image"},
+            {"kind": "image", "node_id": "other", "output": "image"},
+        ])
     runtime.begin(run, version, registry=registry)
     value = draft()
     value["ops"] = [{"op": "remove_node", "node_id": "image"}]
@@ -144,7 +152,11 @@ def test_foreign_task_and_workspace_evidence_are_rejected(app_ctx):
 
 
 def test_quote_has_zero_writes_and_reports_incremental_continuation(app_ctx, monkeypatch):
-    run, version, registry, task, record = failed_case(nodes=[image_node(), image_node("later")])
+    run, version, registry, task, record = failed_case(nodes=[image_node(), image_node("later")],
+        deliverables=[
+            {"kind": "image", "node_id": "image", "output": "image"},
+            {"kind": "image", "node_id": "later", "output": "image"},
+        ])
     before = (Job.query.count(), ToolInvocation.query.count(), AgentPlanVersion.query.count(), PlanNodeTask.query.count())
     monkeypatch.setattr(db.session, "commit", lambda: pytest.fail("Quote cannot commit"))
     monkeypatch.setattr(db.session, "flush", lambda *_a, **_kw: pytest.fail("Quote cannot flush"))
@@ -179,7 +191,8 @@ def test_only_retains_completed_generation_but_cascade_forces_it(app_ctx, monkey
 
 
 def test_unsubmitted_dependent_video_uses_continuation_not_repair_allowance(app_ctx):
-    run, _version, registry, _task, record = failed_case(nodes=[image_node(), video_node()], allowance=2)
+    run, _version, registry, _task, record = failed_case(nodes=[image_node(), video_node()], allowance=2,
+        deliverables=[{"kind": "video", "node_id": "clip", "output": "video"}])
     quote = patches.quote_patch(run, record, registry=registry)["quote"]
     assert quote["can_apply"] and quote["automatic"]["eligible"]
     assert quote["estimated_credits"]["repair"] == 2
@@ -209,7 +222,12 @@ def test_unapproved_plan_cannot_enter_patch_approval_path(app_ctx):
 
 
 def test_unrelated_success_is_free_but_failure_is_preserved(app_ctx, monkeypatch):
-    run, _version, registry = completed(monkeypatch, [image_node(), image_node("kept"), image_node("broken")])
+    run, _version, registry = completed(monkeypatch, [image_node(), image_node("kept"), image_node("broken")],
+        [
+            {"kind": "image", "node_id": "image", "output": "image"},
+            {"kind": "image", "node_id": "kept", "output": "image"},
+            {"kind": "image", "node_id": "broken", "output": "image"},
+        ])
     failed(run, "image")
     other = failed(run, "broken", "permanent")
     record = reviewed(run, draft())
@@ -249,7 +267,11 @@ def test_removed_reference_cannot_hide_its_old_descendant_impact(app_ctx):
 
 
 def test_reused_output_mapping_must_match_its_frozen_artifact_fingerprints(app_ctx, monkeypatch):
-    run, _version, registry = completed(monkeypatch, [image_node(), image_node("kept")])
+    run, _version, registry = completed(monkeypatch, [image_node(), image_node("kept")],
+        [
+            {"kind": "image", "node_id": "image", "output": "image"},
+            {"kind": "image", "node_id": "kept", "output": "image"},
+        ])
     failed(run)
     other = runtime.latest_tasks(run)["kept"]
     other.output = {"image": "forged", "images": ["forged"]}
@@ -263,7 +285,8 @@ def test_later_patch_preserves_previously_approved_historical_outputs(app_ctx, m
     from app.plans.patch_execution import approve_patch
     from tests.test_v5_patch_execution import reviewed_patch
     run, _version, registry = completed(monkeypatch, [image_node(), video_node(), image_node("other")],
-        [{"kind": "video", "node_id": "clip", "output": "video"}])
+        [{"kind": "video", "node_id": "clip", "output": "video"},
+         {"kind": "image", "node_id": "other", "output": "image"}])
     first = reviewed_patch(run)
     quote = patches.quote_patch(run, first, registry=registry)["quote"]
     approve_patch(run, first["patch_id"], quote["quote_id"], "only", registry=registry)
@@ -307,7 +330,11 @@ def test_auto_repair_pool_and_attempt_limit_survive_versions(app_ctx):
 
 
 def test_quote_id_changes_on_price_task_or_output_changes(app_ctx, monkeypatch):
-    run, _version, registry = completed(monkeypatch, [image_node(), image_node("kept")])
+    run, _version, registry = completed(monkeypatch, [image_node(), image_node("kept")],
+        [
+            {"kind": "image", "node_id": "image", "output": "image"},
+            {"kind": "image", "node_id": "kept", "output": "image"},
+        ])
     failed(run)
     record = reviewed(run, draft())
     first = patches.quote_patch(run, record, registry=registry)["quote"]

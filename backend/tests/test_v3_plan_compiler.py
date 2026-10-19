@@ -322,7 +322,10 @@ def test_image_count_is_frozen_once_and_array_deliverable_is_complete(app_ctx):
 
 def test_dry_run_detects_missing_outputs_and_incorrect_order(app_ctx):
     run = make_run()
-    result = compile_plan(plan([node(), node("edit", inputs={"mode": "i2i", "prompt": "edit", "reference_artifact_ids": [{"ref": "image.image"}]})]), run)
+    result = compile_plan(plan([node(), node("edit", inputs={"mode": "i2i", "prompt": "edit",
+        "reference_artifact_ids": [{"ref": "image.image"}]})],
+        [{"kind": "image", "node_id": "edit", "output": "image"}]), run)
+    assert result["issues"] == []
     broken = deepcopy(result)
     broken["dag"]["order"].reverse()
     assert dry_run(broken)["issues"][0]["code"] == "DRY_RUN_ORDER"

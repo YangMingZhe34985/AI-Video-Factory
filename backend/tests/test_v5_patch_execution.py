@@ -51,8 +51,8 @@ def quoted(run, record, registry, *, scope=None):
     return bundle["quote"]
 
 
-def failed_plan(nodes=None, *, repair_budget=10):
-    run, version, registry = setup(nodes)
+def failed_plan(nodes=None, *, repair_budget=10, deliverables=None):
+    run, version, registry = setup(nodes, deliverables=deliverables)
     runtime.begin(run, version, repair_budget_credits=repair_budget, registry=registry)
     mark_failed(run, "image")
     return run, version, registry
@@ -129,7 +129,11 @@ def test_cascade_forces_control_descendant_despite_identical_input_hash(app_ctx,
     first, descendant, other = image_node(), image_node("dependent"), image_node("other")
     descendant["depends_on"] = ["image"]
     other["inputs"]["prompt"] = "An unrelated landscape"
-    run, version, registry = setup([first, descendant, other])
+    run, version, registry = setup([first, descendant, other], deliverables=[
+        {"kind": "image", "node_id": "image", "output": "image"},
+        {"kind": "image", "node_id": "dependent", "output": "image"},
+        {"kind": "image", "node_id": "other", "output": "image"},
+    ])
     monkeypatch.setattr(JobRunService, "start", JobRunService.run_inline)
     runtime.begin(run, version, registry=registry)
     assert drain_plan(run, registry) == "awaiting_result_review"
@@ -170,7 +174,11 @@ def test_automatic_repair_allowance_and_node_count_survive_versions(app_ctx):
 
 
 def test_unrelated_failed_node_is_carried_without_implicit_resubmission(app_ctx, monkeypatch):
-    run, _version, registry = failed_plan([image_node(), image_node("unrelated")])
+    run, _version, registry = failed_plan([image_node(), image_node("unrelated")],
+        deliverables=[
+            {"kind": "image", "node_id": "image", "output": "image"},
+            {"kind": "image", "node_id": "unrelated", "output": "image"},
+        ])
     original = mark_failed(run, "unrelated")
     record = reviewed_patch(run, automatic=True)
     quote = quoted(run, record, registry)
@@ -229,7 +237,11 @@ def test_rejection_keeps_original_tasks_outputs_and_budget(app_ctx, monkeypatch)
 
 
 def test_repair_pool_is_shared_across_nodes_and_failed_claims_remain_reserved(app_ctx):
-    run, version, registry = setup([image_node(), image_node("other")])
+    run, version, registry = setup([image_node(), image_node("other")],
+        deliverables=[
+            {"kind": "image", "node_id": "image", "output": "image"},
+            {"kind": "image", "node_id": "other", "output": "image"},
+        ])
     cost = version.check["estimates"]["nodes"][0]["estimated_cost"]
     runtime.begin(run, version, repair_budget_credits=cost * 1.5, registry=registry)
     mark_failed(run, "image")
@@ -249,7 +261,9 @@ def test_repair_pool_is_shared_across_nodes_and_failed_claims_remain_reserved(ap
 
 
 def test_automatic_image_repair_does_not_reserve_original_pending_video_twice(app_ctx):
-    run, version, registry = setup([image_node(), video_node()])
+    run, version, registry = setup([image_node(), video_node()], deliverables=[
+        {"kind": "video", "node_id": "clip", "output": "video"},
+    ])
     image_cost = version.check["estimates"]["nodes"][0]["estimated_cost"]
     runtime.begin(run, version, repair_budget_credits=image_cost, registry=registry)
     mark_failed(run, "image")
@@ -266,7 +280,11 @@ def test_automatic_image_repair_does_not_reserve_original_pending_video_twice(ap
 def test_patch_preserves_only_unchanged_approved_preview_gates(app_ctx, monkeypatch):
     other = image_node("other")
     other["inputs"]["prompt"] = "An unrelated landscape"
-    run, version, registry = setup([image_node(gate="preview"), other])
+    run, version, registry = setup([image_node(gate="preview"), other],
+        deliverables=[
+            {"kind": "image", "node_id": "image", "output": "image"},
+            {"kind": "image", "node_id": "other", "output": "image"},
+        ])
     monkeypatch.setattr(JobRunService, "start", JobRunService.run_inline)
     runtime.begin(run, version, registry=registry)
     assert drain_plan(run, registry) == "awaiting_gate"

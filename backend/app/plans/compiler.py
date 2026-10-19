@@ -373,6 +373,27 @@ def _issue_message(error):
     return text[:600]
 
 
+def _unused_paid_nodes(nodes, deliverables):
+    """Trace data dependencies only; control ordering is not a media consumer."""
+    live = set()
+    pending = [target["node_id"] for target in deliverables if target["node_id"] in nodes]
+    while pending:
+        node_id = pending.pop()
+        if node_id in live:
+            continue
+        live.add(node_id)
+        try:
+            pending.extend(source for source, _field in _refs(nodes[node_id]["inputs"])
+                           if source in nodes and source not in live)
+        except AppError:
+            # The normal typed-reference pass reports malformed references.
+            # A malformed Plan remains blocked; do not invent data edges.
+            continue
+    return [node_id for node_id, node in nodes.items()
+            if node["tool"] in GENERATION_TOOLS and node_id not in live]
+
+
+
 def compile_plan(raw, run, *, registry=None, plan_version=1):
     """Compile without writes, launches, LLM calls or any authority mutation."""
     with db.session.no_autoflush:
@@ -525,6 +546,11 @@ def _compile(raw, run, *, registry, plan_version):
                     counted_videos.add(identity)
             except (AppError, AttributeError, KeyError, TypeError) as error:
                 issue(getattr(error, "code", "INVALID_DELIVERABLE"), "Packaged video needs a verified duration", target["node_id"])
+    for node_id in _unused_paid_nodes(nodes, plan["deliverables"]):
+        issue("PLAN_UNUSED_PAID_NODE",
+              "Paid generation output does not reach a deliverable through data references; "
+              "connect it to a deliverable, explicitly deliver it, or remove the node.", node_id)
+
     generated = sum(item["output_video_seconds"] for item in estimates)
     limit = current_app.config.get("AGENT_V3_MAX_VIDEO_SECONDS", 600)
     if total_seconds > limit or generated > limit:

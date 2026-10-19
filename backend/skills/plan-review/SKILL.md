@@ -35,6 +35,8 @@ load_skill 后用 read_skill_resource(name="plan-review",path="resources/README.
 
 用 check_plan 只读编译，核对媒体引用类型、模型/参数、每片时长、依赖与交付用途；submit_plan 在 Producer 提交时另做隔离 dry-run。尾帧续接必须串行，独立首帧才可并行；stage 标签不是权限。生成关键帧的 gate 需要真实后代引用，QC→package 依赖不能漏掉。
 
+每个付费生成节点必须经 inputs 数据引用通往 deliverables，否则编译报 PLAN_UNUSED_PAID_NODE 并阻止提交。depends_on 只规定顺序，不代表产物被消费；预览门或 rationale 也不能替代真实用途。确需额外交付设定图时明确列为 image deliverable，否则连接到后续输入或删除无用节点；不要自动减少用户明确要求的产物。选择门的全部候选均为有效数据依赖，免费QC/探测等保障节点不按此规则误报。
+
 对照交付总时长、生成计费秒数、原片选择范围和 Wan3 输入 I+完整输出 G。费用来自服务端，演示数据不能当真实账单。首尾帧质量未实测对等；媒体 QC 不能证明角色相似度或艺术质量。
 
 Critic 返回 verdict=pass|revise 和 issues[{severity,message,node_id?}]，明确最小修改范围。pass 不是付费批准，也不代替指定 Director 的 review_patch。只有 Producer 调 submit_plan 提交用户审核；已批准版本必须走 Patch，不能改工作区草稿绕过版本授权。
