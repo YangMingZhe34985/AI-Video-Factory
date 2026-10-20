@@ -10,6 +10,7 @@ from app.utils.time_utils import isoformat
 
 def public_patches(run):
     from app.agents.api import safe_text
+    from app.plans.patch_intent import public_assessment
     result = []
     for patch_id, record in (run.snapshot or {}).get("v3_patches", {}).items():
         draft = record.get("draft") or {}
@@ -42,7 +43,8 @@ def public_patches(run):
                 "fields": sorted((op.get("inputs") or {}).keys()) if op.get("op") == "update_inputs" else []}
                 for op in draft.get("ops", [])],
             "diff_preview": changes,
-            "review": {"verdict": review.get("verdict"), "reason": safe_text(_safe(review.get("reason")), 2000)} if review else None,
+            "review": {"verdict": review.get("verdict"), "reason": safe_text(_safe(review.get("reason")), 2000),
+                **_safe(public_assessment(run, record))} if review else None,
             "auto_approved": bool(record.get("auto_approved")),
             "approved_version": record.get("approved_version"),
             "quote": _safe(record.get("quote"))})

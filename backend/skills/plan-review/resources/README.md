@@ -22,7 +22,7 @@
 - brief 中附件必须完整覆盖本次上传；`transform_source` 必须配套 `transform`，edit/extend 的 `source_attachment_id` 指向唯一主视频。视频模型偏好/排除保留原用户文本，修订不得放宽。
 - research_dossier 的 Topic、Candidate、Source 等都有严格子字段。`source_id` 对应实际搜索 `result_id`，网页事实还须成功 fetch；图片候选须下载、分析并绑定同一实体。`selected_candidate_id` 不能由推荐代替。
 - 原创角色 source=generate 时尚无工件，artifact_ids 为空；不能把计划中的未来产物写成已生成 ID。
-- Patch 通过 `propose_patch({draft})` 提交，指定 Director 用 `review_patch` 审阅；读取 patch Schema 不允许普通角色写补丁或自行启动修复。成功提议/审阅会结束对应委派，不另调 finish。
+- Patch 通过 `propose_patch({draft})` 提交，指定 Director 用 `review_patch` 审阅；读取 patch Schema 不允许普通角色写补丁或自行启动修复。成功提议/审阅会结束对应委派，不另调 finish。review_patch 另需显式 intent_preserved 和 changed_elements；变化项包含 element/change(removed|changed)/before/after/reason。以最终草稿与用户点名内容比较，不确定不报 true；只有保真且无变化才可能满足自动修复条件。
 - `finish` 仍按当前函数 Schema 和角色合同调用；引用字段为 plan_ref/dossier_ref/story_ref 等，不能把工作区完整对象直接代替 `{key,version}`。submit_plan 成功即完成 Producer。
 
 ## 计划节点输入与命名输出

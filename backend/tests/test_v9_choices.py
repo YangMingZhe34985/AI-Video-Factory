@@ -235,22 +235,36 @@ def test_patch_candidate_reorder_requires_new_selection(app_ctx):
     run, version, registry, ids = ready_choice()
     choose(run, version, ids[0])
     runtime.advance(run, registry)
-    record = deepcopy(reviewed_patch(run, "choice"))
-    draft = deepcopy(record["draft"])
-    draft["ops"] = [{"op": "update_inputs", "node_id": "choice", "inputs": {
-        "candidate_artifact_ids": [{"artifact": key} for key in reversed(ids)]}}]
-    record["draft"] = draft
-    record["director_review"]["draft_hash"] = patch_digest(draft)
-    workspace = AgentWorkspaceItem.query.filter_by(run_id=run.run_id, key=record["patch_id"]).one()
-    updated = AgentWorkspaceItem(run_id=run.run_id, key=workspace.key, version=2, kind="patch", payload=draft,
-        author_agent="director", delegation_id=workspace.delegation_id, request_key=new_id("write"), inputs_hash=patch_digest(draft))
-    db.session.add(updated)
-    record["director_review"]["review_ref"] = {"key": workspace.key, "version": 2}
-    run.snapshot = {**run.snapshot, "v3_patches": {record["patch_id"]: record}}
-    db.session.commit()
+    from app.agents import repair_flow
+    from tests.test_v5_repair_flow import invoke
+    repair_flow.revise_plan(run, {"command_id": "reorder-choice", "plan_version": version.version,
+        "message": "Reverse the same three candidates and ask me to choose again"})
+    assert repair_flow.advance_repair_flow(run, registry)
+    author = repair_flow.planning_delegation(run)
+    draft = {"base_version": version.version, "reason": "Reorder the same candidates",
+        "evidence_refs": [{"task_id": runtime.latest_tasks(run)["choice"].id}],
+        "ops": [{"op": "update_inputs", "node_id": "choice", "inputs": {
+            "candidate_artifact_ids": [{"artifact": key} for key in reversed(ids)]}}]}
+    proposal = invoke(run, author, registry, "propose_patch", {"draft": draft}, "choice-reorder-propose")
+    assert repair_flow.advance_repair_flow(run, registry)
+    director = repair_flow.planning_delegation(run)
+    assert director.id != author.id
+    invoke(run, director, registry, "review_patch", {"patch_id": proposal["patch_id"],
+        "verdict": "approve", "reason": "Same candidates and a fresh explicit selection",
+        "intent_preserved": True, "changed_elements": []}, "choice-reorder-review")
+    assert repair_flow.advance_repair_flow(run, registry)
+    record = deepcopy(run.snapshot["v3_patches"][proposal["patch_id"]])
+    assert record["status"] == "awaiting_approval"
+    review = record["director_review"]
+    assessment = AgentWorkspaceItem.query.filter_by(run_id=run.run_id,
+        key=review["assessment_ref"]["key"], version=review["assessment_ref"]["version"]).one()
+    assert assessment.payload["draft_hash"] == patch_digest(record["draft"])
+    assert assessment.payload["intent_preserved"] is True
+    assert {item["name"] for item in run.snapshot["v3_patch_tool_receipts"].values()} == {"propose_patch", "review_patch"}
     quote = quote_patch(run, record, registry=registry)["quote"]
     assert quote["can_apply"] and "choice" in quote["execute_node_ids"]
     second = patch_execution.approve_patch(run, record["patch_id"], quote["quote_id"], "only", registry=registry)
+    assert repair_flow.advance_repair_flow(run, registry)
     assert "choice" not in run.snapshot["v3_execution"].get("choice_receipts", {})
     runtime.advance(run, registry)
     assert run.status == "awaiting_gate"

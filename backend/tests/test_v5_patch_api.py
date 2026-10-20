@@ -10,6 +10,7 @@ from app.models import AgentDelegation, AgentPlanVersion, ModelRegistry, PlanNod
 from app.agents.workspace import write_workspace
 from app.plans import runtime
 from app.plans.patches import normalize_patch, patch_digest
+from app.plans.patch_intent import save_assessment
 from app.tools.spec import ToolContext
 from app.services.job_run_service import JobRunService
 from tests.test_v4_execution import setup
@@ -38,7 +39,9 @@ def reviewed_patch():
     record = {"patch_id": "patch-test", "draft": draft, "proposed_by": "repair", "status": "awaiting_approval",
         "review_delegation_id": director.id, "trigger": {"kind": "failure", "node_ids": ["image"], "task_ids": [task.id]},
         "director_review": {"delegation_id": director.id, "verdict": "approve", "base_version": 1,
-            "reason": "Harmless wording only", "draft_hash": patch_digest(draft), "request_key": "director-review", "review_ref": ref}}
+            "reason": "Harmless wording only", "intent_preserved": True, "changed_elements": [], "draft_hash": patch_digest(draft), "request_key": "director-review", "review_ref": ref}}
+    review = record["director_review"]
+    review["assessment_ref"] = save_assessment(run, director, record["patch_id"], review)
     run.snapshot = {**run.snapshot, "v3_patches": {record["patch_id"]: record}}
     db.session.commit()
     return run, record

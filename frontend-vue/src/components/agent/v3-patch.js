@@ -144,6 +144,16 @@ export function patchOperationLabel(operation) {
   return ({ update_inputs: '修改输入', replace_node: '替换节点', insert_node: '新增节点', remove_node: '移除节点' })[operation] || '变更'
 }
 
+export function patchIntent(review) {
+  const changes = Array.isArray(review?.changed_elements) ? review.changed_elements.filter((item) => object(item)
+    && typeof item.element === 'string' && ['changed', 'removed'].includes(item.change)
+    && ['before', 'after', 'reason'].every((key) => typeof item[key] === 'string')) : []
+  if (changes.length) return { status: 'changed', label: '用户点名内容有变化，需要人工确认', changes }
+  if (review?.intent_preserved === true && Array.isArray(review.changed_elements) && review.changed_elements.length === 0)
+    return { status: 'preserved', label: 'Director 判断保留了原需求', changes }
+  return { status: 'unknown', label: '尚未确认是否保留原需求，需要人工确认', changes }
+}
+
 export function patchReviewLabel(verdict) {
   return ({ approve: '审阅通过', revise: '修订后通过', reject: '审阅拒绝' })[verdict] || '等待独立审阅'
 }

@@ -12,6 +12,15 @@
       <p class="font-medium">Director · {{ patchReviewLabel(patch.review?.verdict) }}</p>
       <p v-if="patch.review?.reason" class="mt-1 whitespace-pre-wrap text-slate-600 dark:text-slate-300">{{ patch.review.reason }}</p>
     </div>
+    <div v-if="patch.review" class="mt-3 rounded-lg bg-slate-50 p-3 text-sm dark:bg-slate-800" data-testid="patch-intent-assessment">
+      <p class="font-medium">{{ intent.label }}</p>
+      <dl v-for="(change, index) in intent.changes" :key="index" class="mt-3 space-y-1 break-words">
+        <dt class="font-medium">{{ change.element }} · {{ change.change === 'removed' ? '移除' : '改变' }}</dt>
+        <dd>修改前：{{ change.before }}</dd><dd>修改后：{{ change.after || '已移除' }}</dd>
+        <dd>原因：{{ change.reason }}</dd>
+      </dl>
+      <p v-if="intent.status !== 'preserved' && patch.status !== 'applied'" class="mt-2 text-xs">请结合下方前后差异与审阅理由，决定是否批准当前修订。</p>
+    </div>
     <p v-if="patch.status === 'applied'" class="mt-3 text-sm text-slate-500">{{ patch.auto_approved ? '在原授权范围内自动应用' : '经人工确认应用' }}<span v-if="patch.approved_version"> · 版本 {{ patch.approved_version }}</span>。此记录仅供查看。</p>
     <p v-else-if="!reviewable" class="mt-3 text-sm text-slate-500">当前为只读记录；待独立审阅完成、版本一致且任务可处理时才能报价与审批。</p>
 
@@ -101,7 +110,7 @@
 import { computed, onUnmounted, ref, watch } from 'vue'
 import { quoteAgentV3Patch } from '@/api/agent'
 import { creditLabel, v3StatusLabel } from './v3-actions'
-import { buildPatchAction, createPatchQuoteSession, currentPatchQuote, patchApprovalIssue, patchContextKey, patchImpact, patchJson, patchOperationLabel, patchReviewable, patchReviewLabel } from './v3-patch'
+import { buildPatchAction, createPatchQuoteSession, currentPatchQuote, patchApprovalIssue, patchContextKey, patchImpact, patchIntent, patchJson, patchOperationLabel, patchReviewable, patchReviewLabel } from './v3-patch'
 
 const props = defineProps({ run: { type: Object, required: true }, patch: { type: Object, required: true }, disabled: Boolean })
 const emit = defineEmits(['action', 'refresh'])
@@ -113,6 +122,7 @@ const contextKey = computed(() => patchContextKey(props.run, props.patch, scope.
 const reviewable = computed(() => patchReviewable(props.run, props.patch))
 const validFreshQuote = computed(() => currentPatchQuote(receipt.value, props.run, props.patch, scope.value))
 const visibleQuote = computed(() => validFreshQuote.value ? receipt.value.quote : props.patch.quote)
+const intent = computed(() => patchIntent(props.patch.review))
 const changes = computed(() => Array.isArray(props.patch.diff_preview) ? props.patch.diff_preview : [])
 const impact = computed(() => patchImpact(visibleQuote.value))
 const warnings = computed(() => Array.isArray(visibleQuote.value?.warnings) ? visibleQuote.value.warnings : [])

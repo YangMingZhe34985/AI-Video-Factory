@@ -60,7 +60,9 @@ def _context_item(run, root, flow, version, message):
     for suffix, kind, payload in (
         ("base", "plan_draft", authoring_plan(version.plan)),
         ("evidence", "note", {"base_version": version.version, "message": message,
-            "trigger": flow["trigger"], "failures": [{"task_id": task.id, "node_id": task.node_id, "error": task.error}
+            "trigger": flow["trigger"], "user_request": run.request.get("text", ""),
+            "constraints": deepcopy((run.snapshot or {}).get("v3_revision_constraints", {})),
+            "failures": [{"task_id": task.id, "node_id": task.node_id, "error": task.error}
                 for task in PlanNodeTask.query.filter(PlanNodeTask.run_id == run.run_id,
                     PlanNodeTask.id.in_(flow["trigger"].get("task_ids", []))).all()]}),
     ):
@@ -215,7 +217,10 @@ def _delegate(run, flow, registry, *, review):
     if review:
         refs.append(run.snapshot["v3_patches"][flow["patch_id"]]["proposal_ref"])
     payload = {"agent": role, "context_refs": refs, "expected": "DirectorPatchReview" if review else "PatchDraft",
-        "task": (f"Independently review Patch {flow['patch_id']}; call review_patch with approve, revise or reject."
+        "task": (f"Independently review Patch {flow['patch_id']}; compare the final draft with the user's named elements, "
+                 "original request, constraints and revision evidence. Call review_patch with explicit intent_preserved and "
+                 "changed_elements. Uncertainty is false; any removed or changed named element needs human approval. "
+                 "Distinguish recorded provider errors from speculative causes."
                  if review else "Read the base Plan and failure/user evidence; propose the smallest Patch through propose_patch. "
                     "Preserve original hard constraints. Never generate, retry unknown submissions or authorize spending.")}
     ctx = _context(run, root)

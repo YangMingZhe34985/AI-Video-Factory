@@ -11,6 +11,7 @@ from app.extensions import db
 from app.models import AgentDelegation, AgentPlanVersion, AgentWorkspaceItem, ApiTask, Artifact, ModelRegistry, PlanNodeTask, ToolInvocation
 from app.plans import patch_execution, policy, runtime
 from app.plans.patches import normalize_patch, patch_digest, quote_patch
+from app.plans.patch_intent import save_assessment
 from app.services.job_run_service import JobRunService
 from app.services.storage_service import StorageService
 from app.tools.budget import BudgetGuard
@@ -38,8 +39,11 @@ def reviewed_patch(run, node_id="image", *, prompt="A happy orange cat wearing a
         "return_status": run.status, "review_delegation_id": director.id,
         "trigger": {"kind": "failure" if automatic else "user_revision", "node_ids": [node_id], "task_ids": [task.id]},
         "director_review": {"delegation_id": director.id, "verdict": "approve", "base_version": version.version,
+            "reason": "Controlled Mock fixture preserves the requested content", "intent_preserved": True, "changed_elements": [],
             "draft_hash": patch_digest(draft), "request_key": director.request_key,
             "review_ref": {"key": item.key, "version": 1}}}
+    review = record["director_review"]
+    review["assessment_ref"] = save_assessment(run, director, patch_id, review)
     run.snapshot = {**run.snapshot, "v3_patches": {**run.snapshot.get("v3_patches", {}), patch_id: record}}
     db.session.commit()
     return record

@@ -136,7 +136,7 @@ def test_harness_drives_real_actions_with_offline_repair_director_stubs(app_ctx,
                 "ops": [{"op": "update_inputs", "node_id": "clip", "inputs": {"prompt": "A cat waves gently"}}]}})]
         else:
             assert data.role == "director"
-            calls = [call("review_patch", {"patch_id": active_flow(current)["patch_id"], "verdict": "approve", "reason": "Prompt-only local repair"})]
+            calls = [call("review_patch", {"patch_id": active_flow(current)["patch_id"], "verdict": "approve", "reason": "Prompt-only local repair", "intent_preserved": True, "changed_elements": []})]
         return {"content": None, "tool_calls": calls, "usage": {"prompt_tokens": 2, "completion_tokens": 2}, "tool_call_errors": []}
     monkeypatch.setattr(chat, "AGENT_LLM_TURN_SPEC", replace(chat.AGENT_LLM_TURN_SPEC, handler=offline_turn))
     monkeypatch.setattr(JobRunService, "start", JobRunService.run_inline)
@@ -185,7 +185,7 @@ def _stub_director(monkeypatch, operation):
             calls = [call("propose_patch", {"draft": {"base_version": flow["base_version"], "reason": "User explicitly requested this change",
                     "evidence_refs": [{"workspace_ref": flow["context_refs"][1]}], "ops": [operation]}})]
         else:
-            calls = [call("review_patch", {"patch_id": flow["patch_id"], "verdict": "approve", "reason": "Independent bounded review"})]
+            calls = [call("review_patch", {"patch_id": flow["patch_id"], "verdict": "approve", "reason": "Independent bounded review", "intent_preserved": True, "changed_elements": []})]
         return {"content": None, "tool_calls": calls, "usage": {"prompt_tokens": 2, "completion_tokens": 2}, "tool_call_errors": []}
     monkeypatch.setattr(chat, "AGENT_LLM_TURN_SPEC", replace(chat.AGENT_LLM_TURN_SPEC, handler=response))
 

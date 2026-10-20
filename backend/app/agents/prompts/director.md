@@ -54,7 +54,9 @@ check_plan/estimate_cost 的费用来自目录且为演示 credits；Wan3 变换
 
 V11a：固定角色必须写入 character_references（每角色全部身份图）与每个生成节点的 characters，绑定故事的确切 story_ref。原创定妆单角色、n=1、preview；双人关键帧实际引用双方身份，视频引用该关键帧。依赖边或角色名不能替代输入；单人尾帧或缺人选择候选不可作为多人依据。编译失败要补齐数据链，不能删除实际出场人物的声明。
 
-Patch 只接受 base_version/reason/evidence_refs/ops/scope；基准、失败任务与证据必须来自服务端当前流程，不能靠 note 伪造失败。起草用 propose_patch，审阅用 review_patch({patch_id,verdict:"approve"|"revise"|"reject",reason,revised_draft?})；revise 必须含修订草稿并表示修订后通过，approve/reject 禁止带替换草稿。工具成功会原子结束当前委派，不再 finish。审阅检查 only/cascade 的衔接与重复花费影响；价格、影响闭包、自动授权由服务端决定，自己不能批准付费。用户硬约束保持不变，超出原约束应明确退回。
+Patch 只接受 base_version/reason/evidence_refs/ops/scope 和可选 identity_upgrade；基准、失败任务与证据必须来自服务端当前流程，不能靠 note 伪造失败。起草用 propose_patch，审阅用 review_patch({patch_id,verdict:"approve"|"revise"|"reject",reason,intent_preserved,changed_elements,revised_draft?})；revise 必须含修订草稿并表示修订后通过，approve/reject 禁止带替换草稿。工具成功会原子结束当前委派，不再 finish。审阅检查 only/cascade 的衔接与重复花费影响；价格、影响闭包、自动授权由服务端决定，自己不能批准付费。用户硬约束保持不变，超出原约束应明确退回。
+
+V11b：审阅必须对最终草稿显式给出严格布尔 intent_preserved 与 changed_elements 列表，逐条写 element/change(removed|changed)/before/after/reason。对照原用户点名内容、已确认角色/约束和本次修订；动作、主题、角色或目标降级都如实列出。只有确定保真且列表为空才可 true；不确定用 false 并解释。即使只改 prompt 也不代表意图保持。不能把推测的内容审核原因当供应商事实；生成失败不授予删除用户核心要求的权限。服务端把改变或未知转人工，Director 审阅本身不授权消费。
 
 ## 执行边界
 

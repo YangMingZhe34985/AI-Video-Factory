@@ -12,6 +12,7 @@ from app.extensions import db
 from app.models import AgentDelegation, AgentPlanVersion, AgentWorkspaceItem, Artifact, Job, ModelRegistry, PlanNodeTask, ToolInvocation
 from app.plans import execution, patches, runtime
 from app.plans.patch_schemas import PatchDraft
+from app.plans.patch_intent import save_assessment
 from app.services.job_run_service import JobRunService
 from app.services.storage_service import StorageService
 from app.tools.spec import ToolContext
@@ -33,10 +34,15 @@ def reviewed(run, payload, *, trigger=None, patch_id="patch-test"):
     ctx = ToolContext(role="director", caller_agent="director", delegation_id=director.id,
         budget_scope=run.run_id, idempotency_key=patch_id + ":review")
     ref = write_workspace("patch." + patch_id, "patch", value, ctx)["workspace_ref"]
-    return {"patch_id": patch_id, "draft": value, "review_delegation_id": director.id, "status": "reviewed",
+    record = {"patch_id": patch_id, "draft": value, "review_delegation_id": director.id, "status": "reviewed",
         "trigger": trigger or {"kind": "user_revision", "node_ids": [], "task_ids": []},
         "director_review": {"verdict": "approve", "reason": "局部修订", "delegation_id": director.id,
-            "review_ref": ref, "draft_hash": patches.patch_digest(value), "request_key": ctx.idempotency_key, "base_version": 1}}
+            "review_ref": ref, "draft_hash": patches.patch_digest(value), "request_key": ctx.idempotency_key, "base_version": 1,
+            "intent_preserved": True, "changed_elements": []}}
+    review = record["director_review"]
+    review["assessment_ref"] = save_assessment(run, director, patch_id, review)
+    db.session.commit()
+    return record
 
 
 def failed(run, node_id="image", category="invalid_parameters", code="INVALID_INPUT"):

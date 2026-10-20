@@ -99,6 +99,10 @@ def test_upgrade_cannot_become_prompt_only_automatic_repair(monkeypatch):
     record = {"trigger": {"kind": "failure", "node_ids": ["image"], "task_ids": [1]}}
     task = SimpleNamespace(id=1, status="failed", error={"category": "content_policy"}, state={"tool": "generate_image"})
     monkeypatch.setattr(patches, "_unknown", lambda task: False)
+    # Pure identity-policy test: isolate the separately tested immutable verifier.
+    from app.plans.patch_intent import IntentAssessment
+    assessment = IntentAssessment.model_validate({"intent_preserved": True, "changed_elements": []}).model_dump()
+    monkeypatch.setattr(patches, "verified_assessment", lambda run, row, digest: assessment)
     args = (SimpleNamespace(), record)
     normal = patches._automatic(*args, draft(), {"image"}, {"image"}, {"image": task}, {1}, 2)
     upgraded = patches._automatic(*args, draft(True), {"image"}, {"image"}, {"image": task}, {1}, 2)

@@ -15,6 +15,7 @@ from app.plans.compiler import authoring_plan, compile_plan
 from app.plans.dry_run import dry_run
 from app.plans import execution
 from app.plans.patch_schemas import PatchDraft
+from app.plans.patch_intent import automatic_intent_reasons, verified_assessment
 from app.tools.budget import BudgetGuard
 from app.tools.spec import ToolContext
 
@@ -98,6 +99,7 @@ def _review(run, record, draft):
     if (row.kind != "patch" or row.author_agent != "director" or row.delegation_id != director.id
             or patch_digest(row.payload) != patch_digest(draft)):
         raise AppError("PATCH_REVIEW_REQUIRED", "Director review does not bind this exact draft", 403)
+    verified_assessment(run, record, patch_digest(draft))
     return inputs_hash(review)
 
 
@@ -231,7 +233,7 @@ def repair_budget(run):
 
 def _automatic(run, record, draft, roots, affected, tasks, evidence_ids, cost):
     pool = repair_budget(run)
-    reasons = []
+    reasons = automatic_intent_reasons(verified_assessment(run, record, patch_digest(draft)))
     if draft.get("identity_upgrade") is not None:
         reasons.append("IDENTITY_UPGRADE_REQUIRES_REVIEW")
     trigger = record.get("trigger") or {}
@@ -369,6 +371,11 @@ def _quote(run, record, *, scope, registry):
     repair_cost, continuation_cost = total(repair_ids), total(continuation_ids)
     incremental = float(Decimal(str(repair_cost)) + Decimal(str(continuation_cost)))
     automatic = _automatic(run, record, draft, roots, affected, tasks, evidence_ids, repair_cost)
+    for code in automatic["reasons"]:
+        if code in {"PATCH_INTENT_UNCERTAIN", "PATCH_INTENT_CHANGED"}:
+            warnings.append({"code": code, "node_id": None, "message":
+                "修订改变了用户点名内容，需要人工确认。" if code == "PATCH_INTENT_CHANGED"
+                else "尚未确认修订保留原需求，需要人工确认。"})
     manual_can_apply = not issues
     try:
         BudgetGuard.check(run.run_id, run.request["budget_limit"], incremental + automatic["remaining_credits"])

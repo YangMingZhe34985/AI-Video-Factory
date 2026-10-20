@@ -12,6 +12,7 @@ from app.api import AppError
 from app.extensions import db
 from app.models import AgentDelegation, AgentWorkspaceItem, PlanNodeTask
 from app.plans.patch_schemas import PatchDraft
+from app.plans.patch_intent import IntentAssessment, save_assessment
 from app.tools.spec import ToolSpec
 from app.utils.ids import new_id
 
@@ -20,7 +21,7 @@ class ProposeInput(StrictModel):
     draft: PatchDraft
 
 
-class ReviewInput(StrictModel):
+class ReviewInput(IntentAssessment):
     patch_id: str = Field(min_length=1, max_length=80)
     verdict: Literal["approve", "revise", "reject"]
     reason: str = Field(min_length=1, max_length=2000)
@@ -154,9 +155,12 @@ def review_patch(data, ctx):
     if draft["base_version"] != flow["base_version"]:
         raise AppError("PLAN_VERSION_CONFLICT", "Review cannot change the Patch base version", 409)
     review_ref = _workspace(run, delegation, f"patch.{data.patch_id}.review", draft, ctx)
-    record.update(draft=draft, status="rejected" if data.verdict == "reject" else "reviewed", director_review={
-        "verdict": data.verdict, "reason": data.reason, "delegation_id": delegation.id, "review_ref": review_ref,
-        "draft_hash": patch_digest(draft), "request_key": _key(ctx), "base_version": flow["base_version"]})
+    review = {"verdict": data.verdict, "reason": data.reason, "delegation_id": delegation.id,
+        "review_ref": review_ref, "draft_hash": patch_digest(draft), "request_key": _key(ctx),
+        "base_version": flow["base_version"], "intent_preserved": data.intent_preserved,
+        "changed_elements": normalized["changed_elements"]}
+    review["assessment_ref"] = save_assessment(run, delegation, data.patch_id, review)
+    record.update(draft=draft, status="rejected" if data.verdict == "reject" else "reviewed", director_review=review)
     flow["stage"] = "review_rejected" if data.verdict == "reject" else "quote_pending"
     delegation.status = "completed"
     delegation.output = {"kind": "completed", "patch_ref": review_ref, "verdict": data.verdict, "rationale": data.reason}
@@ -168,6 +172,6 @@ def register_patch_tools(registry):
     registry.register(ToolSpec(name="propose_patch", description="Submit a local Patch draft for independent Director review; never grants generation approval.",
         input_model=ProposeInput, output_model=Output, handler=propose_patch, permission="write",
         allowed_roles=frozenset({"repair", "director"}), agent_visible=True, max_retries=0))
-    registry.register(ToolSpec(name="review_patch", description="Assigned Director approves, revises or rejects one exact Patch; this review does not authorize paid execution.",
+    registry.register(ToolSpec(name="review_patch", description="Assigned Director reviews one exact Patch and explicitly assesses user intent changes; uncertain or changed intent requires human approval. This review never authorizes paid execution.",
         input_model=ReviewInput, output_model=Output, handler=review_patch, permission="write",
         allowed_roles=frozenset({"director"}), agent_visible=True, max_retries=0))

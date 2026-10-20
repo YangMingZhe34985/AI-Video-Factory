@@ -520,3 +520,12 @@ patches.diff_preview 为逐操作 {op,node_id,before,after}：输入更新仅展
 - 保证范围：结构化声明的身份输入覆盖，不保证真实画面身份或角色出场声明的语义正确性。明确 [] 的空镜仍须 Director/用户审核；不从自然语言猜角色，不强行要求一个节拍拆出的每个近景都同框。
 - 兼容：characters=null、空 character_references、story_ref=null 不序列化进旧形状，避免改变旧 Blueprint/节点摘要。仅当输入精确匹配当前 Run 数据库已保存的旧 ExecutionPlan 且没有新增身份字段，允许不追认最新 story；新草稿/新 Patch 不享受此豁免，客户端不能用自报版本绕过。
 - 旧计划修订：PatchDraft 可选 `identity_upgrade:{character_references:<同Plan目录Schema，必填非空>,story_ref?:WorkspaceRef}`。仅基计划无非空目录时允许，已有目录报 `PLAN_IDENTITY_UPGRADE_FORBIDDEN`；已有固定 story_ref 必须继承，不可替换。节点声明/引用通过原有 replace/insert 操作明示，完整编译不放宽。普通 Patch 最多50操作，带升级最多200操作，Plan总节点上限仍200。升级始终要求人工（自动原因码 `IDENTITY_UPGRADE_REQUIRES_REVIEW`），参与 Patch/quote 摘要，公开身份目录/故事前后差异；null 不序列化，旧摘要不变。
+
+### V.21.2 自动修复意图保真（V11b，D-041）
+
+- review_patch 在原字段外必填 intent_preserved: strict bool、changed_elements: ChangedElement[]（最多40项）。ChangedElement = {element,change:"changed"|"removed",before,after,reason}；element 1–300字符，before/reason 1–1000字符且非空白，after 最多1000字符；changed 的 after 必须非空白，removed 可为空。无默认 true，也不把字符串布尔转为判断。
+- Director 依据最终草稿评估用户点名的角色、动作、主题、目标等，变化逐项列前后内容与原因；不确定给 false。repair_flow 的不可变证据包含原 user_request 和冻结 constraints，模型推测的审核原因不能当作供应商事实。
+- 服务端保存 patch.<id>.intent version=1、kind=note、author=指定独立 director；内容绑定 patch/base_version/draft_hash/verdict/reason/原请求键和结构化评估，使用独立派生请求键避免与 Patch 工作区收据冲突。复验 Run、委派、作者、工作区内容/哈希和引用，评估加入原审阅哈希及报价复验。
+- 仅 intent_preserved=true 且 changed_elements=[] 才可能自动批准；仍须全部 V.17.4 条件和 V11a 人工门。变化产生 PATCH_INTENT_CHANGED，未知/false 产生 PATCH_INTENT_UNCERTAIN；报价展示 warning，人工批准仍使用当前 quote_id 和范围。非空变化即使错误地声明 true，也不得自动。
+- 完全缺少新增评估的历史记录视为未知，不自动重放授权，不改已批准历史；新评估字段/引用残缺或与不可变证据不符，报 PATCH_REVIEW_REQUIRED。公开旧记录可以展示未知，但不能据此绕过报价核验。
+- Run patches.review 增加 intent_preserved:boolean|null、changed_elements。UI 显示保真/变化/未知、点名元素的修改前后与原因；当前未知/变化等待用户审核，历史 applied 保持只读与实际批准方式。所有内容仍经公开视图脱敏，私有工作区/摘要/原始消息不暴露。

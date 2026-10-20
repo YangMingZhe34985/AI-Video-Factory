@@ -17,7 +17,7 @@ tools:
 related:
 - long-form-video
 - budget-planning
-version: 3
+version: 4
 ---
 # 计划审阅
 
@@ -42,6 +42,8 @@ load_skill 后用 read_skill_resource(name="plan-review",path="resources/README.
 对照交付总时长、生成计费秒数、原片选择范围和 Wan3 输入 I+完整输出 G。费用来自服务端，演示数据不能当真实账单。首尾帧质量未实测对等；媒体 QC 不能证明角色相似度或艺术质量。
 
 Critic 返回 verdict=pass|revise 和 issues[{severity,message,node_id?}]，明确最小修改范围。pass 不是付费批准，也不代替指定 Director 的 review_patch。只有 Producer 调 submit_plan 提交用户审核；已批准版本必须走 Patch，不能改工作区草稿绕过版本授权。
+
+指定 Director 审阅 Patch 必须给 intent_preserved（严格布尔）和 changed_elements（元素、changed/removed、前后内容、原因）。按最终草稿核对原用户点名内容及本次修订；不确定或有降级就如实标 false / 列出变化。prompt-only 不是语义保真证据；供应商记录与政策原因推测分开。改变或未知保真均需要人工确认，不能靠审阅通过自动恢复生成。
 
 ## 多候选选择
 

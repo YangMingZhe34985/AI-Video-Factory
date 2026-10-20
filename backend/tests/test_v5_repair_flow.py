@@ -68,7 +68,7 @@ def test_repair_independent_review_waits_without_producer_llm(app_ctx):
     assert child.agent == "repair" and child.parent_id == root.id
     patch_id, director = proposed(run, child, task, registry)
     assert director.agent == "director" and director.id != child.id
-    result = invoke(run, director, registry, "review_patch", {"patch_id": patch_id, "verdict": "approve", "reason": "Only the failed prompt changes"}, "review")
+    result = invoke(run, director, registry, "review_patch", {"patch_id": patch_id, "verdict": "approve", "reason": "Only the failed prompt changes", "intent_preserved": True, "changed_elements": []}, "review")
     assert result["status"] == "reviewed"
     assert repair_flow.advance_repair_flow(run, registry)
     assert run.status == "attention" and root.status == "completed"
@@ -90,7 +90,7 @@ def test_scripted_review_auto_applies_without_extra_producer_round(app_ctx):
     assert flow["stage"] == "review_pending"
     runtime.advance(run)
     app_ctx.extensions["agent_v3_scripted_llm"] = ScriptedLLM({"director": [[call("review_patch", {
-        "patch_id": flow["patch_id"], "verdict": "approve", "reason": "Local harmless correction"})]]})
+        "patch_id": flow["patch_id"], "verdict": "approve", "reason": "Local harmless correction", "intent_preserved": True, "changed_elements": []})]]})
     runtime.advance(run)
     runtime.advance(run)
     assert run.status == "executing", run.error
@@ -107,7 +107,7 @@ def test_patch_tool_local_commit_recovers_without_duplicate_workspace(app_ctx, m
     payload = {"draft": draft(task)}
     if name == "review_patch":
         patch_id, child = proposed(run, child, task, registry)
-        payload = {"patch_id": patch_id, "verdict": "approve", "reason": "Local change"}
+        payload = {"patch_id": patch_id, "verdict": "approve", "reason": "Local change", "intent_preserved": True, "changed_elements": []}
     spec, original = registry.get(name), registry.get(name).handler
     def crash(data, ctx):
         original(data, ctx)
@@ -151,7 +151,7 @@ def test_unassigned_director_and_finish_cannot_forge_review(app_ctx):
     db.session.add(outsider)
     db.session.commit()
     with pytest.raises(AppError) as error:
-        invoke(run, outsider, registry, "review_patch", {"patch_id": patch_id, "verdict": "approve", "reason": "pretend"}, "forged")
+        invoke(run, outsider, registry, "review_patch", {"patch_id": patch_id, "verdict": "approve", "reason": "pretend", "intent_preserved": True, "changed_elements": []}, "forged")
     assert error.value.code == "TOOL_FORBIDDEN"
     assert run.snapshot["v3_patches"][patch_id]["director_review"] is None
     with pytest.raises(AppError):
@@ -162,7 +162,7 @@ def test_new_revision_supersedes_old_patch_and_preserves_limits(app_ctx):
     run, root, task, registry = failure()
     child = assigned(run, registry)
     patch_id, director = proposed(run, child, task, registry)
-    invoke(run, director, registry, "review_patch", {"patch_id": patch_id, "verdict": "approve", "reason": "Local"}, "review")
+    invoke(run, director, registry, "review_patch", {"patch_id": patch_id, "verdict": "approve", "reason": "Local", "intent_preserved": True, "changed_elements": []}, "review")
     repair_flow.advance_repair_flow(run, registry)
     before = (root.steps, root.llm_calls, root.started_at, root.credits_limit)
     result = repair_flow.revise_plan(run, {"action": "revise_plan", "command_id": "user-revise", "plan_version": 1, "message": "Change background"})
@@ -293,7 +293,7 @@ def test_approved_patch_commit_gap_recovers_execution_after_resume(app_ctx, monk
     run, _root, task, registry = failure(allowance=5 if automatic else 0)
     child = assigned(run, registry)
     patch_id, director = proposed(run, child, task, registry)
-    invoke(run, director, registry, "review_patch", {"patch_id": patch_id, "verdict": "approve", "reason": "Local"}, "review")
+    invoke(run, director, registry, "review_patch", {"patch_id": patch_id, "verdict": "approve", "reason": "Local", "intent_preserved": True, "changed_elements": []}, "review")
     if not automatic:
         repair_flow.advance_repair_flow(run, registry)
         quote = run.snapshot["v3_patches"][patch_id]["quote"]
@@ -326,7 +326,7 @@ def test_rejected_patch_commit_gap_recovers_attention_after_resume(app_ctx, monk
     run, _root, task, registry = failure()
     child = assigned(run, registry)
     patch_id, director = proposed(run, child, task, registry)
-    invoke(run, director, registry, "review_patch", {"patch_id": patch_id, "verdict": "approve", "reason": "Local"}, "review")
+    invoke(run, director, registry, "review_patch", {"patch_id": patch_id, "verdict": "approve", "reason": "Local", "intent_preserved": True, "changed_elements": []}, "review")
     repair_flow.advance_repair_flow(run, registry)
     quote = run.snapshot["v3_patches"][patch_id]["quote"]
     run.command = {"action": "reject_patch", "patch_id": patch_id, "quote_id": quote["quote_id"], "scope": "only"}
