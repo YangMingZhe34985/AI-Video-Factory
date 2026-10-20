@@ -1139,3 +1139,23 @@ Codex 的 2218 项全量回归与前端 134 项记录完整。真实效果待 V1
 最终用量：118/400次（deepseek-v4.1-flash文本117、qwen3.7-plus视觉1），输入3453837/输出73746 token，最大输入58401；usage缺失0、HTTP未知/预留0。真实图片/视频生成0、上传0、HappyHorse0；上传入口阻断1必须和零真实媒体分开报告。LLM/视觉35.30201、Mock媒体22、Mock检索0.8，唯一账本合计58.10201演示credits、待结算预留0；包含失败工具估算，不是货币账单。最终data_quality/reconciliation通过，但safety因已阻断尝试未通过。仅临时SQLite/存储，禁止dotenv自动加载，仅白名单凭据读取，不解码或连接.env中的MySQL/Redis，不修改.env。
 
 交给Claude：先审docs/agent_v3/V11_TEST_REPORT.md及D-040–D-046/Skill增补；决定V-Gate5，不默认开启v3。优先安排评测直接构造适配器的Mock覆盖及attention诊断回归，再补审核B；保留本轮失败证据和额度，不盲重试submission_state=unknown（本次外部护栏证据确认未发送，但业务状态本身无法证明）。另审Research必填run_id却未提供可信当前ID的上下文缺口，以及显式比例从brief到生成/拼接交付链的校验；定妆图不必强制成片比例。c3 #3/c7作者轮所需工具契约已被旧上下文策略投影，Agent未重读便起草，随后出现字段纠错；仅确认时间关联，未证明因果或增幅。真实媒体质量、角色相似度、HTTP在途崩溃、同Run多worker/MQ吞吐仍未验；逐项证据、错误根因和TEMP路径见报告。所有真实进程已结束，没有等待中的模型调用。
+
+## 2026-10-21 · Claude · V-Gate5 评审
+状态：完成（结论：未通过，安排 V12 修补与 V-Gate5b 补验；默认开启 v3 继续阻塞）
+分支与提交：`agent-v3/V-Gate5`，已合并到 `feat/agent-v2`
+完成内容：
+- 审读 V11_TEST_REPORT.md、D-040–D-046、V11a–g 提交与 Skill 增补；抽查源码确认三项根因：通用 PlanDraft 不读 brief 比例、Research 工具要模型传 run_id、`_i2i_test_image_adapter_payload` 直接构造适配器。
+- 判定：V11a/b/d/e/g 通过；V11f 通过但需调整契约投影；V11c 仅离线通过；c7 比例失败；审核 B 未覆盖。安全护栏有效，没有真实上传，“零越界尝试”失败归因于 Mock 覆盖缺口。
+- Skill 增补审定通过；新增 D-047；结论与 V12 任务细节写入 `docs/agent_v3/VGATE5_REVIEW.md`。
+测试：本次只改文档，未运行测试；真实调用 0。
+未完成 / 下一步：
+
+### 给 Codex：V12 任务（顺序 V12c → V12a → V12b → V12d → V12e → V12f → V-Gate5b；规则与 D-030 不变）
+详细验收见 `docs/agent_v3/VGATE5_REVIEW.md`“V12 任务”一节。要点：
+- V12c 先做：适配器统一走 `get_adapter`（经典 I2I 行为不变并补回归）；harness 审批预览门前确认 Run=awaiting_gate，attention 时报失败节点错误码后停止。
+- V12a、V12b 契约先行（D-048 起）。V12a：用户明确的比例从 brief 传到成片关键帧/视频（省略时按比例和模型能力选默认，冲突报阻塞问题）、compose 与 QC；定妆/参考图豁免；复现 c7 结构的测试。V12b：run 由 ToolContext 绑定，伪造仍拒绝。
+- V12d：每个 (name, path) 最近一次 `read_skill_resource` 结果不投影。V12e：编译错误 details 带节点/字段/合法引用输入名。V12f：意图评估以最终草稿为对象，判定不放宽。
+- 顺手把各 Skill 中“待 V-Gate5 复审”标记改为“已由 Claude 审定”并递增版本。
+- 完成后 V-Gate5b：c7×1、c3×2、审核 B（基于新 c3 计划只改第三镜）、c1×1；真实调用 ≤150、图片/视频生成 0、媒体全 Mock；报告交 Claude。
+- 每个任务一个分支，全量回归与前端构建通过后本地合并；不推送、不进入 V8。V3PatchReview 美化已由 Claude 完成（本条之后的 V7 收尾提交），V12f 如需改该组件请在现有样式上改。
+需要对方或用户决定：无。

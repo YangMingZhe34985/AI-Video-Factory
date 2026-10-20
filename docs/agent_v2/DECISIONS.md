@@ -348,3 +348,11 @@ retry_shot 允许服务端识别的 blocked 子镜头恢复本地尾帧提取：
 决策：用户要求 N 种可区分风格时，规划 N 个独立 generate_image 节点，各 n=1、独立风格 prompt；用既有 choice 门汇集并让下游引用所选结果。单 prompt、n=N 留给同描述随机变体；全部交付时不强制选择。全部候选费用、身份引用、预算与审批规则保持。
 
 范围：image-create/plan-review 指引、两份可编译 Plan 示例与真实 Registry/Mock 媒体执行回归；不改 Blueprint 版本或参数，不改经典工作流、不新增生成权限。Skill 版本逐项递增，最终交 Claude 审定；Mock 不证明真实风格、画质或模型自主规划。
+
+## D-047 · 2026-10-21 · V-Gate5 结论与 V12 修补方向（Claude）
+
+原因：V11 真实评测暴露三项用户可见或阻塞补验的缺陷：用户指定的 16:9 没有落实到生成参数（通用 PlanDraft 不读取 brief 比例，编译器补模型默认值且不交叉校验）；Research 抓取/下载工具要求模型传 run_id，而模型拿不到可信 ID；`NodeRunner._i2i_test_image_adapter_payload` 直接构造适配器，绕过工厂，导致混合评测触达上传入口。审核 B 局部修订因此未覆盖。
+
+决策：V-Gate5 未通过，默认开启 v3 继续阻塞。D-040–D-046 及其 Skill 增补审定通过。新增 V12a–V12f 与 V-Gate5b：比例约束由 brief 经编译器传到成片关键帧、视频、拼接与 QC（身份定妆图、参考图豁免）；Research 工具的 run 由服务端从 ToolContext 绑定；适配器统一走工厂；最近一次读取的契约资源在上下文投影中受保护；编译错误给出字段级提示；意图评估明确以最终草稿为对象。判定规则、审批与护栏均不放宽。
+
+范围：V12a、V12b 涉及契约，由 Codex 实现时另记决策（D-048 起）再改 CONTRACTS；其余为实现与提示词调整。详细依据见 docs/agent_v3/VGATE5_REVIEW.md。影响任务：V12a–V12f、V-Gate5b。
