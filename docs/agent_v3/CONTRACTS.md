@@ -506,3 +506,17 @@ patches.diff_preview 为逐操作 {op,node_id,before,after}：输入更新仅展
 - v3 story-video 先收集并去重全部角色参考，再选择关键帧模型；生成帧 model_id 可为 null。各候选按其真实能力生成并校验画幅参数，编译及后续提交仍复验同一具体型号。
 - 编译后冻结具体 ID 与成本，审核展示最终选择；批准后模型/参数/费用变化仍需原有重新校验/审批。不声称能力匹配等于画质验证。
 - 范围：v3 compiler/选型辅助、story-video Blueprint/指南与能力/费用/约束回归，不修改共享默认配置。
+
+## V.21 V11 质量与效率修订
+
+### V.21.1 角色身份输入（V11a，D-040）
+- PlanDraft/ExecutionPlan 增加 `character_references: {character_id: [IdentityRef]}`（默认 {}，最多8角色，每角色1–3个唯一引用），`story_ref: WorkspaceRef|null`（默认 null）。IdentityRef 仅为纯 `{artifact: id}` 或纯 `{ref: "node.image"}` 单图引用；character_id 沿用 StoryPackage 的字母/数字/下划线/连字符1–40限制。
+- PlanDraftNode 增加 `characters: [character_id]|null`（默认 null，最多8个唯一ID）。null 表示未声明，[] 表示显式空镜。只允许生成工具声明非 null；定妆种子例外见下项。有非空角色目录时，每个生成节点都必须显式声明，未知角色报 `PLAN_UNKNOWN_CHARACTER`，遗漏声明报 `PLAN_CHARACTERS_REQUIRED`。
+- 目录所有引用为必需的身份依据，不能丢掉其中任何一张。artifact 必须属于当前 Run 且为图片；未来输出只允许 `generate_image.image`、有效 n=1、gate=preview，且该节点只声明被定义的单个角色。身份种子可以从零生成，无需输入自身；不能将多角色镜头、数组、选择器或有循环的未来输出当定妆种子。每个未来种子最多定义一个角色。非法目录报 `PLAN_INVALID_CHARACTER_REFERENCE`。
+- 若当前 Run 有 StoryPackage 且草稿未给 story_ref，编译只读选最新故事并将其确切 key/version 冻结在规范化计划中；显式引用必须是同 Run 的 story。目录必须覆盖该故事全部角色且不能增加未知角色；已有角色 artifact_ids 必须原样全部保留；待生成角色必须绑定合法定妆种子。缺目录/缺角色为 `PLAN_CHARACTER_REFERENCE_REQUIRED`，非法故事引用为 `PLAN_INVALID_STORY_REFERENCE`。已固定计划以后不随最新故事漂移。没有 story 的独立计划可以显式自带角色目录；没有目录或角色声明的简单旧计划兼容。
+- 编译按真实媒体数据引用逐输出传播身份依据，忽略 depends_on、提示词、rationale 及 JSON 报告。普通生成节点合并图像/视频输入依据，再仅传播自己已声明且依据完整的角色；每个声明角色缺任何依据报阻塞 `PLAN_CHARACTER_REFERENCE_MISSING`，message 包含角色ID及补多参考关键帧/补引用等修复方式。不改变模型、不补图、不删角色。
+- `select_image.image` 只能证明所有候选共同具有的身份依据（交集，含 image[] 的每个候选）；`compose_video` 与从其提取的帧保守使用各段交集。extract_frame/retain_video_segment 只沿对应视频输入传播，不从 QC/probe/package 或控制边取得依据。生成首尾帧、多参考输入仍受原能力/类型/预算约束。
+- story-video Blueprint 根据输入 StoryPackage 生成目录，定妆、首尾帧和视频写 characters；尾帧链仍须满足当前镜头角色输入。通用 Producer/Director 及 Patch 重编译使用完全相同检查，不能用兜底或人工修改绕过。
+- 保证范围：结构化声明的身份输入覆盖，不保证真实画面身份或角色出场声明的语义正确性。明确 [] 的空镜仍须 Director/用户审核；不从自然语言猜角色，不强行要求一个节拍拆出的每个近景都同框。
+- 兼容：characters=null、空 character_references、story_ref=null 不序列化进旧形状，避免改变旧 Blueprint/节点摘要。仅当输入精确匹配当前 Run 数据库已保存的旧 ExecutionPlan 且没有新增身份字段，允许不追认最新 story；新草稿/新 Patch 不享受此豁免，客户端不能用自报版本绕过。
+- 旧计划修订：PatchDraft 可选 `identity_upgrade:{character_references:<同Plan目录Schema，必填非空>,story_ref?:WorkspaceRef}`。仅基计划无非空目录时允许，已有目录报 `PLAN_IDENTITY_UPGRADE_FORBIDDEN`；已有固定 story_ref 必须继承，不可替换。节点声明/引用通过原有 replace/insert 操作明示，完整编译不放宽。普通 Patch 最多50操作，带升级最多200操作，Plan总节点上限仍200。升级始终要求人工（自动原因码 `IDENTITY_UPGRADE_REQUIRES_REVIEW`），参与 Patch/quote 摘要，公开身份目录/故事前后差异；null 不序列化，旧摘要不变。

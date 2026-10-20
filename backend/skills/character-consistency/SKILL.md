@@ -29,3 +29,11 @@ version: 1
 复用同一参考与锁定描述只能提高约束一致性，不能保证生成结果身份完全一致。出现偏差时优先修复问题角色/首帧/镜头，说明依赖影响与增量费用，不自动重做整片。
 
 来源：app/agent/story_spec.py、creative_v2.py、director_v2.py、prompt_smith.py。
+
+## V11a 身份输入合同（待 V-Gate5 复审）
+
+通用 Plan 用 character_references 固定每个角色的全部身份图：例如 `{"deepseek":[{"ref":"cast_deepseek.image"}],"gpt":[{"ref":"cast_gpt.image"}]}`。已有图片写 `{artifact:真实ID}`；未来定妆必须单角色、n=1、gate=preview，定妆节点也写 `characters:[对应ID]`。有 Story 时填写其精确 story_ref；不填时编译会冻结最新故事版本，目录不得漏角色或替换已有身份图。
+
+每个生成镜头/关键帧写 `characters:[本画面出场ID]`，空镜明确 []。双人镜头需要实际输入链覆盖两人：两个定妆输出 → 多参考 i2i 首帧 → i2v；只写 depends_on、角色名称或描述不算参考。生成输出只证明自己声明且输入已覆盖的角色；前一镜是单人特写时，不能用其尾帧证明另一个人，需新的多参考首帧。选择候选每一张都需覆盖下游声明的角色，不能把不同人物分在不同候选里凑数。
+
+PLAN_CHARACTER_REFERENCE_MISSING 是阻塞问题，应补齐身份数据链或修正错误的出场声明；不得为通过检查而删除实际出场人物。Producer 接手失败的 Director 时也必须保留该约束。编译仅验证结构，不保证真实画面质量或故事出场声明正确。

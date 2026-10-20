@@ -1,5 +1,7 @@
 # 工作区与 Plan 作者合同
 
+旧计划修订若缺少角色目录，可在 Patch 中显式提供 identity_upgrade；有故事时填写准确 story_ref，并通过 replace_node 为生成节点补齐角色。此升级只能首次添加目录，始终人工审批，重做范围和费用可能增加；不得替换既有身份目录或固定故事。
+
 使用 `read_skill_resource`，name 固定为 `plan-review`，path 使用下表中的完整资源路径。只读取当前任务需要的文件；已有同版本资源可复用，不要每轮全量加载。
 
 这些文件是只读知识，不是函数目录或执行许可。生成工具仍不向 Agent 开放。JSON Schema 只检查结构；素材归属、来源回执、模型能力、用户硬约束、预算、实际时长与审批仍由服务端核验。
@@ -46,6 +48,8 @@
 | package_story | resources/tools/package_story.json |
 
 生成节点 model_id/params 只放 PlanNode 顶层。未指定模型时 model_id=null，check_plan 按服务器默认和原用户约束解析；不要从 list_models 排序推测默认。非生成节点 model_id=null、params={}。plan_version 由服务端注入，inputs 禁止 model_id/params/template_id/plan_version。
+
+固定角色使用 Plan 顶层 character_references（每角色全部单图 artifact/ref），生成节点顶层 characters（空镜 []），不要写进 inputs。原创定妆为 generate_image、n=1、preview，characters 仅含该角色。story_ref 是同 Run 故事的固定 {key,version}。双角色首帧必须实际引用两角色参考；数据链的选择分支按交集验证，控制边不算身份输入。
 
 媒体字段使用单键 `{artifact:真实ID}` 或 `{ref:"node.output"}`。单图输出不能当数组，数组输出不能放进数组元素再期待自动展开；数组字段可整体引用同类型数组输出，也可由单媒体引用组成。只有工具声明且编译器支持的输入位置可以使用类型匹配的引用，prompt/params 中不允许。json 输出是结构数据，不能当作媒体；json 输入还须符合对应 Schema 与特殊映射，并非任意字典都能接引用。transform_video.media 虽标为 json，仍要求有序数组，内部每项 `{type,artifact_id}` 的 artifact_id 按 reference_image→image、reference_video→video、reference_audio→audio、file→document 特殊校验。
 

@@ -38,6 +38,82 @@
       "title": "BlueprintOrigin",
       "type": "object"
     },
+    "CharacterArtifactRef": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Artifact",
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifact"
+      ],
+      "title": "CharacterArtifactRef",
+      "type": "object"
+    },
+    "CharacterNodeRef": {
+      "additionalProperties": false,
+      "properties": {
+        "ref": {
+          "pattern": "^[a-z0-9_]{1,40}\\.image$",
+          "title": "Ref",
+          "type": "string"
+        }
+      },
+      "required": [
+        "ref"
+      ],
+      "title": "CharacterNodeRef",
+      "type": "object"
+    },
+    "IdentityUpgrade": {
+      "additionalProperties": false,
+      "description": "One-time binding for a previously identity-free approved Plan.",
+      "properties": {
+        "character_references": {
+          "maxProperties": 8,
+          "minProperties": 1,
+          "patternProperties": {
+            "^[A-Za-z0-9_-]{1,40}$": {
+              "items": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/CharacterArtifactRef"
+                  },
+                  {
+                    "$ref": "#/$defs/CharacterNodeRef"
+                  }
+                ]
+              },
+              "maxItems": 3,
+              "minItems": 1,
+              "type": "array"
+            }
+          },
+          "title": "Character References",
+          "type": "object"
+        },
+        "story_ref": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WorkspaceRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "character_references"
+      ],
+      "title": "IdentityUpgrade",
+      "type": "object"
+    },
     "InsertNode": {
       "additionalProperties": false,
       "properties": {
@@ -152,6 +228,23 @@
           "maxLength": 300,
           "title": "Rationale",
           "type": "string"
+        },
+        "characters": {
+          "anyOf": [
+            {
+              "items": {
+                "pattern": "^[A-Za-z0-9_-]{1,40}$",
+                "type": "string"
+              },
+              "maxItems": 8,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Characters"
         }
       },
       "required": [
@@ -385,7 +478,7 @@
           }
         ]
       },
-      "maxItems": 50,
+      "maxItems": 200,
       "minItems": 1,
       "title": "Ops",
       "type": "array"
@@ -398,6 +491,17 @@
       ],
       "title": "Scope",
       "type": "string"
+    },
+    "identity_upgrade": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/IdentityUpgrade"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
     }
   },
   "required": [

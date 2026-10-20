@@ -41,6 +41,7 @@ def build(params, *, run, caller_agent="director"):
             nodes.append(node(cid, "generate_image", {"mode": "t2i", "prompt": prompt},
                 "story-video", caller_agent, model_id=model.model_id,
                 params=image_params, stage="characters", gate="preview",
+                characters=[character.character_id],
                 rationale=f"确认角色 {character.name} 的外观，再生成依赖此身份的画面。"))
             references = [ref(cid, "image")]
         identities[character.character_id] = references
@@ -93,7 +94,7 @@ def build(params, *, run, caller_agent="director"):
                 nodes.append(node(fid, "generate_image", {"mode": frame.image_mode, "prompt": frame.prompt,
                     "reference_artifact_ids": references}, "story-video", caller_agent,
                     model_id=model.model_id, params=image_params,
-                    stage=stage, gate="preview", rationale=shot.rationale))
+                    stage=stage, gate="preview", rationale=shot.rationale, characters=shot.character_ids))
                 frames[field] = ref(fid, "image")
         inputs = {"prompt": shot.motion.prompt, "first_frame_artifact_id": frames["first_frame"]}
         if "end_frame" in frames:
@@ -101,11 +102,13 @@ def build(params, *, run, caller_agent="director"):
         duration = shot.duration_sec
         motion_params = {**shot.motion.params, "duration": int(duration) if duration.is_integer() else duration}
         nodes.append(node(shot.shot_id, "animate_shot", inputs, "story-video", caller_agent,
-                          model_id=shot.motion.model_id, params=motion_params, stage=stage, rationale=shot.rationale))
+                          model_id=shot.motion.model_id, params=motion_params, stage=stage,
+                          rationale=shot.rationale, characters=shot.character_ids))
         videos.append(ref(shot.shot_id, "video"))
         previous = shot
     delivery, deliverables = delivery_nodes(videos, "story-video", caller_agent, compress_output=data.compress_output)
     stages.append({"id": "delivery", "label": "成片交付"})
     return result(plan.title, data.goal, run, nodes + delivery, deliverables, stages,
                   ["角色定妆及生成关键帧需通过预览门；尾帧继承串行，独立场景可并行。",
-                   "首尾帧为受能力和开关约束的候选方式，尚未验证与首帧生视频的画质对等。"])
+                   "首尾帧为受能力和开关约束的候选方式，尚未验证与首帧生视频的画质对等。"],
+                  character_references=identities)
