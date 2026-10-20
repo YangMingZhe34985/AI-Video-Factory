@@ -1,0 +1,122 @@
+{
+  "title": "演示：三种风格选一张后制作猫跳舞视频",
+  "goal": "演示数据：先生成水彩、赛博朋克、剪纸各一张猫海报，再使用用户选中的图制作5秒跳舞视频；秒数不是模型能力保证。",
+  "nodes": [
+    {
+      "id": "watercolor",
+      "tool": "generate_image",
+      "model_id": null,
+      "inputs": {
+        "mode": "t2i",
+        "prompt": "水彩风格猫海报：一只橘猫站在小舞台中央，半透明水彩晕染、棉纸纹理、柔和暖色，主体与背景层次清楚。无文字、无水印。",
+        "reference_artifact_ids": []
+      },
+      "params": {
+        "n": 1
+      },
+      "origin": {
+        "agent": "producer",
+        "skills": [
+          "image-create",
+          "plan-review"
+        ]
+      },
+      "rationale": "演示数据：用户明确要求水彩风格一张，用独立节点保留逐张提示词约束。"
+    },
+    {
+      "id": "cyberpunk",
+      "tool": "generate_image",
+      "model_id": null,
+      "inputs": {
+        "mode": "t2i",
+        "prompt": "赛博朋克风格猫海报：一只橘猫站在小舞台中央，霓虹蓝紫灯光、未来都市细节、金属质感，主体与背景层次清楚。无文字、无水印。",
+        "reference_artifact_ids": []
+      },
+      "params": {
+        "n": 1
+      },
+      "origin": {
+        "agent": "producer",
+        "skills": [
+          "image-create",
+          "plan-review"
+        ]
+      },
+      "rationale": "演示数据：用户明确要求赛博朋克风格一张，用独立节点保留逐张提示词约束。"
+    },
+    {
+      "id": "cut_paper",
+      "tool": "generate_image",
+      "model_id": null,
+      "inputs": {
+        "mode": "t2i",
+        "prompt": "剪纸风格猫海报：一只橘猫站在小舞台中央，层叠彩纸、清晰镂空轮廓、平面几何构图，主体与背景层次清楚。无文字、无水印。",
+        "reference_artifact_ids": []
+      },
+      "params": {
+        "n": 1
+      },
+      "origin": {
+        "agent": "producer",
+        "skills": [
+          "image-create",
+          "plan-review"
+        ]
+      },
+      "rationale": "演示数据：用户明确要求剪纸风格一张，用独立节点保留逐张提示词约束。"
+    },
+    {
+      "id": "choice",
+      "tool": "select_image",
+      "inputs": {
+        "candidate_artifact_ids": [
+          {
+            "ref": "watercolor.image"
+          },
+          {
+            "ref": "cyberpunk.image"
+          },
+          {
+            "ref": "cut_paper.image"
+          }
+        ]
+      },
+      "gate": "choice",
+      "origin": {
+        "agent": "producer",
+        "skills": [
+          "plan-review"
+        ]
+      },
+      "rationale": "用户从三张候选中显式选择；无选择时不执行下游，不默认第一张。"
+    },
+    {
+      "id": "clip",
+      "tool": "animate_shot",
+      "model_id": null,
+      "inputs": {
+        "prompt": "保持选中图像的风格，让画面里的橘猫在小舞台上轻快跳舞，动作清楚、镜头稳定。",
+        "first_frame_artifact_id": {
+          "ref": "choice.image"
+        }
+      },
+      "params": {
+        "duration": 5
+      },
+      "origin": {
+        "agent": "producer",
+        "skills": [
+          "plan-review"
+        ]
+      },
+      "rationale": "只使用选择门输出；三张候选生成均计费，选择免费，视频在选择后才可执行。"
+    }
+  ],
+  "deliverables": [
+    {
+      "kind": "video",
+      "node_id": "clip",
+      "output": "video"
+    }
+  ]
+}

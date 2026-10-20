@@ -101,7 +101,9 @@ def test_metadata_schemas_match_builders_and_all_six_are_available():
     assert {item["name"] for item in library.list_skills() if item["blueprint"]} == set(BUILDERS)
     for name, (schema, builder) in BUILDERS.items():
         metadata = yaml.safe_load((root / name / "SKILL.md").read_text(encoding="utf-8").split("---", 2)[1])
-        assert metadata["version"] == VERSION
+        # Skill guidance evolves independently of deterministic Blueprint provenance.
+        assert VERSION == 2
+        assert metadata["version"] == (3 if name == "image-create" else 2)
         assert metadata["blueprint"]["builder"] == builder.__module__ + ":build"
         assert metadata["blueprint"]["params_schema"] == schema.model_json_schema()
 

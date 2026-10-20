@@ -570,3 +570,10 @@ patches.diff_preview 为逐操作 {op,node_id,before,after}：输入更新仅展
 - check_plan(plan) 仅当 issues=[] 且规范化计划与已有保存证明精确相同，才可改成带投影说明的 plan_ref 视图（包括冗余检查最新版本）；失败、未保存或匹配不明的检查保持原文。小型 append 回执不重复裁剪。
 - 原 state.messages、ToolInvocation 与 AgentWorkspaceItem 不变，投影参数绝不能作为 Registry 重放输入。runtime 仍在调用前冻结 pending_context；已有账本或同 step 恢复使用当时完整冻结请求，不用新版策略重算后再收费。
 - system/user、硬约束、错误、澄清与其他受保护证据沿用原规则。每个 key 的最新版及大错误可能使软目标无法达到，应记录真实 token 峰值和根因，不能截断安全证据宣称达标。
+
+### V.21.7 逐张风格候选（V11g，D-046）
+
+- 对“每种风格一张”的需求，使用独立 generate_image 节点、n=1 与各自 prompt；同描述 n=N 仅表达多个变体，不能代替指定差异。引用同一固定身份时仍逐节点遵守 V.21.1。
+- 选择门沿用 V.20.1：select_image.candidate_artifact_ids 为多个节点 image 引用组成的列表，gate=choice；全部候选都计费且参与数据可达性，下游仅引用 selector.image。未选择不执行下游，不默认第一张；无需额外逐图 preview 门。
+- 继续限制2–20个唯一候选、Plan最多200节点、模型/参数/预算/归属/批准校验。用户要全部图片交付时直接声明所有 deliverables，不机械增加选择门。
+- plan-review 资源提供纯图片选择和选择后动画两个完整示例，image-create/plan-review 正文链接并说明。回归通过实际编译/dry-run/Registry/Mock Job，明确选择第三张并核验 selector 与动画的真实输入一致；没有新增生产代码路径。

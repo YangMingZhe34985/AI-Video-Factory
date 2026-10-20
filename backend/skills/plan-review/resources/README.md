@@ -60,3 +60,5 @@ select_image 必须 gate=choice，只写 candidate_artifact_ids；selected_artif
 引用名必须来自 io_types.outputs：例如 generate_image.image 是首张，images 是数组；animate_shot.video 是视频；extract_frame.artifact_id 是图片；compose_video.artifact_id 是成片；package_story.artifact_id 是包。不要引用 Job 的 job_id/status/artifacts。compose_video.compressed_artifact_id 只在 inputs.compress_output=true 时可用，默认不压缩；打包可选压缩副本必须来自同一 compose。
 
 通用示例：`resources/examples/first-frame-delivery.plan.json`。这是一份纯 PlanDraft 演示：首帧→视频→拼接→probe/QC→打包，带关键帧 gate 和 QC 控制依赖。模型由服务器解析，5 秒只为形状示例，不保证所有配置支持，也不代表当前用户时长。按本次需求改写后必须 check_plan；生产费用、审批及真实质量均不由示例保证。
+
+逐张风格选择示例：`resources/examples/three-style-image-choice.plan.json` 与 `resources/examples/three-style-video-choice.plan.json`。两者都是纯 PlanDraft，使用三个独立 n=1 图像节点汇入 choice 门；前者交付选中图，后者将选中图接至动画输入。逐张 prompt 保留不同风格，禁止用单一 prompt n=3 代替。内容/时长为演示数据，默认模型、费用、身份与审批依原服务端合同；Mock 不验证画风质量。

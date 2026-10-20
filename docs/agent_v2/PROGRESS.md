@@ -1104,3 +1104,16 @@ Codex 的 2218 项全量回归与前端 134 项记录完整。真实效果待 V1
 完成内容：旧已保存计划参数的请求视图投影。只投影有保存证明的旧参数与冗余成功检查，保护最新参数和完整读取，原消息/账本/工作区及冻结 pending_context 不改。60000字符仍是软目标，真实60000 token目标由最后评测判定。使用真实 AppendInput 回归，无兼容Stub。 契约先行，策略/Skill增补交Claude复审。
 验证：TEMP/cc-v11f-1020212835-guard-fixed/summary.json 最终 passed=true，135文件、2577项全过；精确ID遗漏/多余/重复/失败/跳过均0，源码冻结、隔离审计和前端构建通过。详细命令、JUnit与源码快照保留在该目录。
 下一步：进入下一个独立任务分支继续验证；Mock控制流不代表真实轮数、token或画质达标。真实调用0、真实媒体0；不推送、不进入V8，未跟踪私人笔记保留。
+
+## 2026-10-20 · Codex · V11g 实现与验证进行中
+状态：当前 agent-v3/V11g，前序已完整验证并本地合并，尚未合入本项。
+完成内容：先记 D-046 再落 V.21.7，增量迁入逐张风格候选汇入选择门。image-create升3、plan-review升6，独立n=1节点各自风格prompt，全部候选计费、下游引用实际选择；新增两个完整资源和实际Registry/Mock执行回归。沿用现有多来源编译/运行时，不新增生成权限。
+验证与下一步：执行本项新增回归，再完整后端与前端构建；以TEMP/cinecrew-v11-prep/offline-stages-journal.json记录的实际summary为准，失败即停，不把准备稿结果当正式通过。当前真实调用0、媒体0，不推送、不进入V8，不改Claude美化。
+
+验证补记：G新增4项正式定向通过（TEMP/cc-v11g-focus-1020223521-bf5b）。首轮完整 TEMP/cc-v11g-1020223642-formal 为2579通过、2失败，136文件/2581项精确执行、无跳过，源码冻结/隔离审计/前端构建通过。两项旧断言将 Skill 文档版本与 Blueprint 构建器来源版本绑定，image-create 指导升3后仍要求2，独立复现于 TEMP/cc-v11g_failure_probe-focus-1020231139-d76d。生产链确认版本独立：SkillLibrary 返回指南版本；构建器、instantiate 收据和 compiler 来源校验共同使用 Blueprint VERSION=2。仅迁移 test_v6_policy.py/test_v3_blueprints.py 的精确版本矩阵（image-create=3，其余五种=2），保留 schema、builder、来源、零写入和费用断言；不修改生产版本或放宽 provenance。补验 Registry 实例化与实际 submit 路径，再完整重跑后才合并。真实调用仍0。
+
+## 2026-10-21 · Codex · V11g 全量验证完成
+状态：V11g 完成，独立任务分支验证后提交并仅本地合入 feat/agent-v2。
+完成内容：逐张风格候选汇入选择门。image-create升3、plan-review升6，独立n=1节点各自风格prompt，全部候选计费、下游引用实际选择；新增两个完整资源和实际Registry/Mock执行回归。沿用现有多来源编译/运行时，不新增生成权限。 契约先行，策略/Skill增补交Claude复审。
+验证：TEMP/cc-v11g-10202332-versions-fixed/summary.json 最终 passed=true，136文件、2581项全过；精确ID遗漏/多余/重复/失败/跳过均0，源码冻结、隔离审计和前端构建通过。详细命令、JUnit与源码快照保留在该目录。
+下一步：进入V-Gate5真实规划与混合执行，统一400次硬上限，生成仍全部Mock；Mock控制流不代表真实轮数、token或画质达标。真实调用0、真实媒体0；不推送、不进入V8，未跟踪私人笔记保留。

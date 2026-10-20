@@ -18,7 +18,7 @@ tools:
 related:
 - long-form-video
 - budget-planning
-version: 5
+version: 6
 ---
 # 计划审阅
 
@@ -63,3 +63,11 @@ AGENT_OUTPUT_TRUNCATED 表示该轮全部工具均未执行，包括看似完整
 大型 story-video 的完整 Blueprint 参数本身也可能超过单轮输出上限；不能因为 builder 可自动建节点，就坚持一次输出全部 story 与 shots。预计描述很长或已收到截断时，改用上述分批通用 Plan：完整保留用户剧情、目标时长、固定 story_ref、角色目录、每节点 characters、多参考关键帧及拼接/检查/打包链，按批保存。它不是放弃人物或删除镜头的理由。append 只能追加，不能更新已保存节点；若完整改写仍触发截断，应如实报告这一边界，不暗中提高 max_tokens 或改用户需求。
 
 该写工具只开放给 Producer/Director；其他角色仍只能读取与检查。V11e 指引待 Claude V-Gate5 审定。
+
+## 逐张不同风格的候选计划（V11g）
+
+用户要求“N 种风格各一张”时，检查 N 个独立 generate_image 节点、各 params.n=1、每张 prompt 明确自己的风格；不能用一个混合提示词的 n=N 批次代替逐张要求。将 N 个单图引用按展示顺序放入 select_image 的 candidate_artifact_ids，gate="choice"，下游只引用 choice.image。普通风格候选无需逐张 preview；定妆种子的 preview 等身份规则仍须遵守。
+
+选择门仍只有2–20个唯一候选，全部候选费用都计入，用户选择前下游必须等待。有固定角色时，每个分支独立满足完整身份参考和模型容量约束；选择器按分支交集证明身份，不能靠角色列表或提示词自证。用户要求全部交付时应列明每张 deliverable，不擅自改成择一。
+
+纯 PlanDraft 演示：`resources/examples/three-style-image-choice.plan.json`（三张不同风格图选一张交付）、`resources/examples/three-style-video-choice.plan.json`（选中后再动画）。示例内容和5秒为演示数据；model_id=null 沿用服务端默认，实际能力/费用须 check_plan。文件不能作为 Blueprint params、已获批准或真实质量证据。

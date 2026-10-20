@@ -10,7 +10,7 @@ tools:
 - estimate_cost
 related:
 - t2i-prompt-writing
-version: 2
+version: 3
 blueprint:
   builder: app.plans.blueprints.image_create:build
   params_schema: {"$defs":{"ImageStep":{"additionalProperties":false,"properties":{"mode":{"enum":["t2i","i2i"],"title":"Mode","type":"string"},"model_id":{"maxLength":120,"minLength":1,"title":"Model Id","type":"string"},"prompt":{"maxLength":8000,"minLength":1,"title":"Prompt","type":"string"},"reference_attachment_ids":{"items":{"type":"string"},"title":"Reference Attachment Ids","type":"array"},"params":{"additionalProperties":true,"title":"Params","type":"object"},"n":{"default":1,"maximum":4,"minimum":1,"title":"N","type":"integer"}},"required":["mode","model_id","prompt"],"title":"ImageStep","type":"object"},"SimpleDraft":{"additionalProperties":false,"properties":{"recipe":{"enum":["image_edit","image_create","single_clip"],"title":"Recipe","type":"string"},"title":{"maxLength":200,"minLength":1,"title":"Title","type":"string"},"image":{"anyOf":[{"$ref":"#/$defs/ImageStep"},{"type":"null"}],"default":null},"video":{"anyOf":[{"$ref":"#/$defs/VideoStep"},{"type":"null"}],"default":null},"assumptions":{"items":{"type":"string"},"maxItems":10,"title":"Assumptions","type":"array"},"rationale":{"maxLength":1000,"minLength":1,"title":"Rationale","type":"string"}},"required":["recipe","title","rationale"],"title":"SimpleDraft","type":"object"},"VideoStep":{"additionalProperties":false,"properties":{"mode":{"const":"i2v","default":"i2v","title":"Mode","type":"string"},"model_id":{"maxLength":120,"minLength":1,"title":"Model Id","type":"string"},"prompt":{"maxLength":8000,"minLength":1,"title":"Prompt","type":"string"},"first_frame":{"enum":["user_attachment","generated_image"],"title":"First Frame","type":"string"},"first_frame_attachment_id":{"anyOf":[{"type":"string"},{"type":"null"}],"default":null,"title":"First Frame Attachment Id"},"params":{"additionalProperties":true,"title":"Params","type":"object"}},"required":["model_id","prompt","first_frame"],"title":"VideoStep","type":"object"}},"additionalProperties":false,"properties":{"plan":{"$ref":"#/$defs/SimpleDraft"},"goal":{"anyOf":[{"maxLength":2000,"minLength":1,"type":"string"},{"type":"null"}],"default":null,"title":"Goal"}},"required":["plan"],"title":"Params","type":"object"}
@@ -46,3 +46,13 @@ plan.recipe=image_create，plan.image.mode=t2i，reference_attachment_ids 为空
 instantiate_blueprint 只构建并保存草稿，同时返回 issues、estimates、workspace_ref，不调用生成模型。无 issues、费用与已确认需求及预算一致时，Producer 直接 submit_plan({plan_ref:workspace_ref})；无需再读同份草稿或重复 check_plan，Director 返回 plan_ref。提交内部仍会编译及隔离 dry-run，通过后仅进入用户审核，不授予生产许可。
 
 失败或修改后按具体问题修订再校验。禁止输入估价、manifest、plan_version、quote、许可或伪造 origin.blueprint；预算不足不擅自缩短明确时长或放宽指定系列，按既有澄清流程处理。
+
+## 逐张指定风格与用户选择（V11g）
+
+“N 种风格各一张”包含逐张约束：规划 N 个独立 generate_image 节点，每个 params.n=1、prompt 只对应自己的风格。单一 prompt 加 n=N 表达的是同一提示词的多个候选，不能保证逐张不同风格。此时用通用 PlanDraft；当前单步 image-create Blueprint 不承诺拆分逐张风格。
+
+需要用户选一张时，把各节点的单图 `{ref:"节点.image"}` 组成 select_image.candidate_artifact_ids，设 gate="choice"。下游只读 `{ref:"choice.image"}`，不默认第一张，不写 selected_artifact_id，不为普通风格候选重复设置逐张 preview。现有选择门支持2–20张；超出时先澄清数量/分组方案，不能静默少生成。若用户要交付全部图片而非择一，不强加选择门，逐张列入 deliverables。
+
+模型未指定则节点 model_id=null，由 check_plan 按默认与用户约束解析；所有候选成本都纳入报价，审核前不生成。需要固定角色时，遵守角色目录和真实参考输入约束：每个候选都必须覆盖下游声明的人物，不能用只有一条分支具备的参考证明整个选择门身份。
+
+完整纯 PlanDraft 示例可按需读取 `read_skill_resource(name="plan-review",path="resources/examples/three-style-image-choice.plan.json")`；若选中图像后还需视频，读取 `resources/examples/three-style-video-choice.plan.json`。内容、风格、5秒均为演示数据，必须按需求改写并 check_plan，不是 Blueprint params 或审批证据。Mock 只验证候选映射与控制流程，不证明模型实际画风质量。

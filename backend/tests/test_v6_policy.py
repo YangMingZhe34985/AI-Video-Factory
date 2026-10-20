@@ -69,7 +69,9 @@ def test_blueprint_contract_and_examples_are_readable_through_registry(app_ctx, 
     before = (ToolInvocation.query.count(), Job.query.count(), AgentWorkspaceItem.query.count())
     loaded = registry.invoke("load_skill", {"name": name}, next_context(ctx))
     assert {"resources/params.schema.json", "resources/examples.json"} <= set(loaded["output"]["resources"])
-    assert loaded["output"]["version"] == VERSION
+    # Skill guidance evolves independently of deterministic Blueprint provenance.
+    assert VERSION == 2
+    assert loaded["output"]["version"] == (3 if name == "image-create" else 2)
     schema_result = registry.invoke("read_skill_resource", {
         "name": name, "path": "resources/params.schema.json"}, next_context(ctx))
     examples_result = registry.invoke("read_skill_resource", {
