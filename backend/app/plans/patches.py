@@ -42,6 +42,16 @@ def apply_patch_draft(base, draft):
     """Apply explicit operations only; broken references stay compiler errors."""
     draft = normalize_patch(draft)
     value = PlanDraft.model_validate(authoring_plan(base)).model_dump(mode="json")
+    upgrade = draft.get("identity_upgrade")
+    if upgrade is not None:
+        if value.get("character_references"):
+            raise AppError("PLAN_IDENTITY_UPGRADE_FORBIDDEN", "An existing identity catalog cannot be replaced by an upgrade", 422)
+        story_ref = upgrade.get("story_ref")
+        if value.get("story_ref") and story_ref and value["story_ref"] != story_ref:
+            raise AppError("PLAN_IDENTITY_UPGRADE_FORBIDDEN", "An identity upgrade cannot change the fixed story reference", 422)
+        value["character_references"] = deepcopy(upgrade["character_references"])
+        if story_ref is not None:
+            value["story_ref"] = deepcopy(story_ref)
     nodes = {node["id"]: node for node in value["nodes"]}
     original_ids = set(nodes)
     for op in draft["ops"]:
@@ -222,6 +232,8 @@ def repair_budget(run):
 def _automatic(run, record, draft, roots, affected, tasks, evidence_ids, cost):
     pool = repair_budget(run)
     reasons = []
+    if draft.get("identity_upgrade") is not None:
+        reasons.append("IDENTITY_UPGRADE_REQUIRES_REVIEW")
     trigger = record.get("trigger") or {}
     if trigger.get("kind") != "failure" or set(trigger.get("node_ids", [])) != roots:
         reasons.append("FAILURE_TRIGGER_REQUIRED")

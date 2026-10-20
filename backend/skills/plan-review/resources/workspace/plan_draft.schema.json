@@ -22,6 +22,37 @@
       "title": "BlueprintOrigin",
       "type": "object"
     },
+    "CharacterArtifactRef": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Artifact",
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifact"
+      ],
+      "title": "CharacterArtifactRef",
+      "type": "object"
+    },
+    "CharacterNodeRef": {
+      "additionalProperties": false,
+      "properties": {
+        "ref": {
+          "pattern": "^[a-z0-9_]{1,40}\\.image$",
+          "title": "Ref",
+          "type": "string"
+        }
+      },
+      "required": [
+        "ref"
+      ],
+      "title": "CharacterNodeRef",
+      "type": "object"
+    },
     "PlanDeliverable": {
       "additionalProperties": false,
       "properties": {
@@ -135,6 +166,23 @@
           "maxLength": 300,
           "title": "Rationale",
           "type": "string"
+        },
+        "characters": {
+          "anyOf": [
+            {
+              "items": {
+                "pattern": "^[A-Za-z0-9_-]{1,40}$",
+                "type": "string"
+              },
+              "maxItems": 8,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Characters"
         }
       },
       "required": [
@@ -209,6 +257,27 @@
       ],
       "title": "PlanStage",
       "type": "object"
+    },
+    "WorkspaceRef": {
+      "additionalProperties": false,
+      "properties": {
+        "key": {
+          "pattern": "^[A-Za-z0-9_.-]{1,120}$",
+          "title": "Key",
+          "type": "string"
+        },
+        "version": {
+          "minimum": 1,
+          "title": "Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "key",
+        "version"
+      ],
+      "title": "WorkspaceRef",
+      "type": "object"
     }
   },
   "additionalProperties": false,
@@ -251,6 +320,39 @@
       "maxItems": 200,
       "title": "Stages",
       "type": "array"
+    },
+    "character_references": {
+      "maxProperties": 8,
+      "patternProperties": {
+        "^[A-Za-z0-9_-]{1,40}$": {
+          "items": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/CharacterArtifactRef"
+              },
+              {
+                "$ref": "#/$defs/CharacterNodeRef"
+              }
+            ]
+          },
+          "maxItems": 3,
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "title": "Character References",
+      "type": "object"
+    },
+    "story_ref": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/WorkspaceRef"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
     }
   },
   "required": [

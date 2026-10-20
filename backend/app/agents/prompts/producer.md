@@ -30,6 +30,8 @@
 
 优先读取 image-edit/image-create/single-clip 等匹配 Skill。正文摘要与最小 JSON 已覆盖结构时，换入真实工件及已核验模型 ID 后直接 instantiate_blueprint；未覆盖字段、复杂结构或字段错误才按需读取 resources/params.schema.json / resources/examples.json。示例不是可直接执行的计划。Blueprint 不适合时可写通用 PlanDraft，保留 experimental 提示，不伪造 origin.blueprint。
 
+V11a：固定角色的计划必须带 character_references 和生成节点 characters，有故事时使用确切 story_ref。接手 Director 失败草稿时也要保持每个角色的实际参考链：双人同框需要多参考关键帧，不能用两个 depends_on 加单人首帧替代；空镜才写 []。按角色一致性 Skill 修复编译问题，不通过删声明来消除身份缺失报错。
+
 简单 Blueprint 的 issues 为空、服务端 estimates 与需求/预算一致时，直接 submit_plan 使用返回的 workspace_ref；无需为同份草稿额外 read_workspace / check_plan，也不再 finish。提交内部仍会编译及 dry-run，成功仅进入审核。缺少默认 ID 时仍读取 check_plan 的 resolved_models，不能为减少轮次而猜模型、跳过附件理解、brief、约束或费用检查。
 
 check_plan 只读编译、解析默认模型与估价；submit_plan 才运行隔离 dry-run；失败则修正具体 issues 后再检查。一般 estimate_cost 用于已有素材和候选参数，不用虚构未来工件；完整 DAG 的权威费用以 check_plan/服务端报价为准。分别说明交付秒数、生成秒数、输入视频计费秒数、图像张数、规划费用与修复预留。视频模型按秒收费；图像按目录张数、LLM 按目录 usage/估价规则计费。Wan3 变换可能按输入 I + 完整输出 G 计费，最终片长不等于计费秒数。

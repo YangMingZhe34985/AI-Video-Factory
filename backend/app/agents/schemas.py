@@ -4,7 +4,7 @@ import json
 import math
 from typing import Annotated, Literal
 
-from pydantic import Field, ValidationError, model_validator
+from pydantic import Field, ValidationError, model_serializer, model_validator
 
 from app.agent.clarify import Question
 from app.agent.request_spec import AttachmentUse, Constraints, ResearchNeed, StrictModel, Subject, TransformIntent
@@ -17,6 +17,7 @@ WORKSPACE_KINDS = frozenset({"brief", "clarification", "research_dossier", "stor
 MAX_PAYLOAD_BYTES = 256 * 1024
 WorkspaceKey = Annotated[str, Field(pattern=r"^[A-Za-z0-9_.-]{1,120}$")]
 NodeId = Annotated[str, Field(pattern=r"^[a-z0-9_]{1,40}$")]
+CharacterId = Annotated[str, Field(pattern=r"^[A-Za-z0-9_-]{1,40}$")]
 
 
 class WorkspaceRef(StrictModel):
@@ -96,6 +97,32 @@ class PlanDraftNode(StrictModel):
     gate: Literal["preview", "choice"] | None = None
     origin: PlanOrigin
     rationale: str = Field(max_length=300)
+    characters: list[CharacterId] | None = Field(default=None, max_length=8)
+
+    @model_validator(mode="after")
+    def unique_characters(self):
+        if self.characters is not None and len(set(self.characters)) != len(self.characters):
+            raise ValueError("Node character IDs must be unique")
+        return self
+
+    @model_serializer(mode="wrap")
+    def compatible_shape(self, handler):
+        value = handler(self)
+        if self.characters is None:
+            value.pop("characters", None)
+        return value
+
+
+class CharacterArtifactRef(StrictModel):
+    artifact: str = Field(min_length=1, max_length=120)
+
+
+class CharacterNodeRef(StrictModel):
+    ref: str = Field(pattern=r"^[a-z0-9_]{1,40}\.image$")
+
+
+IdentityRef = CharacterArtifactRef | CharacterNodeRef
+IdentityReferences = Annotated[list[IdentityRef], Field(min_length=1, max_length=3)]
 
 
 class PlanDeliverable(StrictModel):
@@ -117,6 +144,8 @@ class PlanDraft(StrictModel):
     deliverables: list[PlanDeliverable] = Field(min_length=1, max_length=200)
     nodes: list[PlanDraftNode] = Field(min_length=1, max_length=200)
     stages: list[PlanStage] = Field(default_factory=list, max_length=200)
+    character_references: dict[CharacterId, IdentityReferences] = Field(default_factory=dict, max_length=8)
+    story_ref: WorkspaceRef | None = None
 
     @model_validator(mode="after")
     def unique_ids(self):
@@ -124,7 +153,22 @@ class PlanDraft(StrictModel):
             raise ValueError("Duplicate plan node IDs")
         if len({stage.id for stage in self.stages}) != len(self.stages):
             raise ValueError("Duplicate plan stage IDs")
+        for refs in self.character_references.values():
+            if not 1 <= len(refs) <= 3:
+                raise ValueError("Each character needs one to three identity references")
+            tokens = [json.dumps(ref.model_dump(), sort_keys=True) for ref in refs]
+            if len(set(tokens)) != len(tokens):
+                raise ValueError("Character references must be unique")
         return self
+
+    @model_serializer(mode="wrap")
+    def compatible_shape(self, handler):
+        value = handler(self)
+        if not self.character_references:
+            value.pop("character_references", None)
+        if self.story_ref is None:
+            value.pop("story_ref", None)
+        return value
 
 
 class CriticIssue(StrictModel):

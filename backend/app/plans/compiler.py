@@ -420,6 +420,8 @@ def _compile(raw, run, *, registry, plan_version):
     except (AppError, ValidationError) as error:
         request_spec = None
         issue(getattr(error, "code", "INVALID_BRIEF"), "A valid Run requirement brief is required")
+    from app.plans.identity_context import bind_story
+    issues.extend(bind_story(plan, run, raw))
     verified_origin = _provenance(plan, run)
     nodes = {node["id"]: node for node in plan["nodes"]}
     stages = {stage["id"] for stage in plan["stages"]}
@@ -458,12 +460,14 @@ def _compile(raw, run, *, registry, plan_version):
             issue("PLAN_DEPTH_LIMIT", "Plan depth exceeds 30", node_id)
         if len(children[node_id]) > 50:
             issue("PLAN_FANOUT_LIMIT", "Node fan-out exceeds 50", node_id)
+    media_fields = {}
     for node_id in dag["order"]:
         node = nodes[node_id]
         try:
             if node["tool"] not in PLAN_TOOLS:
                 raise AppError("PLAN_TOOL_FORBIDDEN", "Tool is not in the Plan executable vocabulary", 422)
             spec = registry.get(node["tool"])
+            media_fields[node_id] = spec.io_types.get("inputs", {})
             if not spec.plan_executable:
                 raise AppError("PLAN_TOOL_FORBIDDEN", "Tool is not Plan executable", 422)
             payload, input_metadata = _typed_inputs(node, spec, outputs, run, cache, plan_version)
@@ -490,6 +494,18 @@ def _compile(raw, run, *, registry, plan_version):
             estimates.append(estimate)
         except (AppError, ValidationError, KeyError, TypeError, ValueError) as error:
             issue(getattr(error, "code", "INVALID_NODE_INPUT"), _issue_message(error), node_id)
+    for character_id, references in plan.get("character_references", {}).items():
+        for reference in references:
+            if "artifact" in reference:
+                try:
+                    _resolve_typed(reference, "image", outputs, run, cache)
+                except (AppError, ValueError) as error:
+                    issue("PLAN_INVALID_CHARACTER_REFERENCE",
+                          f"Character {character_id} reference must be an available image in this Run: "
+                          f"{getattr(error, 'code', 'INVALID_REFERENCE')}")
+    from app.plans.identity import validate_identity
+    issues.extend(validate_identity(plan, order=dag["order"], output_metadata=outputs,
+                                    known_artifacts=cache, media_fields=media_fields))
     ancestors = {}
     for node_id in dag["order"]:
         ancestors[node_id] = set(dependencies[node_id]).union(*(ancestors.get(source, set()) for source in dependencies[node_id]))

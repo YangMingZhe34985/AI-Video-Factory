@@ -17,6 +17,15 @@ def public_patches(run):
         base = AgentPlanVersion.query.filter_by(run_id=run.run_id, version=draft.get("base_version")).first()
         originals = {node["id"]: node for node in base.plan.get("nodes", [])} if base else {}
         changes = []
+        upgrade = draft.get("identity_upgrade")
+        if upgrade is not None:
+            source = base.plan if base else {}
+            before = {"character_references": source.get("character_references", {}),
+                      "story_ref": source.get("story_ref")}
+            after = {"character_references": upgrade.get("character_references", {}),
+                     "story_ref": upgrade.get("story_ref") or source.get("story_ref")}
+            changes.append({"op": "identity_upgrade", "node_id": None,
+                            "before": _safe(before), "after": _safe(after)})
         for op in draft.get("ops", []):
             node_id = op.get("node_id", (op.get("node") or {}).get("id"))
             original = originals.get(node_id)
@@ -28,7 +37,8 @@ def public_patches(run):
         result.append({"patch_id": patch_id, "status": record.get("status"),
             "base_version": draft.get("base_version"), "scope": draft.get("scope", "only"),
             "author": record.get("proposed_by"), "reason": safe_text(_safe(draft.get("reason")), 2000),
-            "diff_summary": [{"op": op.get("op"), "node_id": op.get("node_id", (op.get("node") or {}).get("id")),
+            "diff_summary": ([{"op": "identity_upgrade", "node_id": None,
+                              "fields": ["character_references", "story_ref"]}] if upgrade is not None else []) + [{"op": op.get("op"), "node_id": op.get("node_id", (op.get("node") or {}).get("id")),
                 "fields": sorted((op.get("inputs") or {}).keys()) if op.get("op") == "update_inputs" else []}
                 for op in draft.get("ops", [])],
             "diff_preview": changes,

@@ -64,16 +64,21 @@ def ref(node_id, output):
 
 
 def node(name, tool, inputs, blueprint, agent, *, model_id=None, params=None,
-         stage=None, gate=None, depends_on=None, rationale=""):
-    return {"id": name, "tool": tool, "inputs": inputs, "model_id": model_id,
+         stage=None, gate=None, depends_on=None, rationale="", characters=None):
+    value = {"id": name, "tool": tool, "inputs": inputs, "model_id": model_id,
             "params": params or {}, "stage": stage, "gate": gate,
             "depends_on": depends_on or [], "origin": {"agent": agent, "skills": [blueprint],
                 "blueprint": {"name": blueprint, "version": VERSION}}, "rationale": rationale[:300]}
+    if characters is not None:
+        value["characters"] = list(characters)
+    return value
 
 
-def result(title, goal, run, nodes, deliverables, stages, notes=None):
+def result(title, goal, run, nodes, deliverables, stages, notes=None, *, character_references=None):
     draft = {"title": title, "goal": goal or str((run.request or {}).get("text") or title)[:2000],
              "nodes": nodes, "deliverables": deliverables, "stages": stages}
+    if character_references:
+        draft["character_references"] = character_references
     return {"plan": PlanDraft.model_validate(draft).model_dump(mode="json"), "notes": notes or []}
 
 
