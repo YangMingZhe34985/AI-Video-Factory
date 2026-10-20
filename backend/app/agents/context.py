@@ -5,7 +5,7 @@ from hashlib import sha256
 import json
 
 
-POLICY_VERSION = 1
+POLICY_VERSION = 2
 SOFT_CHAR_TARGET = 60_000
 MIN_RESULT_CHARS = 2_000
 PROTECTED_ROUNDS = 2
@@ -135,6 +135,10 @@ def project_messages(messages):
     before = len(_json(messages))
     size = before
     rounds = _completed_rounds(messages)
+    from app.agents.context_plans import project_saved_plans
+    plan_stats = project_saved_plans(messages, projected, rounds, policy_version=POLICY_VERSION)
+    size = len(_json(projected))
+    protected_plans = set(plan_stats["protected_plan_result_indexes"])
     latest_skills = {}
     for batch in rounds:
         for position, reply, function in batch:
@@ -144,9 +148,11 @@ def project_messages(messages):
                 if (isinstance(output.get("name"), str) and isinstance(output.get("body"), str)
                         and output.get("name") == arguments.get("name")):
                     latest_skills[output.get("name")] = position
-    compacted = []
+    compacted = list(plan_stats["compacted_plan_result_indexes"])
     for batch in rounds[:-PROTECTED_ROUNDS]:
         for position, reply, function in batch:
+            if position in protected_plans:
+                continue
             if size <= SOFT_CHAR_TARGET:
                 break
             original = reply.get("content")
@@ -167,5 +173,8 @@ def project_messages(messages):
             break
     metrics = {"policy_version": POLICY_VERSION, "before_chars": before, "after_chars": size,
         "soft_target_chars": SOFT_CHAR_TARGET, "compacted_result_count": len(compacted),
-        "compacted_message_indexes": compacted, "over_soft_target": size > SOFT_CHAR_TARGET}
+        "compacted_message_indexes": sorted(compacted), "over_soft_target": size > SOFT_CHAR_TARGET,
+        "compacted_argument_count": plan_stats["compacted_argument_count"],
+        "compacted_argument_indexes": plan_stats["compacted_argument_indexes"],
+        "compacted_plan_result_count": len(plan_stats["compacted_plan_result_indexes"])}
     return projected, metrics

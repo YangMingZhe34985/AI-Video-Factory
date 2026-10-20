@@ -330,3 +330,13 @@ retry_shot 允许服务端识别的 blocked 子镜头恢复本地尾帧提取：
 - check_plan兼容旧plan输入，增加精确plan_ref输入，严格二选一；从本Run工作区读取完整草稿编译，避免最后检查又要求输出整份计划。
 - 一般作者策略：大型 story-video 的 Blueprint 参数（含 story、shots 与提示词）本身也可能截断，不能只给通用 Plan 加 append 而仍强制一次实例化长 Blueprint。Producer/Director 与 long-form-video 指引允许直接选择分批通用 Plan，保持人物、情节、时长、story_ref/character_references/characters、关键帧与交付链。append 只追加；修改已写节点仍需完整新版本，若这一步仍截断如实记录限制，不暗调输出上限。
 - 影响：LLM适配/回合输出/评测指标、规划工具及Producer/Director卡片、运行时本地回执恢复/进展/扫描、作者指引与Mock回归。原工作区、计价、批准及经典/v2行为保持。
+
+## D-045 · 2026-10-20 · 已保存计划的请求参数投影
+
+原因：V10 长片单轮峰值最高82,588 token；V9只压缩旧工具回执，仍留下旧版本完整 Plan 函数参数。新增分批写入也需要依据不可变回执识别版本，不能按文本相似度删历史。
+
+决策：policy_version=2，仅在发送模型的请求视图中投影有完整成功配对、可核验保存证明的旧 Plan 参数与冗余成功检查；精确版本重读地址和原摘要必须保留。V.20.2 的“不改变 assistant tool_calls 参数”只对本规则明确覆盖的旧计划放开，其余保持。原 state.messages、账本、工作区不删改；既有 pending_context 和恢复请求继续原样使用。
+
+保存证明使用真实 WriteInput/PlanDraft/AppendInput 归一化与哈希；按工作区 key 保留最高已观察版本的最新生产参数和完整 read 回执，包含父 Agent 读到子 Agent 发布新版本的情况。未知、残缺、歧义、失败或尚未保存内容保留。压缩标记明确不是可执行工具输入，不会把摘要交给执行层。
+
+范围：agents/context.py、纯投影辅助模块与边界/恢复回归。不增加摘要模型、真实调用、预算或执行权限，不修改模型输出上限。60000字符仍是软目标，不承诺等同60000 token；真实峰值由 V-Gate5 的 usage 验收。

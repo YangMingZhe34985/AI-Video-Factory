@@ -216,3 +216,81 @@ def test_mock_media_bypass_has_no_provider_call(transport, monkeypatch):
 def test_invalid_or_higher_cap_rejected(tmp_path, limit):
     with pytest.raises(EvaluationSafetyError):
         CallMeter(tmp_path, max_calls=limit)
+
+
+def guard_targets():
+    from app.adapters.dashscope_common import DashScopeGenerationAdapter
+    from app.adapters.dashscope_image import DashScopeImageAdapter
+    from app.adapters.dashscope_qwen_image import DashScopeQwenImageAdapter
+    from app.adapters.dashscope_multimodal_image import DashScopeMultimodalSyncAdapter
+    from app.adapters.dashscope_i2v import DashScopeI2VAdapter
+    from app.adapters.dashscope_r2v import DashScopeR2VFlashAdapter
+    from app.adapters.dashscope_t2v import DashScopeT2VAdapter
+    from app.adapters.dashscope_wan3 import DashScopeWan3Adapter
+    from urllib3.connection import HTTPConnection, HTTPSConnection
+
+    return [
+        (requests.Session, "send"),
+        *((cls, name) for cls in (HTTPConnection, HTTPSConnection)
+          for name in ("connect", "request")),
+        *((cls, "submit") for cls in (
+            DashScopeGenerationAdapter, DashScopeImageAdapter, DashScopeQwenImageAdapter,
+            DashScopeMultimodalSyncAdapter, DashScopeI2VAdapter, DashScopeR2VFlashAdapter,
+            DashScopeT2VAdapter, DashScopeWan3Adapter,
+        )),
+        (DashScopeGenerationAdapter, "upload_local_file_get_oss_url"),
+    ]
+
+
+def guard_snapshot():
+    return {(owner, name): (name in vars(owner), vars(owner).get(name), getattr(owner, name))
+            for owner, name in guard_targets()}
+
+
+def test_guard_close_restores_inherited_methods_and_outer_transport(tmp_path, monkeypatch):
+    from app.adapters.dashscope_wan3 import DashScopeWan3Adapter
+
+    def outer_send(*args, **kwargs):
+        pytest.fail("media must never reach the outer transport")
+
+    monkeypatch.setattr(requests.Session, "send", outer_send)
+    monkeypatch.setenv("MODEL_ADAPTER_MODE", "real")
+    before = guard_snapshot()
+    for index in range(2):
+        meter = CallMeter(tmp_path / str(index)).install()
+        try:
+            with pytest.raises(EvaluationSafetyError, match="forbidden"):
+                DashScopeWan3Adapter().submit({})
+            assert meter.snapshot()["blocked_media_attempts"] == 1
+            assert meter.snapshot()["real_calls"] == 0
+        finally:
+            meter.close()
+        assert guard_snapshot() == before
+        assert requests.Session.send is outer_send
+        meter.close()
+        assert guard_snapshot() == before
+
+
+def test_nested_guard_close_retains_outer_media_guard(tmp_path, monkeypatch):
+    from app.adapters.dashscope_wan3 import DashScopeWan3Adapter
+
+    monkeypatch.setenv("MODEL_ADAPTER_MODE", "real")
+    before = guard_snapshot()
+    outer = CallMeter(tmp_path / "outer").install()
+    try:
+        outer_state = guard_snapshot()
+        inner = CallMeter(tmp_path / "inner").install()
+        try:
+            with pytest.raises(EvaluationSafetyError, match="forbidden"):
+                DashScopeWan3Adapter().submit({})
+        finally:
+            inner.close()
+        assert guard_snapshot() == outer_state
+        with pytest.raises(EvaluationSafetyError, match="forbidden"):
+            DashScopeWan3Adapter().submit({})
+        assert inner.snapshot()["blocked_media_attempts"] == 1
+        assert outer.snapshot()["blocked_media_attempts"] == 1
+        assert outer.snapshot()["real_calls"] == inner.snapshot()["real_calls"] == 0
+    finally:
+        outer.close()
+    assert guard_snapshot() == before

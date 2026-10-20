@@ -24,6 +24,7 @@ API_BASE = "https://dashscope.aliyuncs.com/api/v1"
 CHAT_BASE = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 CHAT_URL = CHAT_BASE + "/chat/completions"
 _CREDENTIAL_KEYS = frozenset({"DASHSCOPE_API_KEY", "DASHSCOPE_API_BASE_URL", "DASHSCOPE_OPENAI_BASE_URL"})
+_INHERITED_ATTRIBUTE = object()
 
 
 class EvaluationSafetyError(RuntimeError):
@@ -227,12 +228,18 @@ class CallMeter:
         }
 
     def _patch(self, owner, name: str, replacement) -> None:
-        self._patches.append((owner, name, getattr(owner, name)))
+        # An inherited method may already resolve to a patched parent method.
+        # Restore ownership as well as value so closing a guard cannot leave a
+        # stale parent wrapper installed on a subclass.
+        self._patches.append((owner, name, vars(owner).get(name, _INHERITED_ATTRIBUTE)))
         setattr(owner, name, replacement)
 
     def uninstall(self) -> None:
         for owner, name, original in reversed(self._patches):
-            setattr(owner, name, original)
+            if original is _INHERITED_ATTRIBUTE:
+                delattr(owner, name)
+            else:
+                setattr(owner, name, original)
         self._patches.clear()
 
     close = uninstall

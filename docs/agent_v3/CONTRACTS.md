@@ -484,7 +484,7 @@ patches.diff_preview 为逐操作 {op,node_id,before,after}：输入更新仅展
 - 范围：agents schema/API/动作消费；plans 编译/私有工具/dry-run/执行/许可/选择证明/Patch/修订/公开视图；plan-review 作者资源；V3PlanBoard/v3-plan/v3-actions 与回归。不改变经典页面，不做整体美化。
 
 ### V.20.2 上下文投影（V9b）
-- 原 state.messages、账本和工作区原文不删改；只生成模型请求视图，不改变 assistant tool_calls 的参数、顺序和调用/回复配对。
+- 原 state.messages、账本和工作区原文不删改；只生成模型请求视图，不改变 assistant tool_calls 的参数、顺序和调用/回复配对。 V11f（V.21.6）仅对有保存证明的旧计划参数提供明确例外；顺序、配对及持久历史仍不改变。
 - 60,000 Unicode 字符为软目标、2,000 字符为候选下限；按旧到新压缩成功回执：read_skill_resource、重复 load_skill、read_workspace/write_workspace 的旧 payload。保留每个 Skill 最新正文、最近两个完整工具回合、system/user、错误、澄清/委派、付费理解、检索与计划问题。
 - 替代回执明确不完整，提供原长度/SHA-256、精确免费重读工具及参数；工作区必须有不可变版本，不能用最新值代替原材料。无法安全重读则保留。软目标未达到不截断受保护消息，不宣称硬 token 限制。
 - 每个 LLM step 在调用前保存单一 pending_context={step,policy_version,source_hash,messages_hash,messages,metrics}。已有账本优先恢复原 messages，否则同 step 校验消息摘要并用原冻结请求；新 step 才重算。原额度快照及工具 Schema 摘要校验保留，active_seconds 仍按 D-038。
@@ -560,3 +560,13 @@ patches.diff_preview 为逐操作 {op,node_id,before,after}：输入更新仅展
 9. Runtime将append纳入本地回执恢复、有效进展及启动时未终结写回执扫描。崩溃可免费补齐工具回执，不重复新版本；源输入/hash不符时拒绝。目录/卡片Schema改变的旧LLM回执仍遵守原严格恢复校验，不重新调用规避冲突。
 10. 验收：适配器length各种形状、usage及重放；多批追加与引用检查；旧版本/跨Run/权限/finished拒绝；重复ID/总量/尺寸边界；不同请求并发同基版；本地commit到Registry间隙恢复；未完成草稿仍不能submit。只Mock/Stub，真实质量与token目标留到V-Gate5。
 11. 长片作者策略允许跳过大型 story-video Blueprint 的一次性参数输出，按分批通用 Plan 创建；这不是新自动服务端转换，不减少用户所需内容或人物/关键帧。append 不支持原地编辑/删除已有节点；完整重写仍可能超上限，该剩余边界应在验收报告中记录。
+
+### V.21.6 已保存计划请求视图（V11f，D-045）
+
+- context policy_version 改为2；仅 project_messages 输出可以改变经过以下证明的历史 assistant 函数参数。调用顺序、ID、回复配对及原始持久消息不变；未覆盖内容继续 V.20.2。
+- 完整配对且成功的 write_workspace(plan_draft)，只有真实输入经 WriteInput/PlanDraft 归一化后的 payload 与保存回执完全同摘要，才产生保存证明。append_plan_nodes 使用真实 AppendInput，核验输入哈希、payload_hash、key、源版本+1及合法节点数；不从文字猜版本，不合成未返回的完整计划。
+- 精确 read_workspace 的实际 plan_draft 回执也可提供已观察版本与 payload 摘要。相同 key/version 出现冲突摘要则相关内容全部保留。每 key 保留最高版本最新一次生产参数；最高版本最新完整 read 回执受保护，不能再被 V9 通用压缩删除。
+- 旧版本及同版本重复生产参数可替换为显式 context_projection，附 request_view_only/not_executable、原参数 SHA-256、保存 payload/input 摘要和精确 read_workspace 地址；仅在实际更短时替换。旧 write 回执完整 payload 同步投影，可超越最近两轮的 V9 保留规则。
+- check_plan(plan) 仅当 issues=[] 且规范化计划与已有保存证明精确相同，才可改成带投影说明的 plan_ref 视图（包括冗余检查最新版本）；失败、未保存或匹配不明的检查保持原文。小型 append 回执不重复裁剪。
+- 原 state.messages、ToolInvocation 与 AgentWorkspaceItem 不变，投影参数绝不能作为 Registry 重放输入。runtime 仍在调用前冻结 pending_context；已有账本或同 step 恢复使用当时完整冻结请求，不用新版策略重算后再收费。
+- system/user、硬约束、错误、澄清与其他受保护证据沿用原规则。每个 key 的最新版及大错误可能使软目标无法达到，应记录真实 token 峰值和根因，不能截断安全证据宣称达标。
