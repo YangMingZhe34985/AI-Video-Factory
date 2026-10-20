@@ -138,7 +138,7 @@
 | V5 | Plan Patch：Repair、Director 审阅、增量报价、低风险自动授权 | Codex | V4 | 完成（D-035；后端2000项、前端64项与构建通过；Gate待Claude） |
 | V-Gate2 | V4–V5 评审 | Claude | V4 V5 | 并入 V-Gate3 完成 |
 | V6 | Agent 上线：七个 Agent 的卡片与提示词、委派策略 | Codex（Claude 审定 Producer/Director/委派策略） | V-Gate2 | 完成（Producer/Director 提示词与委派策略已由 Claude 审定；真实评测见 VGATE3_EVAL） |
-| V7 | 界面：协作时间线、通用计划视图、规划额度、Patch 审批 | Codex（功能），Claude（美化） | V6（接口） | 功能完成；美化待 Claude |
+| V7 | 界面：协作时间线、通用计划视图、规划额度、Patch 审批 | Codex（功能），Claude（美化） | V6（接口） | 完成（美化 2026-10-20：RunPanel/Collaboration/PlanBoard；V3PatchReview 待 V11b 合并后再美化） |
 | V-Gate3 | 评审 + 真实 LLM 评测 + v2 对照 | Claude | V6 V7 | 有条件通过（D-038；真实评测与 v2 对照见 docs/agent_v3/VGATE3_EVAL.md；后续问题 V9a–V9e） |
 | V9a | 选择门：用户从多个预览候选中选一个，下游引用所选结果（契约先行） | Codex | V-Gate3 | 完成（后端定向289项、前端134项及浏览器通过；最终全量见PROGRESS） |
 | V9b | 上下文管理：裁剪/压缩旧工具结果或精简作者手册，降低长片单轮 token | Codex | V-Gate3 | 完成（正式分支34项上下文/额度回归通过；最终全量见PROGRESS） |

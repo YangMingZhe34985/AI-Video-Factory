@@ -1003,3 +1003,18 @@ Codex 的 2218 项全量回归与前端 134 项记录完整。真实效果待 V1
 - 完成后执行 V-Gate5 测试（D-030，真实调用 ≤ 400 次，图片/视频生成 0，混合执行仍用 Mock 媒体）：复跑 c1、c6、c5 各 1 次，c3 共 3 次；混合执行复跑自动修复（期望进入人工审批）与审核 B 修订；补一个新用例：用户给出完整情节的长片（期望不委派 Creative）。报告写入 `docs/agent_v3/V11_TEST_REPORT.md`，交 Claude 审读。
 - 每个任务一个分支，全量后端回归与前端构建通过后本地合并；不推送，不进入 V8，V7 美化仍归 Claude。
 
+
+## 2026-10-20 · Claude · V7（界面美化）
+状态：完成（V3PatchReview 除外）
+分支与提交：`agent-v3/V7-polish`（独立 worktree，不碰 Codex 的 V11a 工作区），已合并到 `feat/agent-v2`
+完成内容：
+- 新增 `frontend-vue/src/components/agent/v3-tones.js`：统一状态色（成功/失败/等待/执行中）与各 Agent 角色色。
+- `V3RunPanel.vue`：头部图标与状态胶囊；预算三项改为带进度条的统计卡；需求与附件卡片；产物改为卡片网格。
+- `V3Collaboration.vue`：委派树改为带角色色头像的缩进卡片，步骤记录改为时间线；分页文案不变。
+- `V3PlanBoard.vue`：统计卡、按状态着色左边框的节点卡（带工具图标）、闸门提示条、候选图网格（可见单选框 + 选中角标）、审批/修改操作区。
+- 只改样式和模板结构，所有测试依赖的文案、testid、aria 标签保持不变；没有改 `messages.js`，也没有改后端。
+测试：`node --test tests/*.test.js` 134 passed；`npm run build` 通过；浏览器冒烟 `agent-v3.smoke.js`（1440/400 宽，亮/暗色，无横向溢出，pageErrors 0）和 `agent-v9-choice.smoke.js` 均 PASS。
+未完成 / 下一步：
+- `V3PatchReview.vue` 会被 V11b（意图保真差异展示）改动，等 V11b 合并后再由 Claude 美化，避免冲突。
+- 手机端全局侧边栏仍按原计划延后。
+需要对方或用户决定：无。Codex 合并 V11a 时，本文件末尾可能出现追加冲突，保留双方条目即可。
