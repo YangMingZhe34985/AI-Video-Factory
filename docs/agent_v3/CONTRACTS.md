@@ -539,3 +539,10 @@ patches.diff_preview 为逐操作 {op,node_id,before,after}：输入更新仅展
 - 完全缺少作者证明的旧记录 final_author=null、author_verified=false；自动条件增加 PATCH_AUTHOR_UNVERIFIED，只能人工。新证明部分缺失/篡改报 PATCH_AUTHOR_REQUIRED，不通过猜作者降级。
 - patches 增加 final_author、author_verified、trigger_kind、metadata_diff。每个 metadata_diff 元素为 `{node_id,incidental,origin?,rationale?,depends_on?}`；可选字段均为 `{before,after}`，仅真实值不同时出现。depends_on 为节点ID数组，新增/移除节点的一侧可 null；显式目标和 insert.before 附带目标均覆盖，完全未变不造差异。来源、理由与依赖分别展示，所有内容脱敏，不暴露收据或私有哈希。
 - 未应用新 Patch 展示规范化候选；已 applied 从持久化 approved_version 实际内容生成 after、metadata_diff 及身份头部差异，缺版本时 after=null、metadata_diff=[]，不能用新规则模拟旧结果。历史可同时显示已核验实际作者与当年错误 origin，原 diff_preview 的输入/结构展示继续保留。
+
+### V.21.4 简单任务 brief 与完整情节路由（V11d，D-043）
+
+- Producer与intent-analysis正文包含同形的合法RequirementBrief例，覆盖Subject/AttachmentUse/Constraints必填字段、枚举、严格布尔和模型原文；示例不是默认用户意图。沿用现有Schema及归属/附件全覆盖/硬约束校验，不新增自动规范化。
+- 示例覆盖当前结构时不强制重复读取Schema；复杂transform、开放问题、未覆盖嵌套或字段错误才按需读取。已有资料可复用，真实多图理解仍单次批量，必须检查模型与费用。
+- 主要事件、顺序及结局已有明确用户输入时，Producer直接交Director技术规划；Director不因缺少StoryPackage而再委派Creative。传递原文或精确note引用，不擅自删改；只有实际创作缺口或用户明确要求补写才调用Creative。必要Research仍按知识缺口调用。
+- 不新增执行权限或免审核路径；V11a角色输入、各节点能力、估价和审批全部保留。目标c1/c6≤6轮，只有真实评测可确认；Mock/Stub回归只证明短路径可执行。

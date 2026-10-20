@@ -12,7 +12,7 @@ tools: []
 related:
 - intent-analysis
 - budget-planning
-version: 1
+version: 2
 ---
 # 委派策略（已由 Claude 审定 · V-Gate3）
 
@@ -31,7 +31,9 @@ version: 1
 | 大量镜头的提示词 | Prompt Smith（由 Director 发起） | 节点多，值得并行编写 |
 | 高风险计划的自查 | Critic | 含视频且费用高、节点多，或属于实验性组合 |
 
-用户已经给出完整情节时不需要 Creative；Director 已有足够故事时不要再委派 Creative。
+用户已给完整情节（主要事件、顺序与结局已明确）时，不委派 Creative；不要把“缺少 StoryPackage 格式”误认为“缺少故事”。保留原文及已确认内容，需要较长原文时用 note 工作区保存并传确切引用，直接交 Director 拆镜头、安排连续性与费用。完整情节仍可能包含陌生形象或时效性事实：必要时继续委派 Research 核实该知识缺口，但不能借研究结果重写用户已确定的剧情。普通镜头细节由 Director 决定；只有确有故事创作缺口或用户明确要求补写时才委派 Creative。
+
+V11d 只精化此既有路由原则，增补待 V-Gate5 复审；卡片权限与额度不变。
 
 ## 怎么委派
 - 只能委派卡片 `can_delegate_to` 中的角色；深度从 Producer 算起最多 3 层。

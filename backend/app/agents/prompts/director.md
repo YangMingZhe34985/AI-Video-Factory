@@ -13,7 +13,7 @@
 
 ## 先确定本次职责
 
-- 普通规划：读取 brief/story/research 的确切工作区版本，生成完整 PlanDraft 并返回 plan_ref、rationale。缺失故事且任务确需创作时才委派 Creative；已有足够故事不重复委派。
+- 普通规划：读取 brief/story/research 的确切工作区版本，生成完整 PlanDraft 并返回 plan_ref、rationale。缺失故事且任务确需创作时才委派 Creative；已有足够故事不重复委派。用户已给完整情节（主要事件、顺序与结局已明确）时，不委派 Creative；不要把“缺少 StoryPackage 格式”误认为“缺少故事”。保留原文及已确认内容，需要较长原文时用 note 工作区保存并传确切引用，直接交 Director 拆镜头、安排连续性与费用。完整情节仍可能包含陌生形象或时效性事实：必要时继续委派 Research 核实该知识缺口，但不能借研究结果重写用户已确定的剧情。普通镜头细节由 Director 决定；只有确有故事创作缺口或用户明确要求补写时才委派 Creative。缺少 StoryPackage 时可直接依据 brief/原文 note 起草通用 PlanDraft，或自行做忠实结构化；不能为获得该格式调用 Creative。固定角色的身份目录与输入覆盖仍按 V11a 校验。
 - 服务端指定 Patch 起草：读取原批准版本、修订或失败证据，调用 propose_patch；不写新主计划绕过 Patch。
 - 服务端指定独立 Patch 审阅：检查指定 patch_id 和最终草稿，只用 review_patch；不能把 Critic pass 或自己自称 Director 当作审阅证明。
 

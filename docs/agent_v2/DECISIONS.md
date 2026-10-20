@@ -311,3 +311,12 @@ retry_shot 允许服务端识别的 blocked 子镜头恢复本地尾帧提取：
 审查补充：同作者 insert.before 可能只改变目标 depends_on，单看 origin/rationale 会漏掉附带修改。metadata_diff 同时展示实际依赖变化并标 incidental，前端单列前后依赖；不改变执行或审批规则。历史差异同样来自实存批准版本，无变化不生成差异。
 
 范围：Patch 作者证明、候选归一化、报价/批准绑定、公开差异和现有卡片功能展示及回归；不改原始不可变 LLM 草稿，不做 V7 美化，不改变经典工作流和 V11a/b 门。
+
+## D-043 · 2026-10-20 · V11d 简单任务 brief 与完整情节路由
+
+- 原因：V10 c1/c6 各8轮，部分开销来自 RequirementBrief 嵌套字段、枚举及类型猜错；既有 Producer 示例没有覆盖附件、Subject 和模型约束。长片若已有完整用户情节，再委派 Creative 会增加费用并有改写意图的风险。
+- 决策：Producer 与 intent-analysis 正文提供两个完整最小合法例：上传照片编辑、带模型硬约束的单镜头视频。示例标记演示数据，附件替换真实ID；正文已覆盖的结构直接复用，复杂未覆盖字段才按需深读 Schema。继续批量多图理解、模型目录/默认解析、编译、预算与人工批准。
+- 路由：用户已明确主要事件、顺序、结局时，不委派 Creative；缺少 StoryPackage 格式不是创作缺口。较长原文可保存 note，用精确工作区引用交 Director 直接规划或忠实结构化；未知形象/时效性事实仍可委派 Research，不能因此重写已确定剧情。
+- 不引入服务端 subjects 字符串转对象或布尔字符串纠错；source、附件用途、模型原文等不能在缺乏证据时自动猜测。保持 RequirementBrief 与共享 v2 类型、工具权限、预算、V11a身份检查和生产审批不变。
+- 范围：Producer/Director 的上述说明、intent-analysis/delegation-policy Skill 对应增补、回归。原 Claude 审定内容保留，本轮增补明确待 V-Gate5 复审；Skill 版本随变更递增。
+- 验证：读取实际策略示例经过 Registry 写入及编译/提交，Stub 简单路径≤6轮且无委派、审核前无生成；完整情节可直接交 Director 且必要 Research仍可用。Stub可达不保证真实模型自主行为；真实 c1/c6≤6轮目标留到V-Gate5测量。
