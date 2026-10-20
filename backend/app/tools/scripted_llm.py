@@ -62,7 +62,8 @@ class ScriptedLLM:
         response.setdefault("content", None)
         response.setdefault("tool_calls", [])
         response.setdefault("usage", {"prompt_tokens": 0, "completion_tokens": 0})
-        if not response["content"] and not response["tool_calls"] and not response.get("tool_call_errors"):
+        if (not response["content"] and not response["tool_calls"] and not response.get("tool_call_errors")
+                and response.get("finish_reason") != "length"):
             raise AppError("INVALID_LLM_SCRIPT", "A scripted response cannot silently finish empty", 500)
         return response
 

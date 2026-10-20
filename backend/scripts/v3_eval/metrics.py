@@ -25,7 +25,8 @@ def summarize_turns(ledger):
                     "delegation_id": row.delegation_id, "status": row.status,
                     "prompt_tokens": usage.get("prompt_tokens"),
                     "completion_tokens": usage.get("completion_tokens"),
-                    "credits": row.estimated_cost, "error_code": row.error_code}
+                    "credits": row.estimated_cost, "error_code": row.error_code,
+                    "finish_reason": output.get("finish_reason")}
             (turns if row.tool_name == "agent_llm_turn" else vision).append(item)
         if row.tool_name in {"check_plan", "submit_plan", "instantiate_blueprint", "propose_patch", "review_patch"}:
             compile_codes.update(issue_codes(output.get("issues", [])))

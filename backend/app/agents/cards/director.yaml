@@ -23,6 +23,7 @@
     "estimate_cost",
     "analyze_images",
     "check_plan",
+    "append_plan_nodes",
     "instantiate_blueprint",
     "request_preview",
     "get_task_status",

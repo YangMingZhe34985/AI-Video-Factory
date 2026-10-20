@@ -192,8 +192,20 @@ class QwenChatAdapter(MockChatAdapter):
             "content": cls._extract_completion_text(completion) if message.get("content") is not None else None,
             "tool_calls": [],
             "usage": cls._extract_usage(completion),
+            "finish_reason": (choices[0] or {}).get("finish_reason") if choices else None,
         }
         calls = message.get("tool_calls")
+        if result["finish_reason"] == "length":
+            # Provider truncation is not a JSON-format mistake. Reject the
+            # entire batch, preserving even apparently valid sibling evidence.
+            items = calls if isinstance(calls, list) and calls else [None]
+            result["tool_call_errors"] = [
+                cls._tool_call_error(index, call, "AGENT_OUTPUT_TRUNCATED",
+                                     "Provider output reached its token limit; no call from this turn may execute")
+                for index, call in enumerate(items)]
+            if calls is not None and not isinstance(calls, list):
+                result["tool_call_errors"][0]["arguments"] = calls
+            return result
         if calls is None:
             return result
         errors = []

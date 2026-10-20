@@ -234,7 +234,7 @@ def _recover_local_receipt(name, data, ctx, registry):
         if item:
             from app.agents.workspace import resolve_workspace_ref
             output = resolve_workspace_ref({"key": item.key, "version": item.version}, ctx)
-    elif name in {"instantiate_blueprint", "submit_plan"}:
+    elif name in {"instantiate_blueprint", "submit_plan", "append_plan_nodes"}:
         from app.plans.tools import recover_receipt
         output = recover_receipt(name, normalized, ctx)
     elif name in {"propose_patch", "review_patch"}:
@@ -464,7 +464,7 @@ def _execute_round(delegation_id, expected_step, registry):
                 state[key] = external_state[key]
         state["messages"].append({"role": "tool", "tool_call_id": call["id"], "name": name,
                                    "content": json.dumps(output, ensure_ascii=False)})
-        pending["progress"] |= succeeded and name in {"write_workspace", "delegate", "finish"}
+        pending["progress"] |= succeeded and name in {"write_workspace", "append_plan_nodes", "delegate", "finish"}
         state["same_call_count"] = state.get("same_call_count", 0) + 1 if state.get("last_call") == digest else 1
         state["last_call"] = digest
         pending["cursor"] += 1
@@ -610,7 +610,7 @@ def advance(run, saver=None):
     # free and runs even if that handler already ended its delegation.
     for receipt in ToolInvocation.query.filter(ToolInvocation.budget_scope == run.run_id,
             ToolInvocation.status.in_(["pending", "running"]),
-            ToolInvocation.tool_name.in_(["delegate", "write_workspace", "ask_user", "finish", "instantiate_blueprint", "submit_plan", "request_preview", "propose_patch", "review_patch"])).all():
+            ToolInvocation.tool_name.in_(["delegate", "write_workspace", "ask_user", "finish", "instantiate_blueprint", "submit_plan", "append_plan_nodes", "request_preview", "propose_patch", "review_patch"])).all():
         owner = db.session.get(AgentDelegation, receipt.delegation_id)
         if owner is not None:
             ctx = _context(run, owner)

@@ -1076,3 +1076,16 @@ Codex 的 2218 项全量回归与前端 134 项记录完整。真实效果待 V1
 完成内容：完整 brief 示例与完整情节直接规划。Producer/Director、intent-analysis/delegation-policy 增补；保留原用户情节，不为格式调用 Creative。没有自动猜测字段语义。 契约先行，策略/Skill增补交Claude复审。
 验证：TEMP/cc-v11d-1020181631-3b7e/summary.json 最终 passed=true，132文件、2487项全过；精确ID遗漏/多余/重复/失败/跳过均0，源码冻结、隔离审计和前端构建通过。详细命令、JUnit与源码快照保留在该目录。
 下一步：进入下一个独立任务分支继续验证；Mock控制流不代表真实轮数、token或画质达标。真实调用0、真实媒体0；不推送、不进入V8，未跟踪私人笔记保留。
+
+## 2026-10-20 · Codex · V11e 实现与验证进行中
+状态：当前 agent-v3/V11e，前序已完整验证并本地合并，尚未合入本项。
+完成内容：先记 D-044 再落 V.21.5，增量迁入长计划分批写入与明确截断回执。append_plan_nodes 仅向精确最新版追加1–12节点，CAS、权限、收据重放和审批后 Patch 门保留；check_plan 支持精确引用。记录 finish_reason，length 整批工具拒绝并记 AGENT_OUTPUT_TRUNCATED，结算真实usage且有界纠错。长计划资料增补，plan-review升5、long-form-video升2。
+验证与下一步：执行本项新增回归，再完整后端与前端构建；以TEMP/cinecrew-v11-prep/offline-stages-journal.json记录的实际summary为准，失败即停，不把准备稿结果当正式通过。当前真实调用0、媒体0，不推送、不进入V8，不改Claude美化。
+
+验证补记：新增50项正式定向通过（TEMP/cc-v11e-focus-1020190341-40cf）。首轮全量 TEMP/cc-v11e-1020190524-formal 收集/执行2537项，2536通过、1失败；源码冻结、隔离审计和构建通过。唯一失败为 test_v3_catalog_does_not_mutate_legacy_roles_or_descriptions 的旧清单只列42个v3工具，没有新增 append_plan_nodes。已停止后续阶段，补齐精确清单/43数量并明确新工具仅Producer/Director可见、属于write且不可作为生产节点执行；经典22工具及角色/描述不变的原断言保留。此项是契约增量所需兼容性夹具迁移，不修改产品行为或放宽安全条件；须重新完整验证后才合并。
+
+## 2026-10-20 · Codex · V11e 全量验证完成
+状态：V11e 完成，独立任务分支验证后提交并仅本地合入 feat/agent-v2。
+完成内容：长计划分批写入与明确截断回执。append_plan_nodes 仅向精确最新版追加1–12节点，CAS、权限、收据重放和审批后 Patch 门保留；check_plan 支持精确引用。记录 finish_reason，length 整批工具拒绝并记 AGENT_OUTPUT_TRUNCATED，结算真实usage且有界纠错。长计划资料增补，plan-review升5、long-form-video升2。 契约先行，策略/Skill增补交Claude复审。
+验证：TEMP/cc-v11e-1020195400-catalog-fixed/summary.json 最终 passed=true，134文件、2537项全过；精确ID遗漏/多余/重复/失败/跳过均0，源码冻结、隔离审计和前端构建通过。详细命令、JUnit与源码快照保留在该目录。
+下一步：进入下一个独立任务分支继续验证；Mock控制流不代表真实轮数、token或画质达标。真实调用0、真实媒体0；不推送、不进入V8，未跟踪私人笔记保留。

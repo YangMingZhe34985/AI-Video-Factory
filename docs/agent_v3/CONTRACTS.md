@@ -546,3 +546,17 @@ patches.diff_preview 为逐操作 {op,node_id,before,after}：输入更新仅展
 - 示例覆盖当前结构时不强制重复读取Schema；复杂transform、开放问题、未覆盖嵌套或字段错误才按需读取。已有资料可复用，真实多图理解仍单次批量，必须检查模型与费用。
 - 主要事件、顺序及结局已有明确用户输入时，Producer直接交Director技术规划；Director不因缺少StoryPackage而再委派Creative。传递原文或精确note引用，不擅自删改；只有实际创作缺口或用户明确要求补写才调用Creative。必要Research仍按知识缺口调用。
 - 不新增执行权限或免审核路径；V11a角色输入、各节点能力、估价和审批全部保留。目标c1/c6≤6轮，只有真实评测可确认；Mock/Stub回归只证明短路径可执行。
+
+### V.21.5 回合终止原因与增量计划（V11e，D-044）
+
+1. `AgentTurnOutput` 增加可选 `finish_reason: str|null`，从供应商choices[0].finish_reason原样记录到工具输出/账本与评测逐轮指标；旧回执和Stub缺失时是null。不能用completion_tokens等于8000反推真实finish_reason。
+2. `finish_reason=="length"` 返回 `tool_call_errors` 中明确 `AGENT_OUTPUT_TRUNCATED`，`tool_calls=[]`；即便部分sibling参数完整也不执行，纯文本截断同样报告。该响应已完成并正常按usage结算；缺usage保留原保守计费。恢复使用原成功回执，不重发；未知HTTP仍按既有规则停止。
+3. 纠错仍只由Agent运行时在下一付费step进行且最多两次；专门提示把计划拆成≤12节点的小批量、引用已保存版本，并指出该轮无工具执行。不自动增加max_tokens、配额或调用次数。原始输出/错误保留账本；面向模型的截断诊断只需摘要，不机械回灌整段未完成计划。
+4. `append_plan_nodes({plan_ref:WorkspaceRef,nodes:PlanDraftNode[1..12]})` 是Agent可见、permission=write、零工具费用、只允许Producer/Director的规划工具，仍经ToolRegistry校验/幂等/账本。生成函数仍不暴露给Agent。
+5. plan_ref必须是当前Run的plan_draft精确版本；首次用既有write_workspace写完整头（title/goal/deliverables/stages等）及第一批节点，结构合法即可保存，中间未解析引用不表示编译通过。追加只增加nodes，不能修改已存节点、头、交付或角色目录；需要改这些内容时写一个完整新草稿，不放宽现有Schema。总节点≤200、唯一ID、256KiB、素材归属及有限JSON校验不变。
+6. 追加在Run锁与活动委派检查内完成；同一request_key先核验原输入摘要/作者/委派并返回原收据，之后才做最新版本检查，避免崩溃重放误报stale。不同请求使用过期基版报明确 `PLAN_DRAFT_VERSION_CONFLICT`，不自动对最新版本追加。写完整工作区新版本与本地工具回执同一事务，旧版本永不变。
+7. 返回恰好七字段的精简收据 `{workspace_ref:{key,version},key,version,kind:"plan_draft",node_count,input_hash,payload_hash}`，不回显全计划；`read_workspace`可免费精确重读。`input_hash=inputs_hash(AppendInput.model_validate(原请求).model_dump(mode="json"))`，覆盖默认字段与现有节点序列化规则；`payload_hash=inputs_hash(validate_payload("plan_draft",保存的完整新Plan))`。inputs_hash 为当前已有规范 JSON（sort_keys、无空白分隔、ensure_ascii=false、allow_nan=false）的 SHA-256。key 与 workspace_ref 一致，version 精确等于输入基版 +1，node_count 为完整节点数，至少本批数 +1、至多200；这些证明供 V11f 仅投影确有保存回执的旧参数。新版本不继承已修改Blueprint的“原样生成”证明。已有批准/执行/完成状态拒绝增量新计划，用户修订仍走既有Patch。
+8. `check_plan` 输入改为 `{plan:PlanDraft}` 或 `{plan_ref:WorkspaceRef}`，严格有且仅有一个非null值，不接受两者/空对象/显式null伪装；旧plan输入兼容。plan_ref只读解析所属Run及kind，再走相同compile_plan，输出仍是精简issues/estimates/experimental/resolved_models/order。写草稿与append不自动授予编译通过或生产许可，submit_plan仍完整编译/dry-run。
+9. Runtime将append纳入本地回执恢复、有效进展及启动时未终结写回执扫描。崩溃可免费补齐工具回执，不重复新版本；源输入/hash不符时拒绝。目录/卡片Schema改变的旧LLM回执仍遵守原严格恢复校验，不重新调用规避冲突。
+10. 验收：适配器length各种形状、usage及重放；多批追加与引用检查；旧版本/跨Run/权限/finished拒绝；重复ID/总量/尺寸边界；不同请求并发同基版；本地commit到Registry间隙恢复；未完成草稿仍不能submit。只Mock/Stub，真实质量与token目标留到V-Gate5。
+11. 长片作者策略允许跳过大型 story-video Blueprint 的一次性参数输出，按分批通用 Plan 创建；这不是新自动服务端转换，不减少用户所需内容或人物/关键帧。append 不支持原地编辑/删除已有节点；完整重写仍可能超上限，该剩余边界应在验收报告中记录。

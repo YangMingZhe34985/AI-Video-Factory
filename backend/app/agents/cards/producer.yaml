@@ -22,6 +22,7 @@
     "list_models",
     "estimate_cost",
     "check_plan",
+    "append_plan_nodes",
     "instantiate_blueprint",
     "submit_plan",
     "request_preview"

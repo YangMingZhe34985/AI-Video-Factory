@@ -13,7 +13,7 @@ related:
 - character-consistency
 - first-last-frame
 - budget-planning
-version: 1
+version: 2
 ---
 # 长故事规划（已由 Claude 审定 · V-Gate3）
 
@@ -53,3 +53,15 @@ Creative 负责故事节拍：保留用户给出的事件、顺序、人物和�
 局部失败只处理受影响的镜头和其后代，不重跑无依赖镜头；改动会影响后续镜头时，先列出影响范围与费用让用户确认。拼接默认不压缩。
 
 来源：app/agent/creative_v2.py、director_v2.py、prompt_smith.py、plan_check.py；v3 契约 V.8–V.11；D-005。
+
+## 分批写长计划（V11e）
+
+较长通用计划先用 write_workspace 写完整 PlanDraft 头（含交付、阶段与角色目录）和第一批节点；可声明尚未写入的后续节点引用。随后只追加新节点：`append_plan_nodes({plan_ref:{key:"draft",version:1},nodes:[...]})`，每批 1–12 个，提示词长时主动减小批次。必须使用上次成功回执的精确版本；返回只有新 workspace_ref、节点数与校验摘要，不回显完整计划。多个批次有版本依赖，不能在同一轮预猜下个版本并并行追加。
+
+全部节点保存后用 `check_plan({plan_ref:{key:"draft",version:最终版本}})` 检查，再由 Producer 用同一版本 submit_plan；中间可保存不表示可执行。小计划仍可 `check_plan({plan:完整草稿})`。append 不能修改已有节点或头；需要这类修改时先 read_workspace 取完整草稿，再写完整新版本。收到 PLAN_DRAFT_VERSION_CONFLICT 时读取最新版本，核对已有内容后再决定；禁止盲目重放追加。已批准计划必须走 Patch。
+
+AGENT_OUTPUT_TRUNCATED 表示该轮全部工具均未执行，包括看似完整的同轮调用。根据已保存回执继续，缩小节点批次或减少单轮工具数；不要重复生成一整份超长草稿，不请求扩大输出上限。原 usage 正常计费，纠错仍受两次上限与原预算约束。
+
+大型 story-video 的完整 Blueprint 参数本身也可能超过单轮输出上限；不能因为 builder 可自动建节点，就坚持一次输出全部 story 与 shots。预计描述很长或已收到截断时，改用上述分批通用 Plan：完整保留用户剧情、目标时长、固定 story_ref、角色目录、每节点 characters、多参考关键帧及拼接/检查/打包链，按批保存。它不是放弃人物或删除镜头的理由。append 只能追加，不能更新已保存节点；若完整改写仍触发截断，应如实报告这一边界，不暗中提高 max_tokens 或改用户需求。
+
+V11e 分批作者策略待 Claude V-Gate5 审定；原有故事、时长与一致性要求保持。

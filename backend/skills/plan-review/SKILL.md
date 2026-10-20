@@ -14,10 +14,11 @@ tools:
 - list_models
 - estimate_cost
 - check_plan
+- append_plan_nodes
 related:
 - long-form-video
 - budget-planning
-version: 4
+version: 5
 ---
 # 计划审阅
 
@@ -50,3 +51,15 @@ Critic 返回 verdict=pass|revise 和 issues[{severity,message,node_id?}]，明�
 需要用户从多张预览中选一张时，使用 `select_image` 节点并设 `gate="choice"`，inputs 只有 `candidate_artifact_ids`：例如 `{ref:"posters.images"}`，或 `[{ref:"a.image"},{ref:"b.image"}]`。必须有 2–20 张唯一候选；下游引用 `{ref:"choice.image"}`。不要固定引用第一张替代用户选择，也不要同时为这些候选增加不必要的逐张 preview 门。完整合同见 resources/tools/select_image.json。
 
 selected_artifact_id 只由用户审核后服务端注入，禁止写入计划。无选择时下游等待；选择免费但所有候选生成均计费。候选重做或变化需重新选择；已批准后改选走 Patch，保留历史下游时需展示衔接风险。
+
+## 分批写长计划（V11e）
+
+较长通用计划先用 write_workspace 写完整 PlanDraft 头（含交付、阶段与角色目录）和第一批节点；可声明尚未写入的后续节点引用。随后只追加新节点：`append_plan_nodes({plan_ref:{key:"draft",version:1},nodes:[...]})`，每批 1–12 个，提示词长时主动减小批次。必须使用上次成功回执的精确版本；返回只有新 workspace_ref、节点数与校验摘要，不回显完整计划。多个批次有版本依赖，不能在同一轮预猜下个版本并并行追加。
+
+全部节点保存后用 `check_plan({plan_ref:{key:"draft",version:最终版本}})` 检查，再由 Producer 用同一版本 submit_plan；中间可保存不表示可执行。小计划仍可 `check_plan({plan:完整草稿})`。append 不能修改已有节点或头；需要这类修改时先 read_workspace 取完整草稿，再写完整新版本。收到 PLAN_DRAFT_VERSION_CONFLICT 时读取最新版本，核对已有内容后再决定；禁止盲目重放追加。已批准计划必须走 Patch。
+
+AGENT_OUTPUT_TRUNCATED 表示该轮全部工具均未执行，包括看似完整的同轮调用。根据已保存回执继续，缩小节点批次或减少单轮工具数；不要重复生成一整份超长草稿，不请求扩大输出上限。原 usage 正常计费，纠错仍受两次上限与原预算约束。
+
+大型 story-video 的完整 Blueprint 参数本身也可能超过单轮输出上限；不能因为 builder 可自动建节点，就坚持一次输出全部 story 与 shots。预计描述很长或已收到截断时，改用上述分批通用 Plan：完整保留用户剧情、目标时长、固定 story_ref、角色目录、每节点 characters、多参考关键帧及拼接/检查/打包链，按批保存。它不是放弃人物或删除镜头的理由。append 只能追加，不能更新已保存节点；若完整改写仍触发截断，应如实报告这一边界，不暗中提高 max_tokens 或改用户需求。
+
+该写工具只开放给 Producer/Director；其他角色仍只能读取与检查。V11e 指引待 Claude V-Gate5 审定。

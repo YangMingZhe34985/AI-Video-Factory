@@ -3,11 +3,11 @@
 from copy import deepcopy
 from hashlib import sha256
 
-from pydantic import Field, RootModel, ValidationError
+from pydantic import Field, RootModel, ValidationError, model_serializer, model_validator
 
 from app.agent.plan_versions import _lock_run, inputs_hash
 from app.agent.request_spec import StrictModel
-from app.agents.schemas import PlanDraft, WorkspaceRef, finite_json, validate_payload
+from app.agents.schemas import PlanDraft, PlanDraftNode, WorkspaceRef, finite_json, validate_payload
 from app.agents.workspace import require_context, resolve_workspace_ref, validate_artifact_references
 from app.api import AppError
 from app.extensions import db
@@ -19,7 +19,33 @@ from app.tools.spec import ToolSpec
 
 
 class CheckInput(StrictModel):
-    plan: PlanDraft
+    model_config = {**StrictModel.model_config, "json_schema_extra": {"oneOf": [
+        {"required": ["plan"], "properties": {"plan": {"type": "object"}},
+         "not": {"required": ["plan_ref"]}},
+        {"required": ["plan_ref"], "properties": {"plan_ref": {"type": "object"}},
+         "not": {"required": ["plan"]}},
+    ]}}
+    plan: PlanDraft | None = None
+    plan_ref: WorkspaceRef | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def require_exactly_one(cls, value):
+        if not isinstance(value, dict) or (set(value) & {"plan", "plan_ref"}) not in ({"plan"}, {"plan_ref"}):
+            raise ValueError("Provide exactly one of plan or plan_ref")
+        if value.get("plan", value.get("plan_ref")) is None:
+            raise ValueError("Plan input cannot be null")
+        return value
+
+    @model_serializer(mode="wrap")
+    def omit_absent_input(self, handler):
+        value = handler(self)
+        return {key: child for key, child in value.items() if child is not None}
+
+
+class AppendInput(StrictModel):
+    plan_ref: WorkspaceRef
+    nodes: list[PlanDraftNode] = Field(min_length=1, max_length=12)
 
 
 class InstantiateInput(StrictModel):
@@ -35,7 +61,8 @@ class ObjectOutput(RootModel[dict]):
     pass
 
 
-INPUTS = {"instantiate_blueprint": InstantiateInput, "submit_plan": SubmitInput}
+INPUTS = {"instantiate_blueprint": InstantiateInput, "submit_plan": SubmitInput,
+          "append_plan_nodes": AppendInput}
 FINISHED = frozenset({"completed", "returned", "failed", "limit", "cancelled", "success"})
 
 
@@ -106,7 +133,59 @@ def agent_check(compiled):
 
 def check_plan(data, ctx):
     run, _delegation = require_context(ctx)
-    return agent_check(compile_plan(data.plan, run))
+    draft = data.plan
+    if data.plan_ref is not None:
+        draft = resolve_workspace_ref(data.plan_ref.model_dump(mode="json"), ctx,
+                                      expected_kind="plan_draft")["payload"]
+    return agent_check(compile_plan(draft, run))
+
+
+def append_plan_nodes(data, ctx):
+    """Append one bounded batch to an exact latest draft, atomically."""
+    normalized = data.model_dump(mode="json")
+    finite_json(normalized)
+    try:
+        run, delegation = _active_locked(ctx)
+        if ctx.caller_agent not in {"producer", "director"}:
+            raise AppError("TOOL_FORBIDDEN", "Only Producer and Director can append planning nodes", 403)
+        previous = _receipt(run, "append_plan_nodes", normalized, ctx)
+        if previous is not None:
+            db.session.commit()
+            return previous
+        _assert_active(run, delegation)
+        if (run.snapshot or {}).get("v3_execution", {}).get("approved_version"):
+            raise AppError("PATCH_REQUIRED", "Approved plans can only change through a reviewed Patch", 409)
+        ref = normalized["plan_ref"]
+        source = resolve_workspace_ref(ref, ctx, expected_kind="plan_draft")
+        latest = AgentWorkspaceItem.query.populate_existing().filter_by(
+            run_id=run.run_id, key=ref["key"]).order_by(AgentWorkspaceItem.version.desc()).first()
+        if latest is None or latest.version != ref["version"]:
+            raise AppError("PLAN_DRAFT_VERSION_CONFLICT", "Read the latest exact draft before appending", 409,
+                           payload={"plan_ref": ref, "latest_version": latest.version if latest else None})
+        if AgentWorkspaceItem.query.filter_by(run_id=run.run_id, request_key=_key(ctx)).first():
+            raise AppError("IDEMPOTENCY_CONFLICT", "Planning request key belongs to another workspace write", 409)
+        draft = deepcopy(source["payload"])
+        draft["nodes"] = [*draft["nodes"], *normalized["nodes"]]
+        # Intermediate forward references may remain unresolved. Structural,
+        # size, uniqueness and artifact-scope checks still apply to every batch.
+        draft = validate_payload("plan_draft", draft)
+        artifact_ids = validate_artifact_references(draft, ctx, plan_refs=True)
+        version = latest.version + 1
+        workspace_ref = {"key": ref["key"], "version": version}
+        db.session.add(AgentWorkspaceItem(run_id=run.run_id, key=ref["key"], version=version,
+            kind="plan_draft", payload=draft, artifact_ids=artifact_ids,
+            author_agent=ctx.caller_agent, delegation_id=ctx.delegation_id,
+            request_key=_key(ctx),
+            inputs_hash=inputs_hash({"key": ref["key"], "kind": "plan_draft", "payload": draft})))
+        output = {"workspace_ref": workspace_ref, "key": ref["key"], "version": version,
+                  "kind": "plan_draft", "node_count": len(draft["nodes"]),
+                  "input_hash": inputs_hash(normalized), "payload_hash": inputs_hash(draft)}
+        _save_receipt(run, "append_plan_nodes", normalized, ctx, output)
+        db.session.commit()
+        return output
+    except Exception:
+        db.session.rollback()
+        raise
 
 
 def instantiate_blueprint(data, ctx):
@@ -212,9 +291,12 @@ def submit_plan(data, ctx):
 
 def register_plan_tools(registry):
     for spec in (
-        ToolSpec(name="check_plan", description="Check a typed plan, model constraints, data dependencies and demonstration costs without saving or executing it.",
+        ToolSpec(name="check_plan", description="Check exactly one typed plan or saved plan_ref, including model constraints, data dependencies and demonstration costs, without saving or executing it.",
             input_model=CheckInput, output_model=ObjectOutput, handler=check_plan, permission="read",
             allowed_roles=frozenset(AGENT_ROLES), agent_visible=True),
+        ToolSpec(name="append_plan_nodes", description="Append 1-12 new nodes to an exact latest planning draft. Returns a new immutable workspace reference; never grants approval.",
+            input_model=AppendInput, output_model=ObjectOutput, handler=append_plan_nodes, permission="write",
+            allowed_roles=frozenset({"producer", "director"}), agent_visible=True, max_retries=0),
         ToolSpec(name="instantiate_blueprint", description="Instantiate a registered deterministic Blueprint into an immutable workspace draft; this does not approve or execute it.",
             input_model=InstantiateInput, output_model=ObjectOutput, handler=instantiate_blueprint, permission="write",
             allowed_roles=frozenset(AGENT_ROLES), agent_visible=True, max_retries=0),

@@ -99,7 +99,7 @@ def test_multiple_tool_calls_preserve_order_and_null_content(protocol_app, monke
     raw = completion(function_call(), function_call("call-2", "estimate_cost", '{"nodes":[{"count":2}]}'))
     response, seen = submit_stub(make_adapter(), monkeypatch, raw, expect_json=True)
     assert response == {"provider_task_id": "stub-completion", "status": "success", "content": None,
-                        "json": None, "raw_response": raw,
+                        "json": None, "raw_response": raw, "finish_reason": None,
                         "tool_calls": [{"id": "call-1", "name": "list_models", "arguments": {"mode": "t2i"}},
                                        {"id": "call-2", "name": "estimate_cost", "arguments": {"nodes": [{"count": 2}]}}],
                         "usage": {"prompt_tokens": 30, "completion_tokens": 12}}

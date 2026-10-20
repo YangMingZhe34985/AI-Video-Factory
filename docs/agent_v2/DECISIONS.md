@@ -320,3 +320,13 @@ retry_shot 允许服务端识别的 blocked 子镜头恢复本地尾帧提取：
 - 不引入服务端 subjects 字符串转对象或布尔字符串纠错；source、附件用途、模型原文等不能在缺乏证据时自动猜测。保持 RequirementBrief 与共享 v2 类型、工具权限、预算、V11a身份检查和生产审批不变。
 - 范围：Producer/Director 的上述说明、intent-analysis/delegation-policy Skill 对应增补、回归。原 Claude 审定内容保留，本轮增补明确待 V-Gate5 复审；Skill 版本随变更递增。
 - 验证：读取实际策略示例经过 Registry 写入及编译/提交，Stub 简单路径≤6轮且无委派、审核前无生成；完整情节可直接交 Director 且必要 Research仍可用。Stub可达不保证真实模型自主行为；真实 c1/c6≤6轮目标留到V-Gate5测量。
+
+## D-044 · 2026-10-20 · V11e 回合终止原因与增量计划
+
+
+- 原因：V10 长片出现连续参数 JSON 失败与8000输出token迹象；适配器丢失finish_reason使根因无法确定。完整PlanDraft重复输出会接近单次上限，需保留供应商终止原因并允许小批量写草稿。
+- 决策：完整回合记录finish_reason；length作为已计费的结构化 `AGENT_OUTPUT_TRUNCATED` 回合返回，整轮所有函数都不执行，保留usage/原证据；既有最多两次纠错约束不变，提示改用小批量/精确工作区引用，不在适配器自动重试或提高输出上限。
+- 新增规划期 `append_plan_nodes(plan_ref,nodes)`，每批1–12节点，原子保存完整不可变的新版本及独立本地回执；同请求先恢复旧回执，再检查基版是否最新。并发不同请求对同一基版仅一个成功，不丢更新；不是批准后Patch替代品。
+- check_plan兼容旧plan输入，增加精确plan_ref输入，严格二选一；从本Run工作区读取完整草稿编译，避免最后检查又要求输出整份计划。
+- 一般作者策略：大型 story-video 的 Blueprint 参数（含 story、shots 与提示词）本身也可能截断，不能只给通用 Plan 加 append 而仍强制一次实例化长 Blueprint。Producer/Director 与 long-form-video 指引允许直接选择分批通用 Plan，保持人物、情节、时长、story_ref/character_references/characters、关键帧与交付链。append 只追加；修改已写节点仍需完整新版本，若这一步仍截断如实记录限制，不暗调输出上限。
+- 影响：LLM适配/回合输出/评测指标、规划工具及Producer/Director卡片、运行时本地回执恢复/进展/扫描、作者指引与Mock回归。原工作区、计价、批准及经典/v2行为保持。
