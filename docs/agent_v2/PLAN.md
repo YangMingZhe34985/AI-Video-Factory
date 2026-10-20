@@ -145,10 +145,18 @@
 | V9c | 简单任务开销：Blueprint 参数摘要进 Skill 正文，减少资源读取轮次 | Codex | V-Gate3 | 完成（正式分支74项通过；Stub简单路径4轮，真实效果待Gate4） |
 | V9d | 死节点检测：不通往交付物的付费节点给出编译问题 | Codex | V-Gate3 | 完成（正式分支72项通过；未消费付费节点阻止提交） |
 | V9e | 多参考图默认选型：多人同框镜头自动引导到支持多参考的模型 | Codex | V-Gate3 | 完成（29项定向、V9集成后端全量2218项通过；本地合并未推送） |
-| V-Gate4 | V9 评审与真实评测复跑（`backend/scripts/v3_eval`） | Claude | V9a–V9e | 待 Claude 判定：V10 报告已交付，包含未达指标与语义风险 |
+| V-Gate4 | V9 评审与真实评测复跑（`backend/scripts/v3_eval`） | Claude | V9a–V9e | 有条件通过（2026-10-20；默认开启 v3 前须完成 V11a–V11c） |
 | V10a | 真实评测复跑（D-030）：`v3_eval all` 一次，c3、c5 各再跑 2 次；按 PROGRESS“V10 测试任务”的量化目标对照 VGATE3_EVAL | Codex | V9a–V9e | 测试完成；长片审核 3/3、选择门 3/3；简单轮次、长片 token 与角色参考部分未达，详见 V10 报告 |
 | V10b | 混合执行测试：真实 LLM 规划 + Mock 媒体执行（零生成费用），端到端覆盖批准、预览门、选择门、生产、内容失败→Repair→Director Patch、用户修订、交付、worker 中断恢复 | Codex | V9a–V9e | 六个执行场景通过；修复 D-038 计时遗漏；修复语义与任意在途崩溃不作通过，详见 V10 报告 |
 | V10c | MySQL 迁移与并发验证（一次性独立 Docker 容器，绝不连接 .env 中的数据库） | Codex | 用户已批准（2026-10-19） | 完成：MySQL 8.4.4 四项通过；临时容器/数据卷已删除，真实模型调用 0 |
 | V10-Report | `docs/agent_v3/V10_TEST_REPORT.md`：逐项指标、失败根因、调用量与费用 | Codex | V10a V10b V10c | 完成：188/800 次真实调用、真实媒体 0；逐项达标/未达及证据交给 Claude V-Gate4 |
+| V11a | **阻塞**：多角色身份输入的确定性校验（节点声明出场角色，编译器要求数据引用覆盖每个角色的参考；依赖边不算身份输入；契约先行） | Codex | V-Gate4 | 待开始 |
+| V11b | **阻塞**：自动修复的意图保真（会删除或改变用户点名的核心元素时不得自动批准，必须人工确认；Run 视图展示改写前后差异） | Codex | V-Gate4 | 待开始 |
+| V11c | **阻塞**：Patch 产物来源标签与实际作者一致（修正 origin.agent 写成 repair 的问题） | Codex | V-Gate4 | 待开始 |
+| V11d | 简单任务效率：减少 RequirementBrief 结构纠错（Producer 提示词给出完整最小合法示例，或对常见可无损转换的形式做服务端规范化；目标 c1/c6 ≤6 轮） | Codex | V-Gate4 | 待开始 |
+| V11e | 长计划输出截断：记录 finish_reason；长 PlanDraft 支持分批写入或增量更新，避免一次 8k token 输出被截断 | Codex | V-Gate4 | 待开始 |
+| V11f | 上下文峰值：长计划只保留最新草稿的完整参数、旧草稿参数投影为引用；目标长片单轮输入峰值 ≤60k token | Codex | V-Gate4 | 待开始 |
+| V11g | 选择门的逐张风格：“N 种风格各一张”时规划为 N 个独立节点汇入选择门（Skill 指导 + 编译器支持多来源候选） | Codex | V-Gate4 | 待开始 |
+| V-Gate5 | V11 评审：Codex 复跑 c1、c3×3、c5、c6 真实规划与 V10b 修复/修订场景并出报告，Claude 审读 | Claude | V11a–V11g | 待开始 |
 | V8 | 经典路径：生产意图、系列 + 模板、`run_workflow_template`（契约开工前补写） | Codex | V-Gate3 | 按用户指令暂跳过 |
 
