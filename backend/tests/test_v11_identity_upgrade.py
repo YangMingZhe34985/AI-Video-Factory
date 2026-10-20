@@ -103,6 +103,7 @@ def test_upgrade_cannot_become_prompt_only_automatic_repair(monkeypatch):
     from app.plans.patch_intent import IntentAssessment
     assessment = IntentAssessment.model_validate({"intent_preserved": True, "changed_elements": []}).model_dump()
     monkeypatch.setattr(patches, "verified_assessment", lambda run, row, digest: assessment)
+    monkeypatch.setattr(patches, "verified_patch_author", lambda run, row, value: {"agent": "repair"})
     args = (SimpleNamespace(), record)
     normal = patches._automatic(*args, draft(), {"image"}, {"image"}, {"image": task}, {1}, 2)
     upgraded = patches._automatic(*args, draft(True), {"image"}, {"image"}, {"image": task}, {1}, 2)

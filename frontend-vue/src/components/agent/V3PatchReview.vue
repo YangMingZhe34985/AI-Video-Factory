@@ -8,6 +8,7 @@
       <span class="status">{{ v3StatusLabel(patch.status) }}</span>
     </header>
     <p class="mt-3 whitespace-pre-wrap text-sm">{{ patch.reason || '尚未提供修改原因。' }}</p>
+    <p class="mt-2 text-xs text-slate-500">{{ patch.author_verified ? `实际起草：${patch.final_author} · 原提议：${patch.author}` : '历史起草来源未验证' }}<span v-if="patch.trigger_kind === 'user_revision'"> · 用户要求修订</span></p>
     <div class="mt-3 rounded-lg bg-slate-50 p-3 text-sm dark:bg-slate-800">
       <p class="font-medium">Director · {{ patchReviewLabel(patch.review?.verdict) }}</p>
       <p v-if="patch.review?.reason" class="mt-1 whitespace-pre-wrap text-slate-600 dark:text-slate-300">{{ patch.review.reason }}</p>
@@ -35,6 +36,14 @@
       <p v-if="!changes.length" class="text-sm text-slate-500">暂无具体变更预览。</p>
     </div>
 
+    <div v-if="metadataChanges.length" class="mt-4 space-y-2" data-testid="patch-metadata-diff">
+      <div v-for="(change, index) in metadataChanges" :key="index" class="change min-w-0 whitespace-pre-wrap break-words text-sm">
+        <p class="font-medium">{{ change.node_id }}<span v-if="change.incidental"> · 插入节点带来的附带修改</span></p>
+        <p v-if="change.origin" class="mt-2">来源：{{ change.origin.before?.agent || '无' }} → {{ change.origin.after?.agent || '无' }}</p>
+        <template v-if="change.rationale"><p class="mt-2 font-medium">方案理由变化</p><p>修改前：{{ change.rationale.before || '无' }}</p><p>修改后：{{ change.rationale.after || '无' }}</p></template>
+        <template v-if="change.depends_on"><p class="mt-2 font-medium">依赖变化</p><p>修改前：{{ dependencyLabel(change.depends_on.before) }}</p><p>修改后：{{ dependencyLabel(change.depends_on.after) }}</p></template>
+      </div>
+    </div>
     <fieldset v-if="reviewable" class="mt-5" :disabled="disabled || submitting">
       <legend class="text-sm font-semibold">修改范围</legend>
       <div class="mt-2 grid gap-2 sm:grid-cols-2">
@@ -122,6 +131,8 @@ const contextKey = computed(() => patchContextKey(props.run, props.patch, scope.
 const reviewable = computed(() => patchReviewable(props.run, props.patch))
 const validFreshQuote = computed(() => currentPatchQuote(receipt.value, props.run, props.patch, scope.value))
 const visibleQuote = computed(() => validFreshQuote.value ? receipt.value.quote : props.patch.quote)
+const metadataChanges = computed(() => Array.isArray(props.patch.metadata_diff) ? props.patch.metadata_diff : [])
+const dependencyLabel = (value) => Array.isArray(value) && value.length ? value.join('、') : '无'
 const intent = computed(() => patchIntent(props.patch.review))
 const changes = computed(() => Array.isArray(props.patch.diff_preview) ? props.patch.diff_preview : [])
 const impact = computed(() => patchImpact(visibleQuote.value))

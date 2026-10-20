@@ -11,6 +11,7 @@ from app.agents.workspace import write_workspace
 from app.plans import runtime
 from app.plans.patches import normalize_patch, patch_digest
 from app.plans.patch_intent import save_assessment
+from tests.patch_provenance_fixtures import add_proposal_evidence
 from app.tools.spec import ToolContext
 from app.services.job_run_service import JobRunService
 from tests.test_v4_execution import setup
@@ -42,6 +43,8 @@ def reviewed_patch():
             "reason": "Harmless wording only", "intent_preserved": True, "changed_elements": [], "draft_hash": patch_digest(draft), "request_key": "director-review", "review_ref": ref}}
     review = record["director_review"]
     review["assessment_ref"] = save_assessment(run, director, record["patch_id"], review)
+    db.session.commit()
+    add_proposal_evidence(run, record, author="repair")
     run.snapshot = {**run.snapshot, "v3_patches": {record["patch_id"]: record}}
     db.session.commit()
     return run, record

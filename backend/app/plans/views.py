@@ -11,38 +11,71 @@ from app.utils.time_utils import isoformat
 def public_patches(run):
     from app.agents.api import safe_text
     from app.plans.patch_intent import public_assessment
+    from app.plans.patch_origin import metadata_changes, verified_patch_author
+    from app.plans.patches import apply_patch_draft
+    from app.api import AppError
     result = []
     for patch_id, record in (run.snapshot or {}).get("v3_patches", {}).items():
         draft = record.get("draft") or {}
         review = record.get("director_review") or {}
         base = AgentPlanVersion.query.filter_by(run_id=run.run_id, version=draft.get("base_version")).first()
         originals = {node["id"]: node for node in base.plan.get("nodes", [])} if base else {}
+        author = None
+        try:
+            author = verified_patch_author(run, record, draft)
+        except (AppError, KeyError, TypeError, ValueError):
+            pass
+        applied = record.get("status") == "applied"
+        candidate = None
+        if applied:
+            # Historical diffs describe what was saved, not today's normalization.
+            approved_number = record.get("approved_version")
+            approved = AgentPlanVersion.query.filter_by(run_id=run.run_id, version=approved_number).first() \
+                if type(approved_number) is int and approved_number >= 1 else None
+            if approved is not None:
+                candidate = approved.plan
+        elif base:
+            try:
+                candidate = apply_patch_draft(base.plan, draft, trusted_author=author["agent"] if author else None)
+            except (AppError, KeyError, TypeError, ValueError):
+                pass
+        candidates = {node["id"]: node for node in (candidate or {}).get("nodes", [])}
         changes = []
         upgrade = draft.get("identity_upgrade")
         if upgrade is not None:
             source = base.plan if base else {}
             before = {"character_references": source.get("character_references", {}),
                       "story_ref": source.get("story_ref")}
-            after = {"character_references": upgrade.get("character_references", {}),
-                     "story_ref": upgrade.get("story_ref") or source.get("story_ref")}
+            if applied:
+                after = ({"character_references": candidate.get("character_references", {}),
+                          "story_ref": candidate.get("story_ref")} if candidate is not None else None)
+            else:
+                after = {"character_references": upgrade.get("character_references", {}),
+                         "story_ref": upgrade.get("story_ref") or source.get("story_ref")}
             changes.append({"op": "identity_upgrade", "node_id": None,
                             "before": _safe(before), "after": _safe(after)})
         for op in draft.get("ops", []):
             node_id = op.get("node_id", (op.get("node") or {}).get("id"))
             original = originals.get(node_id)
-            before, after = original, op.get("node")
+            before, after = original, candidates.get(node_id) if op.get("op") in {"replace_node", "insert_node"} else op.get("node")
             if op.get("op") == "update_inputs":
-                after = op.get("inputs", {})
-                before = {key: (original or {}).get("inputs", {}).get(key) for key in after}
+                fields = op.get("inputs", {})
+                before = {key: (original or {}).get("inputs", {}).get(key) for key in fields}
+                after = ({key: candidates[node_id].get("inputs", {}).get(key) for key in fields}
+                    if node_id in candidates else None) if applied else fields
             changes.append({"op": op.get("op"), "node_id": node_id, "before": _safe(before), "after": _safe(after)})
         result.append({"patch_id": patch_id, "status": record.get("status"),
             "base_version": draft.get("base_version"), "scope": draft.get("scope", "only"),
-            "author": record.get("proposed_by"), "reason": safe_text(_safe(draft.get("reason")), 2000),
+            "author": author["proposed_by"] if author else None,
+            "final_author": author["agent"] if author else None,
+            "author_verified": author is not None,
+            "trigger_kind": (record.get("trigger") or {}).get("kind"), "reason": safe_text(_safe(draft.get("reason")), 2000),
             "diff_summary": ([{"op": "identity_upgrade", "node_id": None,
                               "fields": ["character_references", "story_ref"]}] if upgrade is not None else []) + [{"op": op.get("op"), "node_id": op.get("node_id", (op.get("node") or {}).get("id")),
                 "fields": sorted((op.get("inputs") or {}).keys()) if op.get("op") == "update_inputs" else []}
                 for op in draft.get("ops", [])],
             "diff_preview": changes,
+            "metadata_diff": _safe(metadata_changes(base.plan, candidate, draft)) if base and candidate is not None else [],
             "review": {"verdict": review.get("verdict"), "reason": safe_text(_safe(review.get("reason")), 2000),
                 **_safe(public_assessment(run, record))} if review else None,
             "auto_approved": bool(record.get("auto_approved")),

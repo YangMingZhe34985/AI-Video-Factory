@@ -13,6 +13,7 @@ from app.models import AgentDelegation, AgentPlanVersion, AgentWorkspaceItem, Ar
 from app.plans import execution, patches, runtime
 from app.plans.patch_schemas import PatchDraft
 from app.plans.patch_intent import save_assessment
+from tests.patch_provenance_fixtures import add_proposal_evidence
 from app.services.job_run_service import JobRunService
 from app.services.storage_service import StorageService
 from app.tools.spec import ToolContext
@@ -42,7 +43,7 @@ def reviewed(run, payload, *, trigger=None, patch_id="patch-test"):
     review = record["director_review"]
     review["assessment_ref"] = save_assessment(run, director, patch_id, review)
     db.session.commit()
-    return record
+    return add_proposal_evidence(run, record, author="director")
 
 
 def failed(run, node_id="image", category="invalid_parameters", code="INVALID_INPUT"):
@@ -128,7 +129,8 @@ def test_review_evidence_is_verified_not_claimed(app_ctx, case):
     if case == "director":
         db.session.get(AgentDelegation, record["review_delegation_id"]).agent = "repair"
     elif case == "author":
-        AgentWorkspaceItem.query.filter_by(kind="patch").one().author_agent = "repair"
+        AgentWorkspaceItem.query.filter_by(run_id=run.run_id,
+            key=record["director_review"]["review_ref"]["key"], kind="patch").one().author_agent = "repair"
     elif case == "hash":
         record["director_review"]["draft_hash"] = "0" * 64
     elif case == "base":

@@ -12,6 +12,7 @@ from app.models import AgentDelegation, AgentPlanVersion, AgentWorkspaceItem, Ap
 from app.plans import patch_execution, policy, runtime
 from app.plans.patches import normalize_patch, patch_digest, quote_patch
 from app.plans.patch_intent import save_assessment
+from tests.patch_provenance_fixtures import add_proposal_evidence
 from app.services.job_run_service import JobRunService
 from app.services.storage_service import StorageService
 from app.tools.budget import BudgetGuard
@@ -44,6 +45,8 @@ def reviewed_patch(run, node_id="image", *, prompt="A happy orange cat wearing a
             "review_ref": {"key": item.key, "version": 1}}}
     review = record["director_review"]
     review["assessment_ref"] = save_assessment(run, director, patch_id, review)
+    db.session.commit()
+    add_proposal_evidence(run, record, author="director")
     run.snapshot = {**run.snapshot, "v3_patches": {**run.snapshot.get("v3_patches", {}), patch_id: record}}
     db.session.commit()
     return record
@@ -92,7 +95,7 @@ def test_patch_approval_and_replay_create_one_version_and_one_repair_claim(app_c
     assert repeated.id == version.id and version.parent_version == first.version
     assert AgentPlanVersion.query.count() == PlanNodeTask.query.count() == 2
     assert len(run.snapshot["v3_repair"]["repair_claims"]) == 1
-    assert BudgetGuard.spent(run.run_id) == 0 and ToolInvocation.query.count() == 0
+    assert BudgetGuard.spent(run.run_id) == 0 and [item.tool_name for item in ToolInvocation.query.all()] == ["propose_patch"]
     monkeypatch.setattr(JobRunService, "start", JobRunService.run_inline)
     assert drain_plan(run, registry) == "awaiting_result_review"
     assert ApiTask.query.count() == 1 and runtime.latest_tasks(run)["image"].attempt == 2
@@ -219,7 +222,7 @@ def test_patch_activation_rejects_stale_or_unsafe_quote_without_mutations(app_ct
     assert error.value.code == {"scope": "PATCH_QUOTE_CHANGED", "price": "PATCH_QUOTE_CHANGED",
         "unknown": "RECOVERY_REQUIRED", "running": "PLAN_EXECUTION_ACTIVE"}[change]
     assert versions.current_version(run).id == version.id and PlanNodeTask.query.count() == 1
-    assert "v3_repair" not in run.snapshot and ToolInvocation.query.count() == 0
+    assert "v3_repair" not in run.snapshot and [item.tool_name for item in ToolInvocation.query.all()] == ["propose_patch"]
 
 
 def test_rejection_keeps_original_tasks_outputs_and_budget(app_ctx, monkeypatch):
@@ -369,7 +372,7 @@ def test_approval_cannot_revive_cancelled_or_superseded_work(app_ctx, blocked):
     with pytest.raises(AppError) as error:
         patch_execution.approve_patch(run, record["patch_id"], quote["quote_id"], "only", registry=registry)
     assert error.value.code == {"superseded": "PATCH_SUPERSEDED", "cancelled": "INVALID_AGENT_STATE"}[blocked]
-    assert AgentPlanVersion.query.count() == 1 and ToolInvocation.query.count() == 0
+    assert AgentPlanVersion.query.count() == 1 and [item.tool_name for item in ToolInvocation.query.all()] == ["propose_patch"]
 
 
 def test_source_replacement_between_requote_and_staging_cannot_become_approved(app_ctx, monkeypatch):
@@ -395,4 +398,4 @@ def test_source_replacement_between_requote_and_staging_cannot_become_approved(a
     with pytest.raises(AppError) as error:
         patch_execution.approve_patch(run, record["patch_id"], quote["quote_id"], "only", registry=registry)
     assert error.value.code == "PATCH_QUOTE_CHANGED"
-    assert AgentPlanVersion.query.count() == PlanNodeTask.query.count() == 1 and ToolInvocation.query.count() == 0
+    assert AgentPlanVersion.query.count() == PlanNodeTask.query.count() == 1 and [item.tool_name for item in ToolInvocation.query.all()] == ["propose_patch"]

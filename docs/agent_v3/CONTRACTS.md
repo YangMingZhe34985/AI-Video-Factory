@@ -529,3 +529,13 @@ patches.diff_preview 为逐操作 {op,node_id,before,after}：输入更新仅展
 - 仅 intent_preserved=true 且 changed_elements=[] 才可能自动批准；仍须全部 V.17.4 条件和 V11a 人工门。变化产生 PATCH_INTENT_CHANGED，未知/false 产生 PATCH_INTENT_UNCERTAIN；报价展示 warning，人工批准仍使用当前 quote_id 和范围。非空变化即使错误地声明 true，也不得自动。
 - 完全缺少新增评估的历史记录视为未知，不自动重放授权，不改已批准历史；新评估字段/引用残缺或与不可变证据不符，报 PATCH_REVIEW_REQUIRED。公开旧记录可以展示未知，但不能据此绕过报价核验。
 - Run patches.review 增加 intent_preserved:boolean|null、changed_elements。UI 显示保真/变化/未知、点名元素的修改前后与原因；当前未知/变化等待用户审核，历史 applied 保持只读与实际批准方式。所有内容仍经公开视图脱敏，私有工作区/摘要/原始消息不暴露。
+
+### V.21.3 Patch 来源与元数据差异（V11c，D-042）
+
+- 实际作者来自同 Run 的 AgentDelegation、kind=patch 工作区的 author_agent/delegation_id/payload hash，以及服务端 v3_patch_tool_receipts 中 name/agent/delegation/input hash/output 引用的一致证明；不信任草稿 origin.agent 或 snapshot.proposed_by 单个字段。合法作者为 repair/director。
+- 原提议绑定 proposal_ref 与 author_delegation_id；approve 采用已核验提议作者，审阅证明沿用 V.21.2 的独立评估及工作区，不新增对 approve 原始 review_patch 收据的完整核验。revise 采用独立 Director 的 review_ref、request_key 和对应 review_patch 原始收据，并核验最终 draft 与不可变工作区相同。原 proposed_by 与最终作者分开；用户修订按 trigger.kind=user_revision 表示来源事件。
+- apply_patch_draft 的规范化候选接受已核验作者，对全部显式修改目标（update_inputs/replace/insert）及 insert.before 附带依赖调整节点统一 origin.agent；删除节点没有新来源。其余 origin 字段沿用草稿，rationale 不自动改写。未经修改的节点保持原样，复用产物的真实输入/历史授权链仍独立核验。
+- 作者证明进入 review_hash，quote 与 approve 重算同一候选和证明；旧 quote 不可跨规则/作者变化使用。原始提议、审阅草稿及历史批准版本保持不可变。
+- 完全缺少作者证明的旧记录 final_author=null、author_verified=false；自动条件增加 PATCH_AUTHOR_UNVERIFIED，只能人工。新证明部分缺失/篡改报 PATCH_AUTHOR_REQUIRED，不通过猜作者降级。
+- patches 增加 final_author、author_verified、trigger_kind、metadata_diff。每个 metadata_diff 元素为 `{node_id,incidental,origin?,rationale?,depends_on?}`；可选字段均为 `{before,after}`，仅真实值不同时出现。depends_on 为节点ID数组，新增/移除节点的一侧可 null；显式目标和 insert.before 附带目标均覆盖，完全未变不造差异。来源、理由与依赖分别展示，所有内容脱敏，不暴露收据或私有哈希。
+- 未应用新 Patch 展示规范化候选；已 applied 从持久化 approved_version 实际内容生成 after、metadata_diff 及身份头部差异，缺版本时 after=null、metadata_diff=[]，不能用新规则模拟旧结果。历史可同时显示已核验实际作者与当年错误 origin，原 diff_preview 的输入/结构展示继续保留。

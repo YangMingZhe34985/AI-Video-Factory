@@ -16,6 +16,7 @@ from app.plans.dry_run import dry_run
 from app.plans import execution
 from app.plans.patch_schemas import PatchDraft
 from app.plans.patch_intent import automatic_intent_reasons, verified_assessment
+from app.plans.patch_origin import normalize_authors, verified_patch_author
 from app.tools.budget import BudgetGuard
 from app.tools.spec import ToolContext
 
@@ -39,7 +40,7 @@ def patch_digest(raw):
     return inputs_hash(normalize_patch(raw))
 
 
-def apply_patch_draft(base, draft):
+def apply_patch_draft(base, draft, *, trusted_author=None):
     """Apply explicit operations only; broken references stay compiler errors."""
     draft = normalize_patch(draft)
     value = PlanDraft.model_validate(authoring_plan(base)).model_dump(mode="json")
@@ -76,6 +77,8 @@ def apply_patch_draft(base, draft):
             if before is None:
                 raise AppError("INVALID_PATCH_TARGET", "Insertion ordering target is unavailable", 422)
             before["depends_on"] = list(dict.fromkeys([*before["depends_on"], op["node"]["id"]]))
+    if trusted_author is not None:
+        normalize_authors(nodes, draft, trusted_author)
     value["nodes"] = list(nodes.values())
     return value
 
@@ -100,7 +103,8 @@ def _review(run, record, draft):
             or patch_digest(row.payload) != patch_digest(draft)):
         raise AppError("PATCH_REVIEW_REQUIRED", "Director review does not bind this exact draft", 403)
     verified_assessment(run, record, patch_digest(draft))
-    return inputs_hash(review)
+    authorship = verified_patch_author(run, record, draft)
+    return inputs_hash({"review": review, "authorship": authorship})
 
 
 def _evidence(run, draft):
@@ -234,6 +238,8 @@ def repair_budget(run):
 def _automatic(run, record, draft, roots, affected, tasks, evidence_ids, cost):
     pool = repair_budget(run)
     reasons = automatic_intent_reasons(verified_assessment(run, record, patch_digest(draft)))
+    if verified_patch_author(run, record, draft) is None:
+        reasons.append("PATCH_AUTHOR_UNVERIFIED")
     if draft.get("identity_upgrade") is not None:
         reasons.append("IDENTITY_UPGRADE_REQUIRES_REVIEW")
     trigger = record.get("trigger") or {}
@@ -287,7 +293,8 @@ def _quote(run, record, *, scope, registry):
         if value not in issues:
             issues.append(value)
     try:
-        candidate = apply_patch_draft(base.plan, draft)
+        author = verified_patch_author(run, record, draft)
+        candidate = apply_patch_draft(base.plan, draft, trusted_author=author["agent"] if author else None)
     except AppError as error:
         candidate = authoring_plan(base.plan)
         issue(error.code, error.message)
