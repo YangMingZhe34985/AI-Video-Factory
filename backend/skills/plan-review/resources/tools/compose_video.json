@@ -3,6 +3,38 @@
   "resolved_input_schema": {
     "additionalProperties": false,
     "properties": {
+      "target_aspect_ratio": {
+        "anyOf": [
+          {
+            "enum": [
+              "16:9",
+              "9:16",
+              "1:1",
+              "4:3",
+              "3:4"
+            ],
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Target Aspect Ratio"
+      },
+      "target_size": {
+        "anyOf": [
+          {
+            "maxLength": 19,
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Target Size"
+      },
       "plan_version": {
         "minimum": 1,
         "title": "Plan Version",
@@ -71,7 +103,8 @@
     "notes": [
       "video_artifact_ids 按最终片段顺序排列；顺序影响交付，不代表这些上游必须串行生成。",
       "compress_output 默认为 false。只有明确要求压缩时才设 true，并增加压缩副本；原始成片仍用 artifact_id。",
-      "compressed_artifact_id 仅在 compress_output=true 时可引用；false 时不存在该命名输出。"
+      "compressed_artifact_id 仅在 compress_output=true 时可引用；false 时不存在该命名输出。",
+      "用户明确比例时，编译器冻结 inputs.target_aspect_ratio 与 target_size（偶数 width*height）；显式冲突阻塞，不能放在 params。目标成片经实际媒体 QC 核验。"
     ],
     "optional_outputs": {
       "compressed_artifact_id": {

@@ -81,7 +81,7 @@ def select_generation_model(request_spec, mode, model_id, params=None, *,
         try:
             return candidate, validate(candidate)
         except AppError as exc:
-            if exc.code not in {"INVALID_INPUT", "MODEL_CAPABILITY_MISMATCH"}:
+            if exc.code not in {"INVALID_INPUT", "MODEL_CAPABILITY_MISMATCH", "PLAN_ASPECT_RATIO_UNSUPPORTED"}:
                 raise
             # Try a different eligible model, but never alter caller parameters.
             continue

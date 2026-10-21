@@ -54,7 +54,8 @@ def request_spec_for_run(run):
         raise AppError("BRIEF_REQUIRED", "A validated requirement brief is required before compiling a plan", 422)
     brief = RequirementBrief.model_validate(row.payload)
     return {"deliverable": brief.deliverable, "recipe_hint": "image_create" if brief.deliverable == "image" else "single_clip",
-            "summary": brief.summary, "confidence": brief.confidence, "constraints": brief.constraints.model_dump(mode="json")}
+            "summary": brief.summary, "confidence": brief.confidence, "aspect_ratio": brief.aspect_ratio,
+            "constraints": brief.constraints.model_dump(mode="json")}
 
 
 def node_inputs(node, *, plan_version=1):
@@ -139,6 +140,15 @@ def _artifact_info(artifact_id, run, cache):
     if kind is None:
         raise AppError("INVALID_ARTIFACT_TYPE", "Artifact has no supported Plan media type", 422)
     result = {"type": kind, "artifact_id": artifact_id}
+    if kind == "image":
+        from PIL import Image, ImageOps
+        from app.plans.aspect import ratio_for
+        try:
+            with Image.open(StorageService.resolve(artifact.file_path)) as source:
+                width, height = ImageOps.exif_transpose(source).size
+            result.update(width=width, height=height, aspect_ratio=ratio_for(width, height))
+        except (OSError, ValueError):
+            pass  # Unknown geometry is rejected only where a frame proof is required.
     if kind in {"video", "audio"}:
         from app.services.media_probe_service import MediaProbeService
         from app.services.wan3_media_service import Wan3MediaService
@@ -155,6 +165,9 @@ def _artifact_info(artifact_id, run, cache):
                 bound = marker.get("duration_sec")
             measured = MediaProbeService.probe(path, decode=False, mock_duration_sec=bound)
             result["duration_sec"] = _seconds(measured["duration_sec"])
+            from app.plans.aspect import video_geometry
+            if kind == "video":
+                result.update(video_geometry(measured))
     cache[artifact_id] = result
     return result
 
@@ -270,7 +283,7 @@ def _transform_seconds(payload, input_metadata, model, params):
     return incoming
 
 
-def _generation(node, payload, input_metadata, request_spec, run):
+def _generation(node, payload, input_metadata, request_spec, run, *, aspect=None):
     tool = node["tool"]
     if tool == "animate_shot":
         mode = "i2v"
@@ -287,8 +300,11 @@ def _generation(node, payload, input_metadata, request_spec, run):
     params = deepcopy(node["params"])
     if tool == "generate_image" and payload.get("n") is not None:
         params["n"] = payload["n"]
+    from app.plans.aspect import generation_params
+    supplied = deepcopy(params)
     model, params = select_generation_model(request_spec, mode, model_id, params,
-        reference_count=count, run=run)
+        reference_count=count, run=run, params_factory=lambda candidate:
+            generation_params(node, candidate, supplied, aspect, mode, input_metadata))
     if tool != "generate_image" and params.get("n_outputs", 1) != 1:
         raise AppError("INVALID_OUTPUT_COUNT", "Each video node must produce exactly one video", 422)
     if tool == "animate_shot":
@@ -328,6 +344,8 @@ def _output_metadata(node, spec, payload, inputs, estimate):
     elif node["tool"] == "extract_frame" and payload.get("timestamp_sec") is not None:
         if payload["timestamp_sec"] > _seconds(inputs["video_artifact_id"].get("duration_sec")):
             raise AppError("INVALID_SOURCE_RANGE", "Frame timestamp exceeds the source video", 422)
+    from app.plans.aspect import output_geometry
+    output_geometry(node, payload, inputs, result)
     return result
 
 
@@ -460,6 +478,9 @@ def _compile(raw, run, *, registry, plan_version):
             issue("PLAN_DEPTH_LIMIT", "Plan depth exceeds 30", node_id)
         if len(children[node_id]) > 50:
             issue("PLAN_FANOUT_LIMIT", "Node fan-out exceeds 50", node_id)
+    from app.plans.aspect import constrained_nodes, delivery_inputs, delivery_geometry_issues
+    required_aspect = (request_spec or {}).get("aspect_ratio")
+    aspect_nodes = constrained_nodes(plan, deliverable=(request_spec or {}).get("deliverable")) if required_aspect else set()
     media_fields = {}
     for node_id in dag["order"]:
         node = nodes[node_id]
@@ -471,6 +492,8 @@ def _compile(raw, run, *, registry, plan_version):
             if not spec.plan_executable:
                 raise AppError("PLAN_TOOL_FORBIDDEN", "Tool is not Plan executable", 422)
             payload, input_metadata = _typed_inputs(node, spec, outputs, run, cache, plan_version)
+            delivery_inputs(node, input_metadata, required_aspect if node_id in aspect_nodes else None)
+            payload, input_metadata = _typed_inputs(node, spec, outputs, run, cache, plan_version)
             if node["tool"] in GENERATION_TOOLS and payload.get("model_id") is None:
                 # A model ID is required by the execution schema, but defaults
                 # are resolved only after validating all author-supplied inputs.
@@ -480,7 +503,8 @@ def _compile(raw, run, *, registry, plan_version):
             if node["tool"] in GENERATION_TOOLS:
                 if request_spec is None:
                     continue
-                estimate = _generation(node, payload, input_metadata, request_spec, run)
+                estimate = _generation(node, payload, input_metadata, request_spec, run,
+                    aspect=required_aspect if node_id in aspect_nodes else None)
                 payload, input_metadata = _typed_inputs(node, spec, outputs, run, cache, plan_version)
                 payload = spec.input_model.model_validate(payload).model_dump(mode="json")
             output = _output_metadata(node, spec, payload, input_metadata, estimate)
@@ -503,6 +527,8 @@ def _compile(raw, run, *, registry, plan_version):
                     issue("PLAN_INVALID_CHARACTER_REFERENCE",
                           f"Character {character_id} reference must be an available image in this Run: "
                           f"{getattr(error, 'code', 'INVALID_REFERENCE')}")
+    issues.extend(delivery_geometry_issues(plan, outputs, required_aspect,
+        deliverable=(request_spec or {}).get("deliverable"), known_artifacts=cache))
     from app.plans.identity import validate_identity
     issues.extend(validate_identity(plan, order=dag["order"], output_metadata=outputs,
                                     known_artifacts=cache, media_fields=media_fields))

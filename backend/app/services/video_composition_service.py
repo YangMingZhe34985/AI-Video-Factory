@@ -39,18 +39,21 @@ class VideoCompositionService:
                 and path.stat().st_size == len(MOCK_VIDEO_BYTES) and path.read_bytes() == MOCK_VIDEO_BYTES)
 
     @classmethod
-    def _materialize_mock(cls, target, duration, shot_id, index):
+    def _materialize_mock(cls, target, duration, shot_id, index, *, size=(320, 180)):
         if not 0 < duration <= 600:
             raise AppError("INVALID_INPUT", "Mock video requires the approved shot duration", 422)
         slate = target.with_suffix(".png")
         colors = [(28, 59, 91), (69, 43, 93), (29, 86, 72), (112, 64, 35)]
-        image = Image.new("RGB", (320, 180), colors[index % len(colors)])
+        width, height = size
+        if any(type(item) is not int or item < 2 or item > 8192 or item % 2 for item in size):
+            raise AppError("INVALID_INPUT", "Mock video requires bounded even dimensions", 422)
+        image = Image.new("RGB", size, colors[index % len(colors)])
         draw = ImageDraw.Draw(image)
-        draw.rectangle((12, 12, 307, 167), outline=(190, 210, 225), width=2)
+        draw.rectangle((12, 12, max(13, width - 13), max(13, height - 13)), outline=(190, 210, 225), width=2)
         draw.text((30, 50), f"CINECREW MOCK\nSHOT {shot_id}\nLOCAL DEMO - NOT GENERATED VIDEO", fill="white", spacing=8)
         image.save(slate)
         cls._run(["-loop", "1", "-i", str(slate), "-t", str(duration), "-r", "25",
-            "-an", "-c:v", "libx264", "-preset", "fast", "-crf", "18", "-pix_fmt", "yuv420p",
+            "-vf", "setsar=1", "-an", "-c:v", "libx264", "-preset", "fast", "-crf", "18", "-pix_fmt", "yuv420p",
             "-metadata", "comment=CineCrew local Mock preview; not generated video", str(target)], 180)
         return target
 
@@ -71,13 +74,18 @@ class VideoCompositionService:
         return all(signature(item) == signature(first) for item in media[1:])
 
     @classmethod
-    def _normalize(cls, sources, target, media, width, height, fps, with_audio):
+    def _normalize(cls, sources, target, media, width, height, fps, with_audio, *, respect_display_aspect=False):
         args, filters, segments = [], [], []
         for index, source in enumerate(sources):
             args += VideoMediaService._input(source)
             duration = media[index]["duration_sec"]
-            filters.append(f"[{index}:v:0]setpts=PTS-STARTPTS,scale={width}:{height}:force_original_aspect_ratio=decrease:"
-                f"force_divisible_by=2,pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps={fps}[v{index}]")
+            scaling = f"scale={width}:{height}:force_original_aspect_ratio=decrease:force_divisible_by=2"
+            if respect_display_aspect:
+                from app.plans.aspect import fit_display_canvas
+                fit_width, fit_height = fit_display_canvas(media[index], width, height)
+                scaling = f"scale={fit_width}:{fit_height},setsar=1"
+            filters.append(f"[{index}:v:0]setpts=PTS-STARTPTS,{scaling},"
+                f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps={fps}[v{index}]")
             segments.append(f"[v{index}]")
             if with_audio:
                 audio = f"[{index}:a:0]aresample=48000" if media[index].get("has_audio") else "anullsrc=r=48000:cl=stereo"
@@ -96,9 +104,16 @@ class VideoCompositionService:
         cls._run(args, max(180, int(sum(item["duration_sec"] for item in media) * 6)))
 
     @classmethod
-    def compose(cls, sources, target, *, durations, shot_ids, compress_output=False):
+    def compose(cls, sources, target, *, durations, shot_ids, compress_output=False,
+                target_aspect_ratio=None, target_size=None):
         """Return master metadata; compression is a separate, explicit rendition."""
         from app.services.media_probe_service import MediaProbeService
+        from app.plans.aspect import dimensions, valid_target
+        canvas = None
+        if target_aspect_ratio is not None or target_size is not None:
+            if not valid_target(target_aspect_ratio, target_size):
+                raise AppError("INVALID_INPUT", "Composition target geometry is invalid", 422)
+            canvas = dimensions(target_size)
         target = cls._path(target, exists=False)
         if not sources or len(sources) != len(durations) or len(sources) != len(shot_ids):
             raise AppError("INVALID_INPUT", "Composition source order is incomplete", 422)
@@ -116,17 +131,23 @@ class VideoCompositionService:
                     mock_materialized = True
                 media.append(MediaProbeService.probe(source, decode=True))
                 staged.append(source)
-            mode = "stream_copy" if cls._compatible(media) else "normalized"
+            if canvas is not None and any(item.get("display_transform_unverified") for item in media):
+                raise AppError("INVALID_SOURCE", "Explicit canvas requires normalized display transform metadata", 422)
+            matches_canvas = canvas is None or all(
+                (item["width"], item["height"]) == canvas and item.get("video", {}).get("sar") == "1:1"
+                for item in media)
+            mode = "stream_copy" if cls._compatible(media) and matches_canvas else "normalized"
             if mode == "normalized":
                 first = media[0]
-                width, height = first["width"] + first["width"] % 2, first["height"] + first["height"] % 2
+                width, height = canvas or (first["width"] + first["width"] % 2, first["height"] + first["height"] % 2)
                 fps = first.get("fps")
                 if not fps or fps <= 0:
                     raise AppError("INVALID_SOURCE", "A valid frame rate is required for normalization", 422)
                 with_audio = any(item.get("has_audio") for item in media)
                 assembled = staging / "master.mp4"
-                cls._normalize(staged, assembled, media, width, height, fps, with_audio)
-                warnings.append("Source formats differed; normalized using high-quality H.264 CRF 18 encoding.")
+                cls._normalize(staged, assembled, media, width, height, fps, with_audio,
+                    respect_display_aspect=canvas is not None)
+                warnings.append("Source formats or approved canvas differed; normalized using high-quality H.264 CRF 18 encoding.")
             else:
                 entries = []
                 for index, source in enumerate(staged):

@@ -577,3 +577,23 @@ patches.diff_preview 为逐操作 {op,node_id,before,after}：输入更新仅展
 - 选择门沿用 V.20.1：select_image.candidate_artifact_ids 为多个节点 image 引用组成的列表，gate=choice；全部候选都计费且参与数据可达性，下游仅引用 selector.image。未选择不执行下游，不默认第一张；无需额外逐图 preview 门。
 - 继续限制2–20个唯一候选、Plan最多200节点、模型/参数/预算/归属/批准校验。用户要全部图片交付时直接声明所有 deliverables，不机械增加选择门。
 - plan-review 资源提供纯图片选择和选择后动画两个完整示例，image-create/plan-review 正文链接并说明。回归通过实际编译/dry-run/Registry/Mock Job，明确选择第三张并核验 selector 与动画的真实输入一致；没有新增生产代码路径。
+
+## V.22 V-Gate5 评审修补（V12）
+
+本节各项保持原工具权限、审批与付费护栏。V12 新增 Skill 与提示词指引待 Claude V-Gate5b 审阅；D-047 对 V11 增补的既有审定不代替本轮新指引审阅。
+
+### V.22.1 显式比例链（V12a，D-048）
+
+- 唯一来源为 `RequirementBrief.aspect_ratio`（现有枚举或 null）。无明确值不新增目标、不重选模型、不修改既有尺寸默认。通过相同现有 ModelRegistry 能力与参数校验选择合法 size/ratio，不写提供商不接受的参数。
+- 从交付输出沿真实媒体输入识别成片用途：compose 的片段、直接视频交付、图像交付、视频 first/last_frame，以及 select_image 的全部候选。仅这条成片链中的 compose 与对应 master 的 QC 继承 brief 目标；只作为 transform 参考的 compose/QC 保持其合法原目标。generate_image 的参考输入、r2v/transform 的参考素材不因被引用而自动成为成片关键帧。video brief 下，V.21.1 结构定妆种子（catalog 的 ref.image、n=1、preview、单对应角色）即使作为附属 image deliverable 交付仍豁免该附属用途；image brief 的直接图像交付不豁免。控制 depends_on 不证明用途；角色定妆另被兼作首/尾帧时帧用途优先，不能豁免。
+- 受约束生成节点省略 size/ratio 时按选定模型 Schema 的 ratio 枚举、size 枚举/合法 preset 补齐；动态 image_size 无匹配 preset 时，以模型默认 size 像素面积为目标，在 Schema 面积/比例上下界内选择最接近的精确偶数尺寸，不默认降到最小画质。显式 size/ratio 与目标冲突返回阻塞 `PLAN_ASPECT_RATIO_MISMATCH`，带节点、字段、合法当前尺寸/比例和期望值；非法长文本/对象仅报告受限类型，不回显内容。模型不能表达目标返回 `PLAN_ASPECT_RATIO_UNSUPPORTED`。不自动裁剪用户附件、不改模型系列。
+- i2v/首尾帧不能凭提示词证明比例。只有当前 Run 的实测图片尺寸或已验证上游 size/比例能作为证明；select_image 每个候选都要满足；末帧同样检查。缺证明返回 `PLAN_ASPECT_RATIO_UNKNOWN`。支持 ratio 的模型仍要求其首/尾帧兼容；不支持 ratio 的模型仅继承输入比例，不注入未知参数。
+- `output_metadata` 的媒体几何为服务端派生信息：可含正整数 `width` / `height`、`aspect_ratio`（约分比例字符串或 null）；视频可含 `sample_aspect_ratio`（实测 SAR 或 null）。视频 aspect_ratio 表示显示比例，图片表示像素比例。已实测但显示几何不可信的来源可有 `geometry_unverified=true`，retain 与不能证明几何的 extract_frame 保留该阻塞依据；显式目标 compose/QC 在编译时即返回 `PLAN_ASPECT_RATIO_UNKNOWN`，避免批准注定失败的交付。未来生成节点的几何只是经模型参数验证的意图（预期方像素），不因尚未执行就标为不可信；已有素材必须实测，调用方不能把意图当作供应商实物验收。
+- MediaProbe 只在输入 header 有 `displaymatrix:` 或 `rotate:` 证据时增加 `display_transform_unverified=true`；无证据时不增加该键、不改变既有探测形状。v3 显示几何对该标记返回 unknown，MASTER_ASPECT_RATIO 不得通过；显式目标 compose 必须在 stream-copy 选择前以 `INVALID_SOURCE` 拒绝。暂不实现旋转/翻转适配，此类片段需先规范化；无显式目标的经典路径保持原行为。
+- 编译末端再次核对直接交付的图像/视频和包内 master 输出证明，覆盖直接保留片段和直接选择器输出，附属定妆豁免沿用上述规则。已有视频使用实测显示比例（像素尺寸乘 SAR）而非仅像素长宽比；SAR 缺失或非法时不构造已验证比例。已有竖片要交付横版时应显式通过目标 compose 留边适配；不得把直接保留的竖片视为横版。作为 compose 的输入片段/生成参考仍保留原比例，不暗中改源文件。extract_frame 的现有 PNG 输出未承诺非方像素归一，非 1:1 或未知 SAR 不向未来图片传播比例证明；可先 compose 归一或使用已生成并实测的图片。
+- v3 `compose_video.inputs` 与 `qc_video.inputs` 增加可选 `target_aspect_ratio`（现有五值）和 `target_size`（正偶数 `width*height`，各边不超过 8192）。两个字段同时提供或同时省略；尺寸必须精确符合比例。缺省序列化不输出两个新键，保护旧任务载荷/审批哈希兼容。显式 brief 时编译器冻结目标；作者显式冲突阻塞。无用户比例时只允许两个目标一起显式提供、仍经 Schema 校验，不反推为用户需求。
+- compose 仅在首段编译时可知的像素尺寸本身通过 `valid_target`（比例精确、偶数且边长合法）时继承该尺寸；只靠 SAR 使显示比例符合目标不算合法像素画布，例如 720×576 / SAR 64:45 不能直接冻结为 16:9 画布，应按默认 720 名义短边生成 1280×720。仅已知比例/名义分辨率时按名义短边生成最接近且不低于该短边的精确偶数尺寸；没有可验证尺寸信息时使用 720 名义短边。显式合法画布仍保留，QC 冻结该真实目标。实际提供商输出可能有像素舍入，编译元数据仅是意图；交付需以实际媒体 QC 为准。`target_size` 是拼接画布，不替代模型 resolution，不额外调用生成服务。
+- compose 只有在全部源格式兼容且实际像素尺寸与目标相同时才 stream copy；否则按实测显示比例算偶数 fit 尺寸，在目标画布内留边、SAR=1，无裁剪。显式画布归一时若源 SAR 未知/非法，返回 `INVALID_SOURCE`，不按像素长宽比静默兜底或声称保形。原片不改；compress_output=false 仍不创建压缩副本，兼容性转码明确在 warnings 中说明，不宣称无损。
+- QC 对最终成片的实测像素尺寸与显示比例（含 SAR）检查；有目标时新增 `MASTER_SIZE`、`MASTER_ASPECT_RATIO`，不符合返回 passed=false，沿既有 qc_failed 修复/用户门处理。不把 Mock 画质、角色相似度或提供商实际比例视为已验收。
+- 上述字段必须同步到 `plan-review/resources/tools/{compose_video,qc_video}.json` 的真实 Schema 与作者说明。新草稿和 Patch 候选再编译沿用 brief 硬约束；已经批准的历史版本继续按原载荷和审批哈希执行/复用，不重新写入几何参数，不改变其历史审批。未批准的旧草稿若在再审核时有效输入变化，应生成新版本审核，不能静默批准。
+- 混合评测的 LocalImageAdapter/LocalVideoAdapter 按实际提交载荷的合法 size、ratio、resolution 或本地首帧尺寸绘制；只产生本地标记素材、不访问 URL/上传服务，事件账本与提供商阻断规则不变。普通 MockAdapter 的既有哨兵字节约定保持不变；QC 不为评测跳过比例/尺寸检查。

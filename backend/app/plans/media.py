@@ -169,7 +169,8 @@ def compose_video(data, ctx):
     durations = [_duration(artifact, path)["duration_sec"] for artifact, path in sources]
     target = _target(ctx, ".mp4")
     result = VideoCompositionService.compose([path for _, path in sources], target, durations=durations,
-        shot_ids=data.video_artifact_ids, compress_output=data.compress_output)
+        shot_ids=data.video_artifact_ids, compress_output=data.compress_output,
+        target_aspect_ratio=data.target_aspect_ratio, target_size=data.target_size)
     compressed_path = result.pop("compressed_path")
     job = _local_job(ctx)
     master = _save(ctx, job, target, "composed_video")
@@ -207,6 +208,8 @@ def qc_video(data, ctx):
         {"code": "TOTAL_DURATION", "passed": within_duration(media["duration_sec"], total), "summary": "主片时长与批准片段总和一致"},
         {"code": "AUDIO_PRESERVED", "passed": not any(item.get("has_audio") for item in source_meta) or bool(media.get("has_audio")),
          "summary": "源音轨保留"}]
+    from app.plans.aspect import delivery_checks
+    checks.extend(delivery_checks(media, data.target_aspect_ratio, data.target_size))
     return _finish(ctx, {"passed": all(item["passed"] for item in checks), "checks": checks,
         "warnings": ["仅验证文件结构与时长，未验证审美、角色一致性或叙事质量。"]})
 

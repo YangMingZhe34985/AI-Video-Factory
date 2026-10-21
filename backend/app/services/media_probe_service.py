@@ -85,11 +85,14 @@ class MediaProbeService:
         complete = bool(complete and fps and (audio is None or (all(audio.values())
             and audio["codec"] == "aac" and audio["profile"] == "LC")))
         streams = len(re.findall(r"Stream #\d+:\d+", header))
-        return {"duration_sec": seconds, "width": int(size[1]), "height": int(size[2]),
+        result = {"duration_sec": seconds, "width": int(size[1]), "height": int(size[2]),
             "fps": float(fps[1]) if fps else None, "video": video, "audio": audio,
             "has_audio": audio is not None, "stream_count": streams,
             "copy_compatible_metadata": complete and len(video_lines) == 1 and len(audio_lines) <= 1,
             "decoded": False, "mock": False, "duration_source": "container", "video_duration_verified": False}
+        if re.search(r"(?im)^\s*(?:displaymatrix|rotate)\s*:", header):
+            result["display_transform_unverified"] = True
+        return result
 
     @staticmethod
     def _codec_parameters(path, codec):

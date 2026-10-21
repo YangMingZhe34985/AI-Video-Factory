@@ -356,3 +356,15 @@ retry_shot 允许服务端识别的 blocked 子镜头恢复本地尾帧提取：
 决策：V-Gate5 未通过，默认开启 v3 继续阻塞。D-040–D-046 及其 Skill 增补审定通过。新增 V12a–V12f 与 V-Gate5b：比例约束由 brief 经编译器传到成片关键帧、视频、拼接与 QC（身份定妆图、参考图豁免）；Research 工具的 run 由服务端从 ToolContext 绑定；适配器统一走工厂；最近一次读取的契约资源在上下文投影中受保护；编译错误给出字段级提示；意图评估明确以最终草稿为对象。判定规则、审批与护栏均不放宽。
 
 范围：V12a、V12b 涉及契约，由 Codex 实现时另记决策（D-048 起）再改 CONTRACTS；其余为实现与提示词调整。详细依据见 docs/agent_v3/VGATE5_REVIEW.md。影响任务：V12a–V12f、V-Gate5b。
+
+## D-048 · 2026-10-21 · 显式比例的确定性编译与交付
+
+原因：V-Gate5 c7 的 brief 已明确 16:9，但通用 Plan 作者省略尺寸后，模型默认补成方图与 9:16；拼接沿用首段尺寸且 QC 不检查比例。提示词中的比例不能替代可执行参数。
+
+决定：只读取已验证 RequirementBrief.aspect_ratio；null 保持原默认，不从自由文本猜测。比例约束作用于交付媒体的数据路径：成片视频、直接首/尾帧及图像交付；经 select_image 时全部候选都必须可用。只作生成参考的图像不受成片比例限制，包括已由 V.21.1 身份目录校验的定妆种子。豁免由媒体输入用途判定，不能靠节点 ID、stage 名或 prompt 伪装；定妆种子兼作首帧时仍受约束。
+
+不扩大模型选择权限、不改经典/v2 默认、不新增生成工具。补充 v3 compose/QC 的目标字段，不改变审批、Patch 范围、预算或压缩许可。完整计划在 check、submit 与 Patch 再编译时执行同一规则。
+
+影响：V12a、V-Gate5b；compiler、v3 node schemas、composition service 的可选参数、media_probe_service.py 的 MediaProbe 保守显示变换证据标记、QC、工具作者资源及回归。D-030 不变；本项验证仅 Mock/Stub。
+
+采用结构用途判定，避免新增 Agent 可随意填写的 role=reference 逃逸字段。源视频改造允许拼接留边适配目标，而已有参考视频不会被自动裁剪或重新生成。动态图像尺寸和 nominal 分辨率的确定性推导只使用现有仓库参数 Schema，不推断官方未集成能力。

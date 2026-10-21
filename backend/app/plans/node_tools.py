@@ -3,7 +3,7 @@
 from dataclasses import replace
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_serializer, model_validator
 
 from app.tools.spec import ToolSpec
 
@@ -38,7 +38,29 @@ class TransformInput(Strict):
         return self
 
 
-class ComposeInput(Strict):
+class TargetGeometry(Strict):
+    target_aspect_ratio: Literal["16:9", "9:16", "1:1", "4:3", "3:4"] | None = None
+    target_size: str | None = Field(default=None, max_length=19)
+
+    @model_validator(mode="after")
+    def coherent_target(self):
+        from app.plans.aspect import valid_target
+        if self.target_aspect_ratio is None and self.target_size is None:
+            return self
+        if not valid_target(self.target_aspect_ratio, self.target_size):
+            raise ValueError("Target requires matching aspect_ratio and even width*height, each <=8192")
+        return self
+
+    @model_serializer(mode="wrap")
+    def compatible_geometry(self, handler):
+        value = handler(self)
+        if self.target_aspect_ratio is None and self.target_size is None:
+            value.pop("target_aspect_ratio", None)
+            value.pop("target_size", None)
+        return value
+
+
+class ComposeInput(TargetGeometry):
     plan_version: int = Field(ge=1, strict=True)
     video_artifact_ids: list[str] = Field(min_length=1, max_length=120)
     compress_output: bool = Field(default=False, strict=True)
@@ -49,7 +71,7 @@ class ProbeInput(Strict):
     artifact_id: str = Field(min_length=1, max_length=100)
 
 
-class QcInput(ProbeInput):
+class QcInput(ProbeInput, TargetGeometry):
     video_artifact_ids: list[str] = Field(min_length=1, max_length=120)
 
 

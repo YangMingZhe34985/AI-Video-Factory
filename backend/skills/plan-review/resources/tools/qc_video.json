@@ -3,6 +3,38 @@
   "resolved_input_schema": {
     "additionalProperties": false,
     "properties": {
+      "target_aspect_ratio": {
+        "anyOf": [
+          {
+            "enum": [
+              "16:9",
+              "9:16",
+              "1:1",
+              "4:3",
+              "3:4"
+            ],
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Target Aspect Ratio"
+      },
+      "target_size": {
+        "anyOf": [
+          {
+            "maxLength": 19,
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Target Size"
+      },
       "plan_version": {
         "minimum": 1,
         "title": "Plan Version",
@@ -74,7 +106,8 @@
     "completion_outputs": "io_types.outputs 是 Plan 节点完成后的命名输出；异步 Job 的 job_id/status/prompts 等回执不能作为 Plan 媒体引用。",
     "notes": [
       "artifact_id 必须为对应 compose 成片，video_artifact_ids 与该 compose 的有序片段一致。",
-      "使用 depends_on 把对应 probe 节点设为控制前驱；QC 只验证媒体结构/批准时长，不做生成画面艺术评价。"
+      "使用 depends_on 把对应 probe 节点设为控制前驱；QC 只验证媒体结构/批准时长，不做生成画面艺术评价。",
+      "用户明确比例时，编译器冻结 inputs.target_aspect_ratio 与 target_size（偶数 width*height）；显式冲突阻塞，不能放在 params。目标成片经实际媒体 QC 核验。"
     ]
   }
 }

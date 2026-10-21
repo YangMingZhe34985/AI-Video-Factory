@@ -18,7 +18,7 @@ tools:
 related:
 - long-form-video
 - budget-planning
-version: 6
+version: 7
 ---
 # 计划审阅
 
@@ -62,7 +62,7 @@ AGENT_OUTPUT_TRUNCATED 表示该轮全部工具均未执行，包括看似完整
 
 大型 story-video 的完整 Blueprint 参数本身也可能超过单轮输出上限；不能因为 builder 可自动建节点，就坚持一次输出全部 story 与 shots。预计描述很长或已收到截断时，改用上述分批通用 Plan：完整保留用户剧情、目标时长、固定 story_ref、角色目录、每节点 characters、多参考关键帧及拼接/检查/打包链，按批保存。它不是放弃人物或删除镜头的理由。append 只能追加，不能更新已保存节点；若完整改写仍触发截断，应如实报告这一边界，不暗中提高 max_tokens 或改用户需求。
 
-该写工具只开放给 Producer/Director；其他角色仍只能读取与检查。V11e 指引待 Claude V-Gate5 审定。
+该写工具只开放给 Producer/Director；其他角色仍只能读取与检查。V11e 指引已由 Claude 审定（V-Gate5）。
 
 ## 逐张不同风格的候选计划（V11g）
 
@@ -71,3 +71,8 @@ AGENT_OUTPUT_TRUNCATED 表示该轮全部工具均未执行，包括看似完整
 选择门仍只有2–20个唯一候选，全部候选费用都计入，用户选择前下游必须等待。有固定角色时，每个分支独立满足完整身份参考和模型容量约束；选择器按分支交集证明身份，不能靠角色列表或提示词自证。用户要求全部交付时应列明每张 deliverable，不擅自改成择一。
 
 纯 PlanDraft 演示：`resources/examples/three-style-image-choice.plan.json`（三张不同风格图选一张交付）、`resources/examples/three-style-video-choice.plan.json`（选中后再动画）。示例内容和5秒为演示数据；model_id=null 沿用服务端默认，实际能力/费用须 check_plan。文件不能作为 Blueprint params、已获批准或真实质量证据。
+
+
+## 用户明确的输出比例
+
+读取 brief.aspect_ratio 后，成片关键帧和视频须使用匹配的合法 size/ratio。首帧生视频继承首帧比例，不添加模型不支持的参数；选择门的所有候选都需匹配。纯定妆/参考图可保留自身尺寸。compose/QC 的目标比例和画布由编译冻结，冲突必须修草稿；提示词写16:9不代表参数已符合。

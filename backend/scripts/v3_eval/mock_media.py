@@ -101,9 +101,11 @@ class LocalImageAdapter(LocalMediaMixin, MockImageAdapter):
         target = Path(response.get("expected_output_path") or Path(output_dir) / "image.png")
         target.parent.mkdir(parents=True, exist_ok=True)
         token = hashlib.sha256(str(target).encode()).digest()
-        canvas = Image.new("RGB", (640, 360), tuple(30 + value % 110 for value in token[:3]))
+        from mock_geometry import rendered_size
+        width, height = rendered_size(self._payload(response), image=True)
+        canvas = Image.new("RGB", (width, height), tuple(30 + value % 110 for value in token[:3]))
         draw = ImageDraw.Draw(canvas)
-        draw.rectangle((16, 16, 623, 343), outline="white", width=3)
+        draw.rectangle((16, 16, max(17, width - 17), max(17, height - 17)), outline="white", width=3)
         draw.text((35, 85), "CINECREW V10 MOCK\nLOCAL PLACEHOLDER\nNOT A GENERATED IMAGE", fill="white", spacing=15)
         draw.text((35, 240), target.name[:60], fill="white")
         canvas.save(target, format="PNG")
@@ -121,7 +123,8 @@ class LocalVideoAdapter(LocalMediaMixin, MockVideoAdapter):
             raise RuntimeError("Mock video requires an explicitly approved duration; no default allowed")
         target = Path(response.get("expected_output_path") or Path(output_dir) / "video.mp4")
         target.parent.mkdir(parents=True, exist_ok=True)
-        VideoCompositionService._materialize_mock(target, duration, target.stem[:24], 0)
+        from mock_geometry import rendered_size
+        VideoCompositionService._materialize_mock(target, duration, target.stem[:24], 0, size=rendered_size(payload))
         CONTROLLER.event("mock_video_written", model_id=self.model_id, filename=target.name,
                          duration_sec=duration, sha256=hashlib.sha256(target.read_bytes()).hexdigest())
         return [str(target)]
