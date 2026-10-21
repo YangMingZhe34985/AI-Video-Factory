@@ -220,6 +220,12 @@ def _delegate(run, flow, registry, *, review):
         "task": (f"Independently review Patch {flow['patch_id']}; compare the final draft with the user's named elements, "
                  "original request, constraints and revision evidence. Call review_patch with explicit intent_preserved and "
                  "changed_elements. Uncertainty is false; any removed or changed named element needs human approval. "
+                 "For verdict=revise, assess revised_draft; for approve/reject, assess the pending draft. "
+                 "reason, intent_preserved and changed_elements must all assess this same final candidate against the original "
+                 "request and confirmed revisions, not the superseded Repair proposal. Do not retain reasons or changed "
+                 "elements for requirements already restored in the final candidate. If uncertainty remains, keep "
+                 "intent_preserved=false and explain the specific uncertainty in the final candidate; never set true "
+                 "merely to enable automatic approval. Preserve historical proposal and review evidence. "
                  "Distinguish recorded provider errors from speculative causes."
                  if review else "Read the base Plan and failure/user evidence; propose the smallest Patch through propose_patch. "
                     "Preserve original hard constraints. Never generate, retry unknown submissions or authorize spending.")}

@@ -17,7 +17,8 @@
     <div class="mt-4 grid min-w-0 gap-3 lg:grid-cols-2">
       <div class="card" :class="`card-${reviewTone}`">
         <p class="card-title"><PhSealCheck :size="16" class="flex-none" />Director · {{ patchReviewLabel(patch.review?.verdict) }}</p>
-        <p v-if="patch.review?.reason" class="mt-1.5 whitespace-pre-wrap text-[13px] leading-relaxed text-slate-600 dark:text-slate-300">{{ patch.review.reason }}</p>
+        <p class="mt-1.5 whitespace-pre-wrap text-[13px] leading-relaxed text-slate-600 dark:text-slate-300">审阅对象：最终草稿与原需求、已确认修订。</p>
+        <p v-if="patch.review?.reason" class="mt-1.5 whitespace-pre-wrap text-[13px] leading-relaxed text-slate-600 dark:text-slate-300">最终草稿审阅理由：{{ patch.review.reason }}</p>
       </div>
       <div v-if="patch.review" class="card" :class="`card-${intent.status === 'preserved' ? 'emerald' : 'amber'}`" data-testid="patch-intent-assessment">
         <p class="card-title"><component :is="intent.status === 'preserved' ? PhCheckCircle : PhWarning" :size="16" class="flex-none" />{{ intent.label }}</p>

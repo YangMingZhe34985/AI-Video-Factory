@@ -626,3 +626,11 @@ patches.diff_preview 为逐操作 {op,node_id,before,after}：输入更新仅展
 - typed input 异常携带 inputs.<field>，节点顶层 params 异常位置仍为 params。已提供的安全 field 位置优先保留，不传播 current/expected 等附加值到公开诊断。
 - 实现边界：新增 diagnostics.py；PlanIssue.details:dict 默认空；compiler.issue 接受可选details且仅有值时序列化；_typed_inputs 未声明引用异常 payload 带 field=inputs.<field>；node loop 每轮 spec=None 防前一工具Schema泄漏；节点异常catch调用 issue_details。不变规则：不增加接受路径。
 - v3 check_plan、Patch 编译及可审核草稿沿用原 issues 传递；经典工具与 API 形状不变。
+
+### V.22.5 最终草稿的意图评估（V12f，D-052）
+
+- Director/plan-review：评估对象必须是本次最终候选，而不是 Repair 原提议。verdict=revise 时以 revised_draft 为准；approve/reject 以被审阅 draft 为准。reason、intent_preserved 和 changed_elements 必须针对同一候选。与原用户需求及已确认修订逐项对照：已在最终候选恢复的点名要求，不得继续沿用原提议中“删除/弱化该要求”的理由或变化项。若仍拿不准，保持 intent_preserved=false，说明最终候选尚不确定的具体内容；不要为自动通过把 false 改成 true。历史提议与旧审阅保留，不回写。
+- repair_flow 指定审阅任务同步以上规则，不能仅改静态prompt。
+- Patch卡片：保留patch.review.reason原值；加“审阅对象：最终草稿与原需求、已确认修订。”及理由标签“最终草稿审阅理由”。历史 applied 仍只读，不重新生成审阅文本。
+- 不改变意图保真判定、人工门、不可变证据或已批准历史。原审阅文本保持原值；不在前端重写 reason 或猜测保真，保留现有组件结构、配色与报价授权路径。
+- V11 Skill 增补审定标记按 D-047 更新并递增文档版本；V12 新增澄清单列待 Claude V-Gate5b 审阅，不把旧审定冒用到新文案。Blueprint 来源版本独立且不改。

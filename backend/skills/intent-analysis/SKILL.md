@@ -11,7 +11,7 @@ tools:
 related:
 - clarification
 - delegation-policy
-version: 2
+version: 3
 ---
 # 需求理解（已由 Claude 审定 · V-Gate3）
 
@@ -47,6 +47,6 @@ Subject 必填 name、description、source；source 只能是 user_text / attach
 
 简单改图或单镜头无需为格式补齐而创建 Creative/Director 子任务。可在同轮读取匹配 Skill/模型目录与一次批量附件理解；随后写 brief 并检查默认模型草稿，再实例化、提交。每个工具请求必须使用当时已有的信息；不能在同轮后续请求里虚构前一个请求尚未返回的模型 ID 或 workspace_ref。Schema、模型、约束、费用或预算失败仍按真实回执修正；不以减少轮数为由跳过检查或自动批准生产。
 
-V11d 增补待 V-Gate5 复审；不放宽原 Schema、工具权限或审批规则。
+V11d 增补已由 Claude 审定（V-Gate5）；不放宽原 Schema、工具权限或审批规则。
 
 来源：app/agent/intake.py、request_spec.py；v3 契约 V.6–V.7、V.21.4。

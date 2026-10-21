@@ -13,7 +13,7 @@ related:
 - character-consistency
 - first-last-frame
 - budget-planning
-version: 2
+version: 3
 ---
 # 长故事规划（已由 Claude 审定 · V-Gate3）
 
@@ -64,4 +64,4 @@ AGENT_OUTPUT_TRUNCATED 表示该轮全部工具均未执行，包括看似完整
 
 大型 story-video 的完整 Blueprint 参数本身也可能超过单轮输出上限；不能因为 builder 可自动建节点，就坚持一次输出全部 story 与 shots。预计描述很长或已收到截断时，改用上述分批通用 Plan：完整保留用户剧情、目标时长、固定 story_ref、角色目录、每节点 characters、多参考关键帧及拼接/检查/打包链，按批保存。它不是放弃人物或删除镜头的理由。append 只能追加，不能更新已保存节点；若完整改写仍触发截断，应如实报告这一边界，不暗中提高 max_tokens 或改用户需求。
 
-V11e 分批作者策略待 Claude V-Gate5 审定；原有故事、时长与一致性要求保持。
+V11e 分批作者策略已由 Claude 审定（V-Gate5）；原有故事、时长与一致性要求保持。

@@ -14,7 +14,7 @@ tools:
 related:
 - clarification
 - web-research
-version: 1
+version: 2
 ---
 # 角色一致性（已由 Claude 审定 · V-Gate3）
 
@@ -30,7 +30,7 @@ version: 1
 
 来源：app/agent/story_spec.py、creative_v2.py、director_v2.py、prompt_smith.py。
 
-## V11a 身份输入合同（待 V-Gate5 复审）
+## V11a 身份输入合同（已由 Claude 审定 · V-Gate5）
 
 通用 Plan 用 character_references 固定每个角色的全部身份图：例如 `{"deepseek":[{"ref":"cast_deepseek.image"}],"gpt":[{"ref":"cast_gpt.image"}]}`。已有图片写 `{artifact:真实ID}`；未来定妆必须单角色、n=1、gate=preview，定妆节点也写 `characters:[对应ID]`。有 Story 时填写其精确 story_ref；不填时编译会冻结最新故事版本，目录不得漏角色或替换已有身份图。
 

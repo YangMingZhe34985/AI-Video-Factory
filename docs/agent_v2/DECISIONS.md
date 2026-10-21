@@ -400,3 +400,13 @@ soft character target 维持 60,000；唯一/最新资源、错误与最新计�
 无敏感值回显及字段限长承诺限定新增 details 对象。既有 issue.message 的行为本轮保持不变，不把原消息改写纳入 V12e。
 
 经典工具与 API 形状不变。v3 check_plan、Patch 编译及可审核草稿沿用原 issues 传递；旧只有三字段的 PlanIssue 仍可读取。受影响任务 V12e、V-Gate5b。
+
+## D-052 · 2026-10-21 · 最终草稿的意图评估与审阅理由
+
+依据 D-047/V12f，V11中 Director 修订恢复用户点名动作后，意图评估 reason 仍引用 Repair 原提议的弱化问题，易误导审核。
+
+决定：不改变意图保真判定、人工门、不可变证据、已批准历史。Director 的 reason / intent_preserved / changed_elements 一起针对最终候选和原用户需求、已确认修订；verdict=revise 时评估 revised_draft，其余评估原待审 draft。已从最终候选撤销的变化不继续记作当前 changed_elements，确有不确定仍 false，reason 说明最终稿尚无法确认的具体问题。
+
+界面保留原审阅文本，仅明确对照对象并展示最终草稿审阅理由，不在前端重写reason或猜测保真。保留Claude现有组件结构/配色/报价授权路径。V11的Skill增补审定标记按Claude要求更新并升文档版本；V12新增澄清单列待V-Gate5b审阅，不把旧审定冒用到新文案；Blueprint来源版本独立且不改。
+
+受影响任务：V12f、V-Gate5b。验收：最终恢复的候选与reason绑定且原提议仍可审计；false仍人工；旧改动不能污染当前changed_elements；UI文字和审批协议/样式保留；全量backend/frontend/build。
