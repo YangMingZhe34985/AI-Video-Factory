@@ -605,3 +605,11 @@ patches.diff_preview 为逐操作 {op,node_id,before,after}：输入更新仅展
 3. URL 仍只能来自当前 Run 的原始用户文本或成功检索；capture 仅允许原始用户 URL。跨 Run、私网/重定向、无权角色、非活动/伪造委派、预算/次数与损坏快照继续按原契约拒绝。
 4. `repair_guidance` 是服务器给出的有界结构帮助，可包含 `field`、`example_scope`、`example`、`rules`、`schema_resource`；进入 Agent 错误回执，不回显提交的敏感原值。research_needs 示例仅包含 query/reason 对象；dossier 示例只示范零证据的合法外壳，不伪造来源或候选，不自动写入或降低校验。
 5. 测试需经真实 ToolRegistry 调用覆盖三工具省略成功、显式伪造拒绝、相同规范输入重放、v2 兼容、缓存/隔离/权限边界，以及 Schema/资源和错误示例可解析一致性；只用临时 SQLite、Mock/Stub 与网络阻断。
+
+### V.22.3 最近资源合同保护（V12d，D-050）
+
+- `context.policy_version=3`；对 `_completed_rounds` 认定完整的成功工具批次，若 read_skill_resource 输出有字符串 name/path/content，且 name/path 与调用参数精确一致，则按 (name,path) 记录最近位置。不同 Skill 同路径、同 Skill 不同路径独立。
+- 每个键最近成功回执的 content 全文保留，不受最近两轮限制；只有被更新合法读取替代的旧回执可沿原规则投影。失败/不完整/不匹配/已投影或未解析的结果不建立新的成功位置，也不移除旧的有效保护。
+- 最新 load_skill、最新持久计划证明、system/user、付费证据、澄清/错误及原有权限与信任边界保持；超软目标合法，不强删保护资料。
+- 历史持久消息和收据不改。恢复同 step 继续使用原 pending_context / LLM ledger 冻结值，即便它是在 policy v2 创建；校验不通过仍停止，绝不重新收费规避漂移。
+- 验收：唯一合同、多键合同、重复旧副本、后续失败/路径不匹配/不完整批次、最近两轮边界、不可变原文、既有冻结/恢复和计划投影；只 Mock/Stub。

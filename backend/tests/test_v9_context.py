@@ -30,10 +30,11 @@ def tail():
 def long_history():
     messages = [{"role": "system", "content": "Follow original permissions; never generate without approval."},
                 {"role": "user", "content": '{"text":"猫的故事，禁止 HappyHorse，120 秒","budget_limit":100}'}]
+    # Six old copies are superseded by the last reads of these two resources.
     for index in range(8):
         messages += batch("read_skill_resource",
-            {"name": "plan-review", "path": f"resources/reference-{index}.json"},
-            {"name": "plan-review", "path": f"resources/reference-{index}.json", "content": "中文资料" * 5000},
+            {"name": "plan-review", "path": f"resources/reference-{index % 2}.json"},
+            {"name": "plan-review", "path": f"resources/reference-{index % 2}.json", "content": "中文资料" * 5000},
             f"resource-{index}")
     return messages
 
@@ -292,10 +293,12 @@ def test_compacted_resource_can_be_read_again_via_registry_without_model_or_cost
     arguments = {"name": "plan-review", "path": "resources/workspace/plan_draft.schema.json"}
     first = registry.invoke("read_skill_resource", arguments, runtime._context(run, root, suffix="manual-first"))
     assert len(json.dumps(first["output"])) > context.MIN_RESULT_CHARS
-    messages = batch("read_skill_resource", arguments, first["output"], "manual") + tail()
+    messages = batch("read_skill_resource", arguments, first["output"], "manual")
+    messages += batch("read_skill_resource", arguments, first["output"], "newer-manual") + tail()
     monkeypatch.setattr(context, "SOFT_CHAR_TARGET", 1_000)
     projected, stats = context.project_messages(messages)
     assert stats["compacted_result_count"] == 1
+    assert projected[3] == messages[3]
     address = json.loads(projected[1]["content"])["context_projection"]["reread"][0]
     again = registry.invoke(address["tool"], address["arguments"],
         runtime._context(run, root, suffix="manual-reread"))

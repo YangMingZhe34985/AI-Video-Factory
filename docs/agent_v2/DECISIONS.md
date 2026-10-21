@@ -376,3 +376,15 @@ retry_shot 允许服务端识别的 blocked 子镜头恢复本地尾帧提取：
 - 兼容性：原 v2 显式 run_id 仍合法；新旧形式产生同一规范输入、默认幂等键与持久回执，既有回执可重放。没有可信 Run 的调用仍拒绝。字段空字符串/非法类型照旧由 Schema 拒绝。capture 的私有路径、工件 ID、元数据只取已验证 Run。
 - 纠错：brief.research_needs 与 ResearchDossier 的结构/来源错误回执增加有界 repair_guidance。示例是结构教学，非来源证据；资料包示例不含 URL、source_id、reference_id 或视觉候选，保留零证据/空问题，禁止凭示例填充事实。问题必须映射到同一实体中已下载且已理解的候选，缺证据时向 Producer 返回限制，由 Producer 使用 ask_user。
 - 影响：V12b；工具 Schema/Registry、v2 恢复规范化、v3 工作区验证与错误投影、web-research Skill、回归。无数据库迁移、执行权限/收费策略变更。
+
+## D-050 · 2026-10-21 · 保留每个 Skill 资源的最近成功读取
+
+影响任务：V12d、V-Gate5b。
+
+V11f 将最近的 Skill 正文保留，却仍可投影唯一一次读取的资源合同。真实长片起草时曾在合同投影后批量写错 typed inputs；时间相关不能证明唯一因果，但保留当前合同可消除这类信息缺口。
+
+决策：context policy_version 从 2 升为 3。每个 (Skill name, resource path) 最近一次完整配对、成功、参数/输出一致的 read_skill_resource 回执与最新 load_skill 同等保护。只允许投影被后续合法成功读取取代的旧副本；失败、错误、缺失回复、重复回复、错名/错路径、不可解析参数/输出不能覆盖成功证明，也不能被投影。仍仅改变本次模型请求视图，不改持久消息、工具收据或计划，不开放工具权限。
+
+soft character target 维持 60,000；唯一/最新资源、错误与最新计划可能使其超限，必须诚实报告。真实每轮输入 token ≤60k 的目标不变，不能截断合同或伪称软字符数等于 token。已冻结 pending_context 和已有 LLM 回执照旧精确重放，不因 policy_version 升级重新计算或新增付费调用。
+
+旧 V9 fixture 原有 8 个唯一资源被全部压缩的预期不再成立，改为两个资源各重复四次：仍验证旧六份投影、最新两份原文、原历史不变、上下文冻结、恢复无重复调用。Registry 免费重读用例同样构造确被较新读取取代的旧副本；不删除原恢复/源数据断言。

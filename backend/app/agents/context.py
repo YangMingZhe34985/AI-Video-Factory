@@ -5,7 +5,7 @@ from hashlib import sha256
 import json
 
 
-POLICY_VERSION = 2
+POLICY_VERSION = 3
 SOFT_CHAR_TARGET = 60_000
 MIN_RESULT_CHARS = 2_000
 PROTECTED_ROUNDS = 2
@@ -65,6 +65,16 @@ def _success(reply, function):
     if not isinstance(output, dict) or "error" in output or not isinstance(arguments, dict):
         return None
     return output, arguments
+
+
+def _resource_key(output, arguments):
+    """Only an exact, complete resource read can supersede its older copy."""
+    if ("context_projection" in output or not isinstance(output.get("content"), str)
+            or not isinstance(output.get("name"), str) or not output["name"]
+            or not isinstance(output.get("path"), str) or not output["path"]
+            or output["name"] != arguments.get("name") or output["path"] != arguments.get("path")):
+        return None
+    return output["name"], output["path"]
 
 
 def _reference(item):
@@ -140,6 +150,7 @@ def project_messages(messages):
     size = len(_json(projected))
     protected_plans = set(plan_stats["protected_plan_result_indexes"])
     latest_skills = {}
+    latest_resources = {}
     for batch in rounds:
         for position, reply, function in batch:
             parsed = _success(reply, function)
@@ -148,10 +159,15 @@ def project_messages(messages):
                 if (isinstance(output.get("name"), str) and isinstance(output.get("body"), str)
                         and output.get("name") == arguments.get("name")):
                     latest_skills[output.get("name")] = position
+            elif parsed and function.get("name") == "read_skill_resource":
+                key = _resource_key(*parsed)
+                if key is not None:
+                    latest_resources[key] = position
+    protected_resources = set(latest_resources.values())
     compacted = list(plan_stats["compacted_plan_result_indexes"])
     for batch in rounds[:-PROTECTED_ROUNDS]:
         for position, reply, function in batch:
-            if position in protected_plans:
+            if position in protected_plans or position in protected_resources:
                 continue
             if size <= SOFT_CHAR_TARGET:
                 break
@@ -162,6 +178,8 @@ def project_messages(messages):
             if parsed is None:
                 continue
             output, arguments = parsed
+            if function["name"] == "read_skill_resource" and _resource_key(output, arguments) is None:
+                continue
             replacement = _replacement(function["name"], output, arguments, original,
                 latest_load=latest_skills.get(output.get("name")) == position)
             if replacement is None or len(replacement) >= len(original):

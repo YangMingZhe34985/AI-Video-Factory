@@ -60,7 +60,7 @@ def test_old_saved_plan_arguments_and_result_project_even_within_recent_rounds()
     original = deepcopy(messages)
     projected, metrics = context.project_messages(messages)
     assert messages == original
-    assert context.POLICY_VERSION == 2
+    assert context.POLICY_VERSION == 3
     assert metrics["compacted_argument_count"] == metrics["compacted_plan_result_count"] == 1
     assert len(canon(projected)) < len(canon(messages)) * .65
     info = marker(projected, 0)
