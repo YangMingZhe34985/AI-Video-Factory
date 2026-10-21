@@ -1278,3 +1278,20 @@ E完整验证并本地合并后，从当前源生成并人工审阅13文件补�
 范围：仅v3_eval/eval_actions.py、eval_v3.py、story_scope.py及对应两份测试、文档；产品、Skill、Claude界面未改。默认答题按Run/card生成稳定键，错误留证后停止，v2兼容；scope按合并后实际值检查，允许相同引用透传，仍拒绝引用/模型/参数/时长/其他节点变化及无效prompt。
 
 下一步：核对新提交与全量源完全一致后，运行TEMP/cinecrew-v12-b-resume-prep/resume_review_b.py，仅恢复agent_be1e06bb981b4dd2的patch_54c2d2d6060645e5。入口独立静态审阅、20项纯/Stub和Windows只读Git自检通过，SHA3afe179507ab68322dc3d3d2cbaa34b13cde0513de9912fae49459198a9fbe26。禁止新规划/LLM/真实媒体/读取凭证；保留原74次计数及首次失败归档，尚不能宣告B通过。续验前统计已字节不变另存readonly-statistics-before-resume。完成后补最终报告与Claude交接。
+
+## 2026-10-22 · Codex · V12 与 V-Gate5b 测试完成，交 Claude 审读
+
+状态：按评审顺序完成 V12c→a→b→d→e→f，每项独立分支、完整回归和前端构建通过后仅本地合并。追加 D-053 评测脚本修复，最终代码提交 f2728c3007f3f33487d2d0c40697d5f33e96ce37；正式后端2799项/144文件全通过，精确收集无遗漏/额外/重复/失败/跳过，隔离guard为0，构建通过。F另有137项前端及1440/400亮暗四布局验收。最终报告与看板在独立文档分支 agent-v3/V-Gate5b-report 收尾；无新增产品、Skill或界面变更。详见 docs/agent_v3/V12_TEST_REPORT.md。
+
+审核B续验：原Run agent_be1e06bb981b4dd2、原Patch patch_54c2d2d6060645e5 未重规划。06临时入口因Popen函数替换破坏Windows asyncio继承而在应用初始化前失败；原DB字节未变、调用74、阻断0，失败证据保留。07独立入口改为受控Popen类，21项纯/Stub与真实导入/只读Git冒烟及独立静态审阅通过后执行，exit0。新鲜cascade报价经明确Mock人工批准，只新增s03_video一次10秒Mock生成；15节点inputs/output/hash/job/invocation完全复用，compose/probe/qc/package重执行，v2全部20任务成功、结果审批后Run成功。实际下载video与package，可信Director来源由不可变提案及持久化批准版本核验，公开reason与存储原文一致。原失败归档不改写；此结果不证明雨夜实物画质或修复原计划70秒缺陷。
+
+真实调用与费用：固定c7×1、c3×2、c1×1及B初次提案/审阅合计74次（deepseek-v4.1-flash文本73、qwen3.7-plus视觉1），低于150上限；续验新增0。75条逻辑模型调用记录含1条调用前预算拒绝，该条无HTTP；物理74行及计数续验前后完全一致。输入2,520,793、输出71,353、单轮峰值68,541；74次物理成功调用的usage缺失/未知/预留/未映射均0，逻辑统计中的1条缺usage对应预算拒绝。真实图片、视频、媒体上传及网络越界尝试均0。演示账本LLM/视觉25.95513 + Mock媒体98 + Mock研究0.8 = 124.75513 credits，非服务商实际账单；待结算0。真实阶段仅既有凭据白名单读取允许的密钥行，MySQL/Redis值未读取或连接；离线回归和07续验禁止真实.env读取，均临时SQLite/存储，真实.env未修改。
+
+目标逐项：
+- 已达：c7全部成片关键帧/视频/拼接16:9、120秒、完整情节不委派Creative；真实LLM驱动的Mock下载省略run_id成功（不是实网检索验收）；c3至少1/2进入审核；c1四文本轮加一次视觉、无委派；已完成长片规划演示费用均≤20；审核B第三镜局部重做、15节点复用、可信来源与再次交付；安全边界通过。
+- 未达：c7/c3-2峰值65,182/68,541超过60k；字段诊断虽消除本轮UNTYPED_REFERENCE，其他同类问题仍批量纠错；c3-2需求120±15秒却批准7×10=70秒，当前QC只与批准片段合计比对。c3未到最好2/2：首例资料不确定进入无默认选项的选择门，原评测缺request_key已修，但推荐选项不等于用户授权，未替选或补采。
+- 待审或未测：c7“一起上楼”只写准备上楼，局部动作保真待Claude裁定；真实角色相似度、风格与雨夜转换未测。现有统计器不识别续验专用outcome，required_coverage的B仍failed；以保留的首次失败与07完整续验证据联合审读，不篡改统计或原归档求全绿。
+
+证据：TEMP=C:/Users/MingZheYang/AppData/Local/Temp；工作根 cinecrew-v12-gate5b-20261022-01，最终readonly-statistics与原readonly-statistics-before-resume并存，07-resume-control.json与results/hybrid_V12-story-resume07-agent_be1e06bb981b4dd2_agent_be1e06bb981b4dd2.json（SHA256 8d4c84b44743eb78b488291849fa9c2496a4e5c24d62ef2b56aad0f5d9456776）；最终全量cc-v12-eval-recovery-10220204-formal；各次失败根因、上下文冻结证据及独立审阅在cinecrew-v12c-review。原05、06与74次物理记录全部保留。
+
+接手：请Claude审读V12_TEST_REPORT、D-048–D-053、V.22及本轮Skill增补，裁定V-Gate5b并安排token预算、时长意图校验和纠错效率后续任务。当前不能宣布Gate通过，默认开启v3继续阻塞。不推送、不建PR、不进入V8；保留Claude美化、原工作树及用户未跟踪的AI_Video_Factory_Technical_Notes_CN.md。不要重跑06/07入口或把recommended当默认回答；新一轮真实测试另按批准范围执行。
