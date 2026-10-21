@@ -148,3 +148,48 @@ def test_approval_callback_not_reached_for_wrong_scope():
         audit_story_patch_scope(plan, record, quote, "clip_3")
         approved = True
     assert not approved
+
+
+@pytest.mark.parametrize("target", ["clip_3", "frame_3"])
+def test_update_inputs_accepts_identical_reference_passthrough(target):
+    plan, record, quote = fixtures((target,))
+    original = next(node for node in plan["nodes"] if node["id"] == target)
+    record["draft"]["ops"][0]["inputs"] = {**deepcopy(original["inputs"]), "prompt": "rainy night"}
+    frozen = deepcopy((plan, record, quote))
+    result = audit_story_patch_scope(plan, record, quote, "clip_3")
+    assert result["changed_prompt_node_ids"] == [target]
+    assert (plan, record, quote) == frozen
+
+
+@pytest.mark.parametrize("target,field,value", [
+    ("clip_3", "first_frame_artifact_id", {"ref": "frame_1.image"}),
+    ("frame_3", "reference_artifact_ids", [{"ref": "frame_2.image"}]),
+    ("clip_3", "model_id", "other-model"),
+    ("clip_3", "params", {"duration": 11}),
+    ("clip_3", "negative_prompt", "different"),
+])
+def test_update_inputs_rejects_real_reference_or_other_field_change(target, field, value):
+    plan, record, quote = fixtures((target,))
+    record["draft"]["ops"][0]["inputs"][field] = value
+    with pytest.raises(ScopeViolation, match="execution field"):
+        audit_story_patch_scope(plan, record, quote, "clip_3")
+
+
+@pytest.mark.parametrize("inputs", [
+    {"first_frame_artifact_id": {"ref": "frame_3.image"}},
+    {"prompt": "walk", "first_frame_artifact_id": {"ref": "frame_3.image"}},
+    {"prompt": ""}, {"prompt": " "}, {},
+])
+def test_update_inputs_requires_a_real_nonempty_prompt_change(inputs):
+    plan, record, quote = fixtures()
+    record["draft"]["ops"][0]["inputs"] = inputs
+    with pytest.raises(ScopeViolation, match="Missing or unchanged prompt"):
+        audit_story_patch_scope(plan, record, quote, "clip_3")
+
+
+@pytest.mark.parametrize("inputs", [None, [], "prompt"])
+def test_update_inputs_requires_an_object(inputs):
+    plan, record, quote = fixtures()
+    record["draft"]["ops"][0]["inputs"] = inputs
+    with pytest.raises(ScopeViolation, match="object"):
+        audit_story_patch_scope(plan, record, quote, "clip_3")

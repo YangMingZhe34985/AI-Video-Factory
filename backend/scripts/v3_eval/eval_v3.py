@@ -26,6 +26,7 @@ HERE = WORK / "results"
 HERE.mkdir(exist_ok=True)
 from safety import configure_environment, install_guards
 from metrics import delegation_tree, history_issues, issue_codes, plan_metrics, summarize_turns
+from eval_actions import answer_defaults
 
 TEXT_MODEL, VISION_MODEL = "deepseek-v4.1-flash", "qwen3.7-plus"
 configure_environment(ROOT, WORK)
@@ -116,8 +117,9 @@ def run_case(client, worker, case_id, case):
         if status == "awaiting_input" and case_id != "c4_vague" and answered < 1 and view.get("pending_card"):
             card = view["pending_card"]
             notes.append({"question_card": [q.get("text") for q in card.get("questions", [])]})
-            r = client.post(f"/api/agent/runs/{run_id}/actions", json={"action": "answer", "card_id": card["card_id"], "use_defaults": True})
-            notes.append({"answered_with_defaults": r.status_code})
+            if not answer_defaults(client, run_id, card["card_id"], notes,
+                                   v3=app.config.get("AGENT_V3_ENABLED", False)):
+                break
             answered += 1
             continue
         if status not in ACTIVE:

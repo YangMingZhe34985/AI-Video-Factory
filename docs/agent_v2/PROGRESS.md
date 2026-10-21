@@ -1262,3 +1262,19 @@ E完整验证并本地合并后，从当前源生成并人工审阅13文件补�
 最终候选意图/理由说明已同步Director、实际Repair审阅任务和Skill；界面原reason不改写，Claude script/style保持。
 验证：TEMP/cc-v12f-10220120-formal/summary.json，完整后端2768项，精确清单无遗漏/重复/跳过，前端构建通过。独立前端137项与浏览器1440/400亮暗四布局均通过，源码/HEAD冻结、guard为0；证据路径见TEMP/cinecrew-v12c-review/V12f-merged.json。
 仅本地提交合并，不推送；无真实模型/媒体调用。下一步由父代理手动决定V-Gate5b，Mock不证明真实语义或画质达标。
+
+## 2026-10-22 · Codex · V-Gate5b 固定样本与评测脚本纠错
+
+状态：c7×1、c3×2、c1×1和审核B初次流程已执行；固定累计74次真实调用（73文本、1视觉），真实媒体与上传0。证据在TEMP/cinecrew-v12-gate5b-20261022-01；运行源冻结5e5db145，未重采失败样本。c7成片参数16:9落实、无Creative委派；c1五次物理调用且无委派；c3一次进入审核，一次在用户选择门停下。真实Research省略run_id的下载已成功。峰值65182/68541超过60k；c3成片仅70秒，与120秒目标不符；字段纠错仍多，不能称Gate通过。
+
+审核B原20节点Mock交付成功，Director已生成并独立审阅第三镜雨夜Patch。原评测因重复携带未变的首帧引用误判越界；实际只有s03_video.prompt变更。另一脚本缺陷是默认答题漏传request_key导致422；当前选择卡没有default，不能把recommended当成用户授权。
+
+接手：独立分支agent-v3/V12c-eval-recovery，D-053先记录，只修评测脚本及测试，完整后端/构建通过后本地合并。随后禁止新增LLM，复用同一Patch重新报价、明确批准并验证其他15节点复用和重新交付。原失败归档保留，真实token/时长缺陷单列。不推送、不进入V8、不改Claude美化，私人未跟踪笔记保留。
+
+## 2026-10-22 · Codex · V12c-eval-recovery 完整验证完成
+
+状态：两处评测修复及31项新增回归完成，准备仅本地提交合并。已有64项纯Mock/Stub定向通过；正式TEMP/cc-v12-eval-recovery-10220204-formal完整2799项/144文件全部通过，精确ID无遗漏/额外/重复/失败/跳过，source/HEAD冻结、guard0、全部进程和前端构建通过，耗时25分01秒。不得将定向与全量相加。
+
+范围：仅v3_eval/eval_actions.py、eval_v3.py、story_scope.py及对应两份测试、文档；产品、Skill、Claude界面未改。默认答题按Run/card生成稳定键，错误留证后停止，v2兼容；scope按合并后实际值检查，允许相同引用透传，仍拒绝引用/模型/参数/时长/其他节点变化及无效prompt。
+
+下一步：核对新提交与全量源完全一致后，运行TEMP/cinecrew-v12-b-resume-prep/resume_review_b.py，仅恢复agent_be1e06bb981b4dd2的patch_54c2d2d6060645e5。入口独立静态审阅、20项纯/Stub和Windows只读Git自检通过，SHA3afe179507ab68322dc3d3d2cbaa34b13cde0513de9912fae49459198a9fbe26。禁止新规划/LLM/真实媒体/读取凭证；保留原74次计数及首次失败归档，尚不能宣告B通过。续验前统计已字节不变另存readonly-statistics-before-resume。完成后补最终报告与Claude交接。

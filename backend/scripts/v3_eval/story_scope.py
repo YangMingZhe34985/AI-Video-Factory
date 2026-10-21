@@ -91,7 +91,7 @@ def audit_story_patch_scope(base_plan, record, quote, target):
         require(node_id not in changed, "Duplicate Patch target")
         before = nodes[node_id]
         if op["op"] == "update_inputs":
-            require(set(op["inputs"]) == {"prompt"}, "Only inputs.prompt may change")
+            require(isinstance(op.get("inputs"), dict), "Patch inputs must be an object")
             after = deepcopy(before)
             after["inputs"].update(op["inputs"])
         else:
