@@ -140,6 +140,8 @@ class Harness:
         return self.observe()
 
     def gates(self, view, choice_index=None):
+        if view["status"] != "awaiting_gate":
+            return False
         for node in view.get("nodes", []):
             if node.get("gate_approved"):
                 continue
@@ -162,24 +164,27 @@ class Harness:
 
     def drive(self, *, stop=("awaiting_result_review",), preview=True, choice_index=None, max_ticks=240):
         started = time.monotonic()
-        stable = 0
-        previous = None
-        unchanged_since = time.monotonic()
         for _ in range(max_ticks):
             view = self.observe()
             if view["status"] in stop and not view.get("action_pending"):
                 return view
+            pending_patch = [patch for patch in view.get("patches", []) if patch["status"] == "awaiting_approval"]
+            if pending_patch and not view.get("action_pending"):
+                if "patch_approval" in stop:
+                    return view
+                raise ScenarioFailure("Manual Patch approval required; automatic continuation did not occur")
+            if view["status"] == "attention":
+                failures = [{"node_id": node.get("node_id"), "error": node.get("error")}
+                            for node in view.get("nodes", []) if node.get("status") == "failed" or node.get("error")]
+                self.result["evidence"]["attention"] = {"failed_nodes": failures, "error": view.get("error")}
+                self.save()
+                raise ScenarioFailure(f"Run stopped in attention: failed_nodes={failures}; error={view.get('error')}")
             if view.get("action_pending"):
                 self.advance()
                 time.sleep(0.15)
                 continue
             if view["status"] in {"success", "failed", "cancelled", "awaiting_input"}:
                 raise ScenarioFailure(f"Unexpected terminal/user state: {view['status']}: {view.get('error')}")
-            pending_patch = [patch for patch in view.get("patches", []) if patch["status"] == "awaiting_approval"]
-            if pending_patch:
-                if "patch_approval" in stop:
-                    return view
-                raise ScenarioFailure("Manual Patch approval required; automatic continuation did not occur")
             if preview and self.gates(view, choice_index):
                 self.advance()
                 continue
@@ -188,16 +193,6 @@ class Harness:
                 if "choice" in stop:
                     return view
                 raise ScenarioFailure("A choice gate requires an explicit selection")
-            fingerprint = digest({"status": view["status"], "nodes": view.get("nodes"),
-                                  "agents": view.get("agents"), "patches": view.get("patches"), "error": view.get("error")})
-            stable = stable + 1 if fingerprint == previous else 0
-            if fingerprint != previous:
-                unchanged_since = time.monotonic()
-            previous = fingerprint
-            active_jobs = any(node["status"] == "running" for node in view.get("nodes", []))
-            if not active_jobs and view["status"] == "attention":
-                require(time.monotonic() - unchanged_since < 15,
-                        f"No progress in attention for 15 seconds: {view.get('error')}")
             require(time.monotonic() - started <= 1200, "Hybrid scenario exceeded 1200 seconds")
             self.advance()
             time.sleep(0.15)

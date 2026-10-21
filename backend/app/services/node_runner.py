@@ -163,14 +163,11 @@ class NodeRunner:
 
         Returns (adapter, effective_adapter_name, payload, response).
         """
-        from app.adapters.dashscope_multimodal_image import DashScopeMultimodalSyncAdapter
-
         if model.model_id.startswith("wan2.7-image"):
-            adapter = DashScopeMultimodalSyncAdapter(model=model)
             effective_adapter_name = "dashscope_multimodal_sync"
         else:
-            adapter = get_adapter(model.adapter_name, model=model)
             effective_adapter_name = model.adapter_name
+        adapter = get_adapter(effective_adapter_name, model=model)
 
         merged_params = ModelService.effective_params(model)
         node_key = node.node_key if node else None
