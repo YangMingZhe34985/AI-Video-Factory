@@ -11,7 +11,8 @@ from app.tools.spec import ToolContext, ToolSpec
 class DownloadReferenceInput(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
-    run_id: str = Field(min_length=1, max_length=80)
+    run_id: str | None = Field(default=None, min_length=1, max_length=80,
+        description="Omit to use the current server-owned Run. An explicit value must match it.")
     image_url: str = Field(min_length=1, max_length=4096)
     source_page_url: str | None = Field(default=None, max_length=4096)
     entity: str | None = Field(default=None, max_length=80)
@@ -35,6 +36,7 @@ class DownloadReferenceOutput(BaseModel):
 
 def run(data: DownloadReferenceInput, ctx: ToolContext):
     owner = require_run(ctx, data.run_id)
+    data = data.model_copy(update={"run_id": owner.run_id})
     reserve(ctx, {"download_reference"}, "AGENT_MAX_REFERENCE_DOWNLOADS")
     return download_reference(data, ctx, owner)
 

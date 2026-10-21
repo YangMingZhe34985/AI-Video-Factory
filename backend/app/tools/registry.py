@@ -160,6 +160,8 @@ class ToolRegistry:
         if spec.name == "transform_video" and plan_task is None:
             from app.agent.transform_policy import validate_submission
             validate_submission(data, ctx)
+        from app.agent.search.scope import bind_run_input
+        data = bind_run_input(spec.name, data, ctx)
         if spec.name == "capture_reference_page":
             from app.tools.specs.capture_reference_page import validate_source
             validate_source(data, ctx)

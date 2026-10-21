@@ -144,7 +144,7 @@ def _stop(delegation, status, code):
     db.session.commit()
 
 
-AGENT_ERROR_DETAIL_KEYS = ("kind", "issues", "plan_issues", "targets", "field", "allowed")
+AGENT_ERROR_DETAIL_KEYS = ("kind", "issues", "plan_issues", "targets", "field", "allowed", "repair_guidance")
 
 
 def agent_error(error):

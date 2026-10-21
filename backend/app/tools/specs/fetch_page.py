@@ -14,7 +14,8 @@ from app.utils.time_utils import utc_now
 
 
 class FetchPageInput(StrictModel):
-    run_id: str = Field(min_length=1, max_length=80)
+    run_id: str | None = Field(default=None, min_length=1, max_length=80,
+        description="Omit to use the current server-owned Run. An explicit value must match it.")
     url: str = Field(min_length=1, max_length=4096)
     max_chars: int = Field(default=8000, ge=500, le=20000, strict=True)
 
@@ -56,9 +57,9 @@ class PageText(HTMLParser):
 
 
 def run(data, ctx):
-    require_run(ctx, data.run_id)
+    owner_run = require_run(ctx, data.run_id)
     reserve(ctx, {"fetch_page"}, "AGENT_RESEARCH_MAX_FETCHES")
-    resource = fetch_resource(data.url, ctx, run_id=data.run_id,
+    resource = fetch_resource(data.url, ctx, run_id=owner_run.run_id,
         max_bytes=current_app.config["AGENT_FETCH_MAX_BYTES"], allowed_types={"text/html", "text/plain"})
     text, title = resource.body.decode("utf-8", errors="replace"), ""
     if resource.content_type == "text/html":

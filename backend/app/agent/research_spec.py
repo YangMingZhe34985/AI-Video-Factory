@@ -107,7 +107,9 @@ class DossierDraft(ResearchDossier):
 
 
 def invalid(message):
-    return AppError("INVALID_RESEARCH_DOSSIER", message, 422)
+    from app.agent.research_guidance import dossier_guidance
+    return AppError("INVALID_RESEARCH_DOSSIER", message, 422,
+                    payload={"repair_guidance": dossier_guidance()})
 
 
 def validate_research_plan(raw):

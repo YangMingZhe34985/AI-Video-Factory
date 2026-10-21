@@ -24,6 +24,17 @@ def require_run(ctx, run_id=None):
     return run
 
 
+RUN_BOUND_TOOLS = frozenset({"fetch_page", "download_reference", "capture_reference_page"})
+
+
+def bind_run_input(tool_name, data, ctx):
+    """Canonicalize optional legacy Run fields before ledger identity/replay."""
+    if tool_name not in RUN_BOUND_TOOLS or "run_id" not in type(data).model_fields:
+        return data
+    run = require_run(ctx, data.run_id)
+    return data.model_copy(update={"run_id": run.run_id})
+
+
 def reserve(ctx, tool_names, limit_config):
     """The pending ledger row reserves a slot; failures keep their consumed slot."""
     run = require_run(ctx)

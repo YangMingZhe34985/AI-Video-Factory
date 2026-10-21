@@ -368,3 +368,11 @@ retry_shot 允许服务端识别的 blocked 子镜头恢复本地尾帧提取：
 影响：V12a、V-Gate5b；compiler、v3 node schemas、composition service 的可选参数、media_probe_service.py 的 MediaProbe 保守显示变换证据标记、QC、工具作者资源及回归。D-030 不变；本项验证仅 Mock/Stub。
 
 采用结构用途判定，避免新增 Agent 可随意填写的 role=reference 逃逸字段。源视频改造允许拼接留边适配目标，而已有参考视频不会被自动裁剪或重新生成。动态图像尺寸和 nominal 分辨率的确定性推导只使用现有仓库参数 Schema，不推断官方未集成能力。
+
+## D-049 · 2026-10-21 · 研究工具使用可信 Run 上下文与可操作错误示例
+
+- 原因：V-Gate5 发现 Research 模型无法看到可信 Run ID，却被 fetch_page、download_reference、capture_reference_page 要求填写；模型自造标识被正确的作用域护栏拒绝，阻断正常研究。
+- 决策：三工具 run_id 改为可选。省略或 null 时由服务器 ToolContext.budget_scope 绑定；显式值与当前 Run 不同仍拒绝。Registry 在角色/Agent 身份检查之后、来源校验/账本/幂等键生成之前规范化为真实 Run ID；v2 恢复入口使用同一规范化。数据库存在性、请求所有权、委派、来源白名单、SSRF、预算/次数限制与不可变缓存均不放宽。
+- 兼容性：原 v2 显式 run_id 仍合法；新旧形式产生同一规范输入、默认幂等键与持久回执，既有回执可重放。没有可信 Run 的调用仍拒绝。字段空字符串/非法类型照旧由 Schema 拒绝。capture 的私有路径、工件 ID、元数据只取已验证 Run。
+- 纠错：brief.research_needs 与 ResearchDossier 的结构/来源错误回执增加有界 repair_guidance。示例是结构教学，非来源证据；资料包示例不含 URL、source_id、reference_id 或视觉候选，保留零证据/空问题，禁止凭示例填充事实。问题必须映射到同一实体中已下载且已理解的候选，缺证据时向 Producer 返回限制，由 Producer 使用 ask_user。
+- 影响：V12b；工具 Schema/Registry、v2 恢复规范化、v3 工作区验证与错误投影、web-research Skill、回归。无数据库迁移、执行权限/收费策略变更。

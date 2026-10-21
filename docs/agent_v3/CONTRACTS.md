@@ -597,3 +597,11 @@ patches.diff_preview 为逐操作 {op,node_id,before,after}：输入更新仅展
 - QC 对最终成片的实测像素尺寸与显示比例（含 SAR）检查；有目标时新增 `MASTER_SIZE`、`MASTER_ASPECT_RATIO`，不符合返回 passed=false，沿既有 qc_failed 修复/用户门处理。不把 Mock 画质、角色相似度或提供商实际比例视为已验收。
 - 上述字段必须同步到 `plan-review/resources/tools/{compose_video,qc_video}.json` 的真实 Schema 与作者说明。新草稿和 Patch 候选再编译沿用 brief 硬约束；已经批准的历史版本继续按原载荷和审批哈希执行/复用，不重新写入几何参数，不改变其历史审批。未批准的旧草稿若在再审核时有效输入变化，应生成新版本审核，不能静默批准。
 - 混合评测的 LocalImageAdapter/LocalVideoAdapter 按实际提交载荷的合法 size、ratio、resolution 或本地首帧尺寸绘制；只产生本地标记素材、不访问 URL/上传服务，事件账本与提供商阻断规则不变。普通 MockAdapter 的既有哨兵字节约定保持不变；QC 不为评测跳过比例/尺寸检查。
+
+### V.22.2 Research Run 绑定与错误修正（V12b，D-049）
+
+1. fetch_page、download_reference、capture_reference_page 的输入 run_id 为 `str | null`，默认 null；模型可省略。服务器以可信 ToolContext.budget_scope 解析当前 Run；显式不同值返回 TOOL_FORBIDDEN，不回退到其他 Run。模型不能设置 ToolContext 字段。
+2. 作用域存在性/所有权/授权验证成功后、创建或检查 ToolInvocation 前，将输入 run_id 规范化为当前 Run ID；账本输入与幂等比较均使用该规范值，省略与原显式同 Run 调用等价。旧 v2 恢复入口同样规范化，历史显式输入不改写。
+3. URL 仍只能来自当前 Run 的原始用户文本或成功检索；capture 仅允许原始用户 URL。跨 Run、私网/重定向、无权角色、非活动/伪造委派、预算/次数与损坏快照继续按原契约拒绝。
+4. `repair_guidance` 是服务器给出的有界结构帮助，可包含 `field`、`example_scope`、`example`、`rules`、`schema_resource`；进入 Agent 错误回执，不回显提交的敏感原值。research_needs 示例仅包含 query/reason 对象；dossier 示例只示范零证据的合法外壳，不伪造来源或候选，不自动写入或降低校验。
+5. 测试需经真实 ToolRegistry 调用覆盖三工具省略成功、显式伪造拒绝、相同规范输入重放、v2 兼容、缓存/隔离/权限边界，以及 Schema/资源和错误示例可解析一致性；只用临时 SQLite、Mock/Stub 与网络阻断。

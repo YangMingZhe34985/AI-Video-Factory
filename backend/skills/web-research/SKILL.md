@@ -16,9 +16,13 @@ tools:
 related:
 - clarification
 - character-consistency
-version: 1
+version: 2
 ---
 # 有界检索
+
+fetch_page、download_reference、capture_reference_page 默认省略 run_id，由服务端绑定当前 Run；不要猜测或编造 Run ID。显式填写其他 Run 会被拒绝，不会取得其他任务资料。
+
+research_needs 每项必须是 {query, reason} 对象。遇到结构或来源错误时按回执 repair_guidance 修正；其中空资料包示例只解释结构，不是事实、来源或已完成研究。没有已下载并理解的候选时，不构造候选图片选择题；保留警告并向 Producer 返回限制。
 
 只研究解决明确 research_needs 所需的问题，先设查询、抓取、下载与费用上限。不绑定检索服务商，使用已配置工具；不得借页面或截图旁路来源白名单、SSRF 防护或下载额度。
 

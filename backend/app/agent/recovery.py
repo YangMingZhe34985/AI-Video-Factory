@@ -88,6 +88,8 @@ def invoke_once(registry, name, data, ctx):
             parsed = registry._validate_input(spec, data)
             registry._authorize(spec, ctx)
             require_run(ctx, getattr(parsed, "run_id", None))
+            from app.agent.search.scope import bind_run_input
+            parsed = bind_run_input(name, parsed, ctx)
             registry._check_scoped_replay(spec, previous, parsed, ctx)
             if previous.status not in {"failed", "rejected"}:
                 return registry.invoke(name, data, ctx)
