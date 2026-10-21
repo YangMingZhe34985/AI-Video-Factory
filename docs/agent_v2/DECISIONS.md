@@ -388,3 +388,15 @@ V11f 将最近的 Skill 正文保留，却仍可投影唯一一次读取的资�
 soft character target 维持 60,000；唯一/最新资源、错误与最新计划可能使其超限，必须诚实报告。真实每轮输入 token ≤60k 的目标不变，不能截断合同或伪称软字符数等于 token。已冻结 pending_context 和已有 LLM 回执照旧精确重放，不因 policy_version 升级重新计算或新增付费调用。
 
 旧 V9 fixture 原有 8 个唯一资源被全部压缩的预期不再成立，改为两个资源各重复四次：仍验证旧六份投影、最新两份原文、原历史不变、上下文冻结、恢复无重复调用。Registry 免费重读用例同样构造确被较新读取取代的旧副本；不删除原恢复/源数据断言。
+
+## D-051 · 2026-10-21 · Plan 编译错误的字段级诊断
+
+依据 D-047 / V12e，V11 评测中 Plan 错误缺少节点字段位置，重复整稿纠错浪费调用。
+
+决定：保持原错误码及校验分支；PlanIssue 增加可选 details 对象。节点错误包含 node_id/tool、fields、由真实 ToolSpec 派生的 allowed_reference_inputs/allowed_input_fields，必要时给 field_hints（from/to）及固定 hint。
+
+新增 details 只提供字段位置与契约名字，不回显提示词、用户参数内容、密钥、完整路径或工件ID；异常字段名有长度/字符界限。details 是纠错辅助，不是归一化/自动改写，不接受 image/images/media 等别名，不自动搬运 params 至 inputs，也不改变授权。
+
+无敏感值回显及字段限长承诺限定新增 details 对象。既有 issue.message 的行为本轮保持不变，不把原消息改写纳入 V12e。
+
+经典工具与 API 形状不变。v3 check_plan、Patch 编译及可审核草稿沿用原 issues 传递；旧只有三字段的 PlanIssue 仍可读取。受影响任务 V12e、V-Gate5b。

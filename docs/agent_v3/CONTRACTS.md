@@ -613,3 +613,16 @@ patches.diff_preview 为逐操作 {op,node_id,before,after}：输入更新仅展
 - 最新 load_skill、最新持久计划证明、system/user、付费证据、澄清/错误及原有权限与信任边界保持；超软目标合法，不强删保护资料。
 - 历史持久消息和收据不改。恢复同 step 继续使用原 pending_context / LLM ledger 冻结值，即便它是在 policy v2 创建；校验不通过仍停止，绝不重新收费规避漂移。
 - 验收：唯一合同、多键合同、重复旧副本、后续失败/路径不匹配/不完整批次、最近两轮边界、不可变原文、既有冻结/恢复和计划投影；只 Mock/Stub。
+
+### V.22.4 Plan 编译字段级诊断（V12e，D-051）
+
+- PlanIssue 增加可选 details 对象，默认独立空字典；旧只有三字段的记录仍可读取。编译器仅在有诊断时序列化 details，原错误码、校验分支与接受路径不变。
+- 节点诊断提供 node_id/tool、fields，以及由当前真实 ToolSpec 派生的 allowed_reference_inputs/allowed_input_fields；必要时提供 field_hints（from/to）及固定 hint。
+- 新增 details 只提供字段位置与契约名字，不回显提示词、用户参数内容、密钥、完整路径或工件 ID；异常字段名有长度和字符界限。该承诺只限定新增 details，既有 issue.message 行为本轮不变。
+- details 仅作纠错辅助，不执行归一化或自动改写，不接受 image/images/media 等别名，不自动搬运 params 至 inputs，不改变授权。
+- allowed_reference_inputs 从当前 ToolSpec 的媒体类型输入派生；text/json 等普通字段不作为媒体引用建议。transform_video 的复合引用沿用 media[].artifact_id 与 source_artifact_id。
+- animate_shot 的首帧、尾帧都是合法声明；是否启用首尾帧仍由既有模型和桥接策略校验。
+- allowed_input_fields 排除通用服务端字段和选择门的 selected_artifact_id；选择结果仍仅由用户选择门写入。
+- typed input 异常携带 inputs.<field>，节点顶层 params 异常位置仍为 params。已提供的安全 field 位置优先保留，不传播 current/expected 等附加值到公开诊断。
+- 实现边界：新增 diagnostics.py；PlanIssue.details:dict 默认空；compiler.issue 接受可选details且仅有值时序列化；_typed_inputs 未声明引用异常 payload 带 field=inputs.<field>；node loop 每轮 spec=None 防前一工具Schema泄漏；节点异常catch调用 issue_details。不变规则：不增加接受路径。
+- v3 check_plan、Patch 编译及可审核草稿沿用原 issues 传递；经典工具与 API 形状不变。

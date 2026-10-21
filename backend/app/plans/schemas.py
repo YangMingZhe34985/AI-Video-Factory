@@ -12,6 +12,7 @@ class PlanIssue(StrictModel):
     code: str
     node_id: str | None = None
     message: str
+    details: dict = Field(default_factory=dict)
 
 
 class NodeEstimate(StrictModel):

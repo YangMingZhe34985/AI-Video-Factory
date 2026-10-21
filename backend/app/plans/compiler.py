@@ -18,6 +18,7 @@ from app.api import AppError
 from app.extensions import db
 from app.models import AgentWorkspaceItem
 from app.plans.schemas import PlanEstimates
+from app.plans.diagnostics import issue_details
 from app.services.model_service import ModelService
 from app.services.storage_service import StorageService
 from app.tools.budget import estimate_model_cost
@@ -65,7 +66,8 @@ def node_inputs(node, *, plan_version=1):
     if set(inputs) & {"model_id", "params", "template_id", "plan_version"}:
         raise AppError("RESERVED_INPUT", "Model, parameters, template and version cannot be supplied inside inputs", 422)
     if value["tool"] == "select_image" and "selected_artifact_id" in inputs:
-        raise AppError("RESERVED_INPUT", "Only a user choice can supply the selected image", 422)
+        raise AppError("RESERVED_INPUT", "Only a user choice can supply the selected image", 422,
+                       payload={"field": "inputs.selected_artifact_id"})
     if value["tool"] in GENERATION_TOOLS:
         inputs.update(model_id=value.get("model_id"), params=deepcopy(value.get("params") or {}))
     elif value.get("model_id") is not None or value.get("params"):
@@ -221,23 +223,30 @@ def _typed_inputs(node, spec, outputs, run, cache, plan_version):
     metadata = {}
     declared = spec.io_types.get("inputs", {})
     for field, value in list(payload.items()):
-        if node["tool"] == "transform_video" and field == "media":
-            if not isinstance(value, list) or not 1 <= len(value) <= 20:
-                raise AppError("INVALID_TRANSFORM_MEDIA", "Transform requires 1 to 20 ordered media references", 422)
-            resolved, items = [], []
-            for item in value:
-                if not isinstance(item, dict) or set(item) != {"type", "artifact_id"} or item["type"] not in TRANSFORM_TYPES:
-                    raise AppError("INVALID_TRANSFORM_MEDIA", "Invalid transform media reference", 422)
-                artifact, info = _resolve_typed(item["artifact_id"], TRANSFORM_TYPES[item["type"]], outputs, run, cache)
-                resolved.append({"type": item["type"], "artifact_id": artifact})
-                items.append({**info, "reference_type": item["type"], "resolved_id": artifact})
-            payload[field], metadata[field] = resolved, items
-        elif node["tool"] == "transform_video" and field == "source_artifact_id" and value is not None:
-            payload[field], metadata[field] = _resolve_typed(value, "video", outputs, run, cache)
-        elif field in declared and value is not None:
-            payload[field], metadata[field] = _resolve_typed(value, declared[field], outputs, run, cache)
-        elif _has_reference(value):
-            raise AppError("UNTYPED_REFERENCE", "Only declared typed inputs may contain references", 422)
+        try:
+            if node["tool"] == "transform_video" and field == "media":
+                if not isinstance(value, list) or not 1 <= len(value) <= 20:
+                    raise AppError("INVALID_TRANSFORM_MEDIA", "Transform requires 1 to 20 ordered media references", 422)
+                resolved, items = [], []
+                for item in value:
+                    if not isinstance(item, dict) or set(item) != {"type", "artifact_id"} or item["type"] not in TRANSFORM_TYPES:
+                        raise AppError("INVALID_TRANSFORM_MEDIA", "Invalid transform media reference", 422)
+                    artifact, info = _resolve_typed(item["artifact_id"], TRANSFORM_TYPES[item["type"]], outputs, run, cache)
+                    resolved.append({"type": item["type"], "artifact_id": artifact})
+                    items.append({**info, "reference_type": item["type"], "resolved_id": artifact})
+                payload[field], metadata[field] = resolved, items
+            elif node["tool"] == "transform_video" and field == "source_artifact_id" and value is not None:
+                payload[field], metadata[field] = _resolve_typed(value, "video", outputs, run, cache)
+            elif field in declared and value is not None:
+                payload[field], metadata[field] = _resolve_typed(value, declared[field], outputs, run, cache)
+            elif _has_reference(value):
+                raise AppError("UNTYPED_REFERENCE", "Only declared typed inputs may contain references", 422)
+        except AppError as error:
+            # Keep the original refusal, with only its authoring-field location.
+            location = field if field in {"model_id", "params", "plan_version", "template_id"} else "inputs." + field
+            payload = error.payload if isinstance(error.payload, dict) else {}
+            error.payload = {"field": location, **payload}
+            raise
     return payload, metadata
 
 
@@ -421,8 +430,11 @@ def _compile(raw, run, *, registry, plan_version):
         registry = build_v3_registry()
     issues, estimates, validated, outputs, cache = [], [], {}, {}, {}
     dag = {"order": [], "dependencies": {}, "children": {}}
-    def issue(code, message, node_id=None):
-        issues.append({"code": code, "node_id": node_id, "message": message})
+    def issue(code, message, node_id=None, details=None):
+        item = {"code": code, "node_id": node_id, "message": message}
+        if details:
+            item["details"] = details
+        issues.append(item)
     editable = {}
     try:
         editable = finite_json(authoring_plan(raw))
@@ -484,6 +496,7 @@ def _compile(raw, run, *, registry, plan_version):
     media_fields = {}
     for node_id in dag["order"]:
         node = nodes[node_id]
+        spec = None
         try:
             if node["tool"] not in PLAN_TOOLS:
                 raise AppError("PLAN_TOOL_FORBIDDEN", "Tool is not in the Plan executable vocabulary", 422)
@@ -517,7 +530,8 @@ def _compile(raw, run, *, registry, plan_version):
             validated[node_id], outputs[node_id] = payload, output
             estimates.append(estimate)
         except (AppError, ValidationError, KeyError, TypeError, ValueError) as error:
-            issue(getattr(error, "code", "INVALID_NODE_INPUT"), _issue_message(error), node_id)
+            issue(getattr(error, "code", "INVALID_NODE_INPUT"), _issue_message(error), node_id,
+                  issue_details(error, node, spec))
     for character_id, references in plan.get("character_references", {}).items():
         for reference in references:
             if "artifact" in reference:
