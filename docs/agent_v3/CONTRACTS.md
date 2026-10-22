@@ -656,3 +656,13 @@ patches.diff_preview 为逐操作 {op,node_id,before,after}：输入更新仅展
 - compose/QC只给合法inputs.target_aspect_ratio、target_size省略或null时，按D-048继承同源合法画布，否则采用确定性720短边画布。brief比例优先；显式尺寸不覆盖；未知SAR、比例/宽高冲突与不成对的显式尺寸照旧阻断，执行Schema不放宽。
 - 不接受videos、video_ids、ratio、size等别名，不从prompt/rationale推测身份、比例或数据路径，不改生成参数/模型/提示词/预算。
 - 只改编译候选；原输入、workspace和旧receipt保持原样，新批准版本使用规范结果及哈希，重复编译稳定。已有批准版本按冻结receipt恢复，不重写历史。
+
+### V.23.3 已被取代回执的请求投影（V13c，D-057）
+
+- context.policy_version=4；原messages、ToolInvocation、workspace及已冻结pending_context不变，已有step/ledger恢复不重算。仅处理完整、连续且调用/回执一一配对的批次；解析、Schema或证明失败保留原文。
+- 失败check指工具成功返回合法agent_check结构且issues非空，不含Registry/Schema/权限错误。plan_ref须精确合法；inline check(plan)须规范摘要唯一对应真实write/read/append保存证明；同key/version摘要冲突不得投影。输入仍受既有工作区JSON边界约束，合法大回执不误套工作区256KiB上限。
+- 只有同workspace key更高版本在旧失败之后完成合法check（issues可仍非空）才取代旧失败；仅保存新稿、其他key、同版本重复检查或后续工具错误不算替代。只投影旧失败回执，assistant参数不因此改写。
+- list_models仅压缩真实ListModelsInput规范参数完全相同的较旧合法ListModelsOutput；省略默认与null按Schema归一，不额外折叠family大小写。最新有效目录保留，后续坏回执不能替代它。
+- 这两类已证明superseded回执可越过最近两轮保护，不依赖软字符目标触发，但仅在替换实际更短时投影。其余最新Skill资源、最新计划/读回、最近两轮及权限/硬约束保护沿用D-050。
+- context_projection含policy_version、request_view_only、not_executable、原回执SHA256/字符数。旧check保留issue数量/码摘要、原精确WorkspaceRef、替代版本、免费read_workspace和check_plan入口；重check只提供当前规则诊断，不声称重现旧错误。目录保留规范过滤器、model_count与免费list_models入口；重读可变目录不是原历史快照。
+- metrics新增compacted_check_result_count、compacted_catalog_result_count及对应indexes，总体索引去重；字符统计不证明真实token峰值。helper仅处理历史数据，不查询数据库、调用工具/LLM或改变预算。

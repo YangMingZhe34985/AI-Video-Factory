@@ -23,7 +23,7 @@ def test_only_resource_is_protected_even_before_recent_rounds_and_above_soft_tar
     projected, stats = context.project_messages(messages)
     assert messages == original == projected
     assert stats["over_soft_target"] and stats["compacted_result_count"] == 0
-    assert stats["policy_version"] == 3
+    assert stats["policy_version"] == 4
 
 
 def test_latest_exact_resource_preserved_and_prior_full_copy_can_be_reread():
@@ -36,7 +36,7 @@ def test_latest_exact_resource_preserved_and_prior_full_copy_can_be_reread():
     info = decoded(projected, 1)["context_projection"]
     assert info["reread"] == [{"tool": "read_skill_resource", "arguments": {
         "name": "plan-review", "path": "resources/tools/generate_video.json"}}]
-    assert info["policy_version"] == 3 and stats["compacted_result_count"] == 1
+    assert info["policy_version"] == 4 and stats["compacted_result_count"] == 1
     assert stats["over_soft_target"]
     assert all(old == new for old,new in zip(messages, projected) if old["role"] != "tool")
 

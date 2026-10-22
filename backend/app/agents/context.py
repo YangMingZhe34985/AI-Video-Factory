@@ -5,7 +5,7 @@ from hashlib import sha256
 import json
 
 
-POLICY_VERSION = 3
+POLICY_VERSION = 4
 SOFT_CHAR_TARGET = 60_000
 MIN_RESULT_CHARS = 2_000
 PROTECTED_ROUNDS = 2
@@ -147,6 +147,8 @@ def project_messages(messages):
     rounds = _completed_rounds(messages)
     from app.agents.context_plans import project_saved_plans
     plan_stats = project_saved_plans(messages, projected, rounds, policy_version=POLICY_VERSION)
+    from app.agents.context_receipts import project_superseded_receipts
+    receipt_stats = project_superseded_receipts(messages, projected, rounds, policy_version=POLICY_VERSION)
     size = len(_json(projected))
     protected_plans = set(plan_stats["protected_plan_result_indexes"])
     latest_skills = {}
@@ -164,7 +166,8 @@ def project_messages(messages):
                 if key is not None:
                     latest_resources[key] = position
     protected_resources = set(latest_resources.values())
-    compacted = list(plan_stats["compacted_plan_result_indexes"])
+    compacted = [*plan_stats["compacted_plan_result_indexes"],
+        *receipt_stats["compacted_check_result_indexes"], *receipt_stats["compacted_catalog_result_indexes"]]
     for batch in rounds[:-PROTECTED_ROUNDS]:
         for position, reply, function in batch:
             if position in protected_plans or position in protected_resources:
@@ -189,10 +192,14 @@ def project_messages(messages):
             compacted.append(position)
         if size <= SOFT_CHAR_TARGET:
             break
+    compacted = sorted(set(compacted))
     metrics = {"policy_version": POLICY_VERSION, "before_chars": before, "after_chars": size,
         "soft_target_chars": SOFT_CHAR_TARGET, "compacted_result_count": len(compacted),
         "compacted_message_indexes": sorted(compacted), "over_soft_target": size > SOFT_CHAR_TARGET,
         "compacted_argument_count": plan_stats["compacted_argument_count"],
         "compacted_argument_indexes": plan_stats["compacted_argument_indexes"],
-        "compacted_plan_result_count": len(plan_stats["compacted_plan_result_indexes"])}
+        "compacted_plan_result_count": len(plan_stats["compacted_plan_result_indexes"]),
+        "compacted_check_result_count": len(receipt_stats["compacted_check_result_indexes"]),
+        "compacted_catalog_result_count": len(receipt_stats["compacted_catalog_result_indexes"]),
+        **receipt_stats}
     return projected, metrics
