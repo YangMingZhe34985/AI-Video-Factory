@@ -442,3 +442,13 @@ PlanDraft增加可省略的duration_constraint，含规范target_duration_sec、
 单一交付主片的QC冻结同一约束并检查实际成片；多个独立主片不把全片目标套给每个片段，而在进入结果审核前与结果批准时聚合实测。直接视频无QC节点也必须经过这一交付检查。只用批准版本中的约束，失败沿qc_failed/attention处理；不得自动补片、拉伸、裁剪或付费重试。
 
 影响：V13a、V-Gate6；v3 brief/Plan Schema、workspace验证、compiler/duration、QC与确定性runtime、作者资源与Mock回归。无数据库迁移、媒体权限或经典/v2变更。新增提示词/Skill说明待Claude V-Gate6审阅；默认启用仍须审读后交用户确认。
+
+## D-056 · 2026-10-22 · 不含语义猜测的计划规范化
+
+原因：本地节点的空characters列表、compose/QC只有合法目标比例而缺尺寸，造成重复整稿纠错；两者可按既有契约确定处理。
+
+决定：编译器在有限JSON检查后、PlanDraft/身份校验前，只在独立候选副本中忽略已知可执行非生成节点的精确characters: []。生成节点的[]继续表示有意空镜；未知工具、非空或畸形声明与其他字段错误仍拒绝。
+
+compose/QC的target_aspect_ratio合法且target_size省略或null时，复用D-048：优先继承输入主片/第一段的同一合法画布，否则采用短边至少720且边长为偶数的确定性画布。brief明确比例仍优先，冲突阻断；显式尺寸不替换，缺比例、未知比例、宽高冲突、别名和多余字段不放宽。执行TargetGeometry继续要求合法成对字段，不在执行时猜测。
+
+不改原作者输入、不可变workspace、历史回执和批准版本；新审批/报价使用编译后的Plan与哈希，重复编译稳定。范围仅compiler/aspect、新增回归及契约记录，不改提示词、Skill、界面、经典工作流或时长规则。影响V13b、V-Gate6；实际纠错收益由固定真实样本衡量，不用Stub推断。

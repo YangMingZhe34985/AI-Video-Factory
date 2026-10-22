@@ -167,7 +167,7 @@
 | V12c-eval-recovery | 修复默认答题幂等键与审核B范围误报；同一Patch零新增LLM续验（D-053） | Codex | V12a–V12f | 完成；完整后端2799项/144文件、构建及隔离通过；原Patch零新增LLM续验通过，原失败保留 |
 | V-Gate5b | 补验：c7×1、c3×2、审核 B 局部修订、c1×1（真实调用 ≤150，媒体全 Mock），Claude 审读 | Codex（测试）、Claude（审读） | V12a–V12f | 有条件通过（2026-10-22，D-054；比例/Research/Mock覆盖/审核B通过；c3-2 时长失败与峰值见 VGATE5_REVIEW.md 末节；默认启用须 V13a + V-Gate6） |
 | V13a | **阻塞**：时长约束（brief 明确时长与容差 → 编译器按实际片段总长校验，PLAN_DURATION_MISMATCH → QC 核对成片时长；契约先行） | Codex | V-Gate5b | 实现完成（2026-10-22；D-055 / V.23.1；2898项后端与前端构建通过，待V-Gate6真实验收） |
-| V13b | 无损规范化减少成批纠错（非生成节点 characters=[] 忽略；compose/QC 只给比例时推导尺寸） | Codex | V-Gate5b | 待开始 |
+| V13b | 无损规范化减少成批纠错（非生成节点 characters=[] 忽略；compose/QC 只给比例时推导尺寸） | Codex | V-Gate5b | 实现完成（2026-10-22；D-056 / V.23.2；2946项后端与前端构建通过） |
 | V13c | 上下文压缩：取代的失败 check_plan 回执与重复模型目录只保留最新；峰值门槛 ≤80k token | Codex | V-Gate5b | 待开始 |
 | V13d | 小修：固定事件须在镜头内完成；投影标记专用错误码；统计识别续验标签；审定标记更新 | Codex | V-Gate5b | 待开始 |
 | V-Gate6 | 默认启用前验收：c3×2、c7×1 + 双人身份抽检（真实图片 ≤6、视频 0、文本/视觉 ≤120），Claude 审读 | Codex（测试）、Claude（审读） | V13a–V13d | 待开始 |

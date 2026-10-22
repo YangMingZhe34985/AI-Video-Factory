@@ -308,7 +308,12 @@ def delivery_inputs(node, metadata, aspect):
         field = "inputs.artifact_id" if node["tool"] == "qc_video" else "inputs.video_artifact_ids"
         _fail("PLAN_ASPECT_RATIO_UNKNOWN", node, field, None, target)
     if not aspect:
-        return
+        # A ratio-only authoring input has one deterministic D-048 canvas.
+        # Keep explicit pairs and invalid/missing ratios on the strict path.
+        if isinstance(explicit, str) and explicit in ASPECTS and inputs.get("target_size") is None:
+            aspect = explicit
+        else:
+            return
     for field in ("target_aspect_ratio", "target_size"):
         if inputs.get(field) is not None:
             current = geometry(inputs[field]).get("aspect_ratio") if field == "target_size" else inputs[field]

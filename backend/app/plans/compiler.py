@@ -442,6 +442,14 @@ def _compile(raw, run, *, registry, plan_version):
     editable = {}
     try:
         editable = finite_json(authoring_plan(raw))
+        # Empty local-node character declarations carry no identity intent.
+        # Normalize only the detached candidate, before shape/identity checks.
+        if isinstance(editable, dict) and isinstance(editable.get("nodes"), list):
+            for candidate in editable["nodes"]:
+                if (isinstance(candidate, dict) and isinstance(candidate.get("tool"), str)
+                        and candidate["tool"] in PLAN_TOOLS - GENERATION_TOOLS
+                        and candidate.get("characters") == []):
+                    candidate.pop("characters")
         plan = PlanDraft.model_validate(editable).model_dump(mode="json")
         if type(plan_version) is not int or plan_version < 1:
             raise ValueError("Invalid server plan version")

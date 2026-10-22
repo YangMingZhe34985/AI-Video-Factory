@@ -649,3 +649,10 @@ patches.diff_preview 为逐操作 {op,node_id,before,after}：输入更新仅展
 - 单一主片对应qc_video.inputs可冻结duration_constraint，缺省不序列化；与Plan目标冲突拒绝，中间参考QC不能继承全片目标。QC继续原解码/批准片段合计检查，再增加USER_TARGET_DURATION，检查实测master。多个独立主片由运行时聚合检查；不把总目标逐片重复应用。
 - 进入awaiting_result_review前、approve_results时按批准Plan解析最终主片并聚合实测，直接视频无QC也覆盖。只信同Run有效工件、指纹及实际探测；失败不能进入success，沿PLAN_QC_FAILED/qc_failed进入attention或拒绝批准，不自动拉伸、裁剪、追加付费片段。旧批准Plan缺duration_constraint保持原行为。
 - 验收仅Mock/Stub：120秒目标+7×10拒绝；无目标不变；approx边界/exact/at_most；来源缺失/伪造/无目标禁止猜测；生成、retain、transform、compose重复片段、master/package/压缩别名与多交付；QC实测不足/超出；根约束审批漂移、Patch、旧批准恢复；资源Schema同步。真实样本另按V-Gate6固定次数，绝不为单例调提示词或重新采样。
+
+### V.23.2 无损计划规范化（V13b，D-056）
+
+- check_plan、submit_plan和Patch编译共用规范化：有限JSON检查后、PlanDraft及身份校验前，仅忽略已知可执行非生成节点的characters: []。生成节点[]保留，其他声明和字段错误仍拒绝。
+- compose/QC只给合法inputs.target_aspect_ratio、target_size省略或null时，按D-048继承同源合法画布，否则采用确定性720短边画布。brief比例优先；显式尺寸不覆盖；未知SAR、比例/宽高冲突与不成对的显式尺寸照旧阻断，执行Schema不放宽。
+- 不接受videos、video_ids、ratio、size等别名，不从prompt/rationale推测身份、比例或数据路径，不改生成参数/模型/提示词/预算。
+- 只改编译候选；原输入、workspace和旧receipt保持原样，新批准版本使用规范结果及哈希，重复编译稳定。已有批准版本按冻结receipt恢复，不重写历史。
