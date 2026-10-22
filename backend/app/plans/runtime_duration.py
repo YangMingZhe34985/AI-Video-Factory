@@ -3,7 +3,8 @@ import math
 
 from app.api import AppError
 from app.plans import execution
-from app.plans.duration import duration_details, duration_targets, matches_duration
+from app.plans.duration import duration_targets
+from app.plans.measured_duration import measured_details, segment_count
 from app.services.media_probe_service import MediaProbeService
 from app.services.storage_service import StorageService
 
@@ -39,7 +40,7 @@ def check_delivery_duration(run, plan, tasks, receipt):
         targets = duration_targets(plan)
         if not targets:
             raise _failure("The approved duration has no measurable final video")
-        total = 0.0
+        total, observations = 0.0, []
         for target in targets:
             artifact_id, expected = _target_artifact(run, target, tasks, receipt)
             artifact = execution.artifact_for_run(run, artifact_id, "video")
@@ -60,8 +61,9 @@ def check_delivery_duration(run, plan, tasks, receipt):
             if execution.fingerprint(run, artifact_id, "video") != before:
                 raise _failure("A final video changed during the duration check")
             total += seconds
-        details = duration_details(total, constraint)
-        if not matches_duration(total, constraint):
+            observations.append((segment_count(plan, target), media.get("fps")))
+        details = measured_details(total, constraint, observations)
+        if not details["passed"]:
             raise _failure("Measured delivery duration does not meet the approved user target", details=details)
         return details
     except AppError as error:

@@ -190,7 +190,7 @@ def probe_media(data, ctx):
 
 def qc_video(data, ctx):
     from app.tools.specs.qc_video import within_duration
-    run, _task, _version, _node = policy.task_context(ctx)
+    run, _task, version, node = policy.task_context(ctx)
     checks, total, source_meta = [], 0.0, []
     for key in data.video_artifact_ids:
         artifact, path = _source(run, key)
@@ -211,10 +211,12 @@ def qc_video(data, ctx):
     from app.plans.aspect import delivery_checks
     checks.extend(delivery_checks(media, data.target_aspect_ratio, data.target_size))
     if data.duration_constraint is not None:
-        from app.plans.duration import matches_duration
+        from app.plans.measured_duration import measured_details, segment_count
+        details = measured_details(media["duration_sec"], data.duration_constraint.model_dump(mode="json"),
+            [(segment_count(version.plan, node["inputs"]["artifact_id"]), media.get("fps"))])
         checks.append({"code": "USER_TARGET_DURATION",
-            "passed": matches_duration(media["duration_sec"], data.duration_constraint.model_dump(mode="json")),
-            "summary": "主片实测时长符合已批准的用户目标"})
+            "passed": details["passed"], "details": details,
+            "summary": "主片实测时长符合已批准的用户目标（含技术测量误差）"})
     return _finish(ctx, {"passed": all(item["passed"] for item in checks), "checks": checks,
         "warnings": ["仅验证文件结构与时长，未验证审美、角色一致性或叙事质量。"]})
 

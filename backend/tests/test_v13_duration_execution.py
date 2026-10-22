@@ -42,9 +42,10 @@ def output_stubs(monkeypatch, seconds):
 
 @pytest.mark.parametrize("mode,target,tolerance,actual,passed", [
     ("approx", 120, 15, 105, True), ("approx", 120, 15, 135, True),
-    ("approx", 120, 15, 104.99, False), ("approx", 120, 15, 135.01, False),
-    ("exact", 10, 0, 10, True), ("exact", 10, 0, 9.9, False),
-    ("at_most", 10, 0, 3, True), ("at_most", 10, 0, 10.01, False),
+    ("approx", 120, 15, 104.99, True), ("approx", 120, 15, 135.01, True),
+    ("approx", 120, 15, 104.49, False), ("approx", 120, 15, 135.51, False),
+    ("exact", 10, 0, 10, True), ("exact", 10, 0, 9.9, True), ("exact", 10, 0, 9.49, False),
+    ("at_most", 10, 0, 3, True), ("at_most", 10, 0, 10.01, True), ("at_most", 10, 0, 10.51, False),
 ])
 def test_final_media_uses_measured_duration_and_frozen_bounds(monkeypatch, mode, target, tolerance, actual, passed):
     tasks = output_stubs(monkeypatch, [actual])
@@ -120,19 +121,25 @@ def test_qc_optional_constraint_preserves_legacy_serialization():
     assert QcInput.model_validate(data).model_dump(mode="json") == data
 
 
-@pytest.mark.parametrize("mode,actual", [("exact", 9.9), ("at_most", 10.1)])
-def test_qc_does_not_apply_old_half_second_tolerance_to_user_target(monkeypatch, mode, actual):
+@pytest.mark.parametrize("mode,actual,passed", [
+    ("exact", 9.9, True), ("at_most", 10.1, True), ("exact", 9.4, False), ("at_most", 10.6, False)])
+def test_qc_user_target_has_separate_measurement_allowance(monkeypatch, mode, actual, passed):
     data = QcInput(plan_version=1, artifact_id="master", video_artifact_ids=["clip"],
         duration_constraint=constraint(mode=mode))
-    monkeypatch.setattr(media.policy, "task_context", lambda *_a: (object(), None, None, None))
+    plan = final_plan(target=constraint(mode=mode))
+    qc_node = {"inputs": {"artifact_id": {"ref": "clip0.video"}}}
+    monkeypatch.setattr(media.policy, "task_context", lambda *_a:
+        (object(), None, SimpleNamespace(plan=plan), qc_node))
     monkeypatch.setattr(media, "_source", lambda _run, key: (SimpleNamespace(meta={
         "plan_output": {"duration_sec": 10}}), key))
     monkeypatch.setattr(media, "_duration", lambda *_a, **_kw: {"duration_sec": actual, "has_audio": False})
     monkeypatch.setattr(media, "_finish", lambda _ctx, result: result)
     result = media.qc_video(data, object())
     checks = {item["code"]: item["passed"] for item in result["checks"]}
-    assert checks["TOTAL_DURATION"] is True
-    assert checks["USER_TARGET_DURATION"] is False and result["passed"] is False
+    assert checks["TOTAL_DURATION"] is passed
+    assert checks["USER_TARGET_DURATION"] is passed and result["passed"] is passed
+    detail = next(item["details"] for item in result["checks"] if item["code"] == "USER_TARGET_DURATION")
+    assert detail["duration_tolerance_sec"] == 0 and detail["measurement_error_sec"] == .5
 
 
 def test_begin_rejects_root_duration_drift_even_when_nodes_are_unchanged(monkeypatch):
@@ -191,7 +198,8 @@ def test_result_approval_remeasures_and_rejects_success(monkeypatch):
 
 
 @pytest.mark.config(AGENT_MODE_ENABLED=True, AGENT_V3_ENABLED=True)
-@pytest.mark.parametrize("measured,expected_status", [(2, "attention"), (5, "awaiting_result_review")])
+@pytest.mark.parametrize("measured,expected_status", [
+    (2, "attention"), (5, "awaiting_result_review"), (5.04, "awaiting_result_review")])
 def test_mock_job_direct_video_obeys_approved_target_without_qc_node(app_ctx, monkeypatch, measured, expected_status):
     from app.agents.workspace import write_workspace
     from app.models import ApiTask, ToolInvocation

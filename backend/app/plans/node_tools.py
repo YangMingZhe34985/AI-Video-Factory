@@ -88,6 +88,26 @@ class PackageInput(ProbeInput):
     compressed_artifact_id: str | None = None
 
 
+class QcCheck(Strict):
+    code: str
+    passed: bool
+    summary: str
+    details: dict | None = None
+
+    @model_serializer(mode="wrap")
+    def compatible_details(self, handler):
+        value = handler(self)
+        if self.details is None:
+            value.pop("details", None)
+        return value
+
+
+class QcOutput(Strict):
+    passed: bool
+    checks: list[QcCheck]
+    warnings: list[str]
+
+
 class RetainInput(Strict):
     video_artifact_id: str = Field(min_length=1, max_length=100)
     source_start_sec: float = Field(ge=0, strict=True)
@@ -149,6 +169,8 @@ def plan_spec(spec):
     changes = {"cost_fn": cost}
     if spec.name in _INPUTS:
         changes.update(input_model=_INPUTS[spec.name], handler=_handler(spec.name))
+    if spec.name == "qc_video":
+        changes["output_model"] = QcOutput
     if spec.name == "transform_video":
         changes["io_types"] = {"inputs": {"prompt": "text", "media": "json", "source_artifact_id": "video"},
                                "outputs": {"video": "video"}}

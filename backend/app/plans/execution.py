@@ -1,5 +1,6 @@
 """Resolve real inputs and typed outputs without trusting launch receipts."""
 from copy import deepcopy
+import math
 
 from app.agent.plan_versions import inputs_hash
 from app.api import AppError
@@ -93,11 +94,21 @@ def validate_outputs(run, task, spec, output):
                 expected = task.state.get("output_metadata", {}).get(field, {})
                 if kind == "video" and expected.get("duration_sec") is not None:
                     from app.services.media_probe_service import MediaProbeService
+                    from app.plans.measured_duration import measurement_allowance
                     artifact = artifact_for_run(run, artifact_id, "video")
                     duration = float(expected["duration_sec"])
-                    media = MediaProbeService.probe(StorageService.resolve(artifact.file_path), mock_duration_sec=duration)
-                    if float(media["duration_sec"]) > duration + .05:
-                        raise AppError("PLAN_OUTPUT_DURATION_EXCEEDED", "Output video exceeds its approved duration bound", 422)
+                    media = MediaProbeService.probe(StorageService.resolve(artifact.file_path),
+                        decode=True, mock_duration_sec=duration)
+                    count = len(task.inputs["video_artifact_ids"]) if spec.name == "compose_video" else 1
+                    allowance = measurement_allowance([(count, media.get("fps"))])
+                    actual = media.get("duration_sec")
+                    if (isinstance(actual, bool) or not isinstance(actual, (int, float))
+                            or not math.isfinite(actual) or actual <= 0
+                            or actual > duration + allowance["measurement_error_sec"] + 1e-6):
+                        raise AppError("PLAN_OUTPUT_DURATION_EXCEEDED", "Output video exceeds its approved duration bound", 422,
+                            payload={"approved_duration_sec": duration, "measured_duration_sec": actual, **allowance})
+                    if fingerprint(run, artifact_id, "video") != record:
+                        raise AppError("PLAN_INPUT_CHANGED", "Output video changed during measurement", 409)
                     artifact.meta = {**deepcopy(artifact.meta or {}), "plan_output": {"duration_sec": duration,
                         "task_id": task.id, "run_id": run.run_id, "mock": bool(media.get("mock"))}}
                 artifacts[artifact_id] = record

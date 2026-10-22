@@ -730,3 +730,13 @@ patches.diff_preview 为逐操作 {op,node_id,before,after}：输入更新仅展
 启动器 gate6_launch 默认只校验正式已提交源码、完整回归与唯一工作目录，不读取凭证或执行子进程。显式 --execute 后只提取 DASHSCOPE_API_KEY 白名单行进入子进程环境；禁止解释数据库/Redis配置、不输出或保存凭证，实际执行入口继续禁dotenv。
 
 身份Run必须属于三个固定规划归档之一，且 round、phase、case、audit_label、run_id 与审核状态逐项匹配；优先最早合格c3，均不合格可用固定c7。至少一个c3进入审核仍是独立验收目标，不因c7抽检成功而算通过。
+
+### V.23.6 实测时长技术余量（V13e，D-060）
+
+- 编译期V.23.1保持严格：用户容差和Plan.duration_constraint不变；不向Schema增加可由Agent调节的测量容差。exact/at_most编译只保留1e-6数值误差。
+- 运行期QC和交付结果检查使用E=max(0.5秒, Σ(n_i/fps_i))，只在原批准用户上下界之外加入E。实测必须正有限，边界比较仍保留1e-6；approx亦适用，技术余量不冒充用户同意的容差。
+- n_i来自批准最终compose的video_artifact_ids列表长度（重复出现计数；嵌套compose是一个输入片段），直接视频/retain/transform/既有主片为1。不数依赖节点或QC自填来源列表。多个独立最终主片求和，package与compressed别名复用原去重，整体仅一个0.5秒基线。
+- fps_i只取该成片本次decode=True文件探测，缺失/无效不贡献帧增量且计入未知FPS片段数；不使用计划、缓存或默认帧率。文件FPS不是CFR间隔证明。无合法片段数或非有限计算拒绝。
+- 检查详情保留原current/target/duration_tolerance/mode/minimum/maximum，另外给出measurement_error_sec、measurement_frame_allowance_sec、measurement_segment_count、measurement_unknown_fps_segments、effective_minimum_duration_sec、effective_maximum_duration_sec及passed。QC检查中details沿用同一详情；不改冻结Plan/批准hash/历史回执。归属、输出指纹前后复核及原结构QC保持。
+- 仅离线覆盖，Gate6 Mock视频不能验证真实帧偏差。应单独报告此限制。
+- v3视频输出登记的旧+0.05秒技术上限同步使用同一E；compose片段数取服务端冻结解析的task.inputs，其他输出1。按完整解码时长比较批准输出秒数，前后指纹一致才登记；不改变费用、参数或下游引用时长限制。v3专用QcOutput.checks支持可选details，缺失时不序列化，经典QC不变。
