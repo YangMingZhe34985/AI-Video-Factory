@@ -1362,3 +1362,20 @@ V13c已以a22d5bb本地合并；D基于该提交，先D-058/V.23.4。新增PLAN_
 正式定向TEMP/cc-v13d-focus-1022213947-e4d2：234项全通过。全量TEMP/cc-v13d-1022214039-a9a4：3097项/153文件精确全通过、无遗漏/额外/重复/失败/跳过，前端构建及所有进程通过、source/HEAD/branch冻结、guard0；提交前再次复核source-after一致。本轮比前轮慢（约15分钟），多个未修改经典用例同样变慢；独立旧defaults用例profile通过，create_app1.082秒，投影验证器未调用，没有已证实的D性能回归。诊断保留TEMP/cinecrew-v13d-performance-profile，未因此改代码或跳测试。
 
 准备本地提交合并后切agent-v3/V-Gate6，先D-059/V.23.5、迁入已独立审查的评测护栏，再定向与全量验证后才真实执行。候选56项Stub不是正式Gate结论。所有真实调用仍0；默认启用v3不变，不推送、不建PR、不进V8，不读写私人笔记。
+
+## 2026-10-22 · Claude · V13 前置评审、约束展示与默认开启草稿（与 Codex 并行）
+状态：完成
+分支与提交：`agent-v3/V13-constraint-ui`（独立 worktree），已合并到 `feat/agent-v2`
+完成内容：
+- 前置评审 V13a–c（已合并部分）：V13b、V13c 无问题。V13a 发现缺陷：exact/at_most 容差为 0，`runtime_duration.check_delivery_duration` 用 1e-6 误差比较 ffprobe 实测时长，真实视频的帧级偏差（如 5.04 秒）会在生成完成后把 Run 打成 attention（`runtime.py:_check_result_duration`）。Mock 时长精确，测试测不出。
+- 计划视图显示需求约束：新增 `v3-constraints.js`，`V3PlanBoard.vue` 在统计卡下显示目标时长与容差、当前总长是否符合、画面比例（读计划 duration_constraint 与 compose/QC 的 target_aspect_ratio，服务端 PLAN_DURATION_MISMATCH/UNKNOWN 优先）。只读展示，不改后端。
+- 起草 `docs/agent_v3/DEFAULT_ON_PLAN.md`：现状（开关只影响新 Run）、开启前置条件、分阶段灰度（借助 AGENT_ALLOWED_USERS）、回滚、观察指标、用户可见变化与待用户决定事项。
+测试：node --test 144 passed（新增 7 项）；构建通过；agent-v3.smoke.js PASS（夹具补约束字段并断言可见）。真实调用 0。
+未完成 / 下一步：
+
+### 给 Codex：插入 V13e（V-Gate6 交付前完成；若已收到用户转达的同一条指令则忽略本段）
+- 编译期仍按参数严格校验；只在运行期实测这一步增加测量误差，建议 max(0.5 秒, 片段数 × 1 帧时长)，at_most 同样适用；先记决策（D-059 起）再改 CONTRACTS。
+- 补测试：exact 5 秒实测 5.04 秒通过；实测 5.8 秒仍失败；at_most 120 秒实测 120.3 秒通过。报告注明本项只有离线覆盖。
+- 另建议 V14a（默认开启前）：v3 运行指标。现有 `agent/monitoring.py: run_metrics` 按 v2 结构编写（shots、needs_attention），不覆盖 v3 计划节点与 attention；需求见 DEFAULT_ON_PLAN.md 第 5 节。
+- V3PlanBoard 新增了“需求约束”区块与 `data-testid=plan-constraints`，改该组件时请保留。
+需要对方或用户决定：DEFAULT_ON_PLAN.md 第 7 节三项，待 V-Gate6 通过后一并交用户确认。
