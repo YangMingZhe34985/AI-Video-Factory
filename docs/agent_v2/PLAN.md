@@ -165,6 +165,11 @@
 | V12e | 编译错误字段级提示（节点、字段、合法引用输入名；不改规则、不接受别名） | Codex | V-Gate5 | 实现完成、量化未达（全量2766项及构建通过；新样本无UNTYPED_REFERENCE，但角色/选型/参数等仍成批纠错） |
 | V12f | 意图评估以最终草稿为对象（提示词与卡片文案；判定不放宽） | Codex | V-Gate5 | 完成（完整后端2768项、137前端、构建与独立浏览器通过；仅本地合并） |
 | V12c-eval-recovery | 修复默认答题幂等键与审核B范围误报；同一Patch零新增LLM续验（D-053） | Codex | V12a–V12f | 完成；完整后端2799项/144文件、构建及隔离通过；原Patch零新增LLM续验通过，原失败保留 |
-| V-Gate5b | 补验：c7×1、c3×2、审核 B 局部修订、c1×1（真实调用 ≤150，媒体全 Mock），Claude 审读 | Codex（测试）、Claude（审读） | V12a–V12f | 测试完成，待Claude审读；74真实调用、真实媒体0；B仅第三镜重做/15节点复用/可信Director/重新交付通过；60k、c3时长及批量纠错未达，默认启用仍阻塞；见docs/agent_v3/V12_TEST_REPORT.md |
+| V-Gate5b | 补验：c7×1、c3×2、审核 B 局部修订、c1×1（真实调用 ≤150，媒体全 Mock），Claude 审读 | Codex（测试）、Claude（审读） | V12a–V12f | 有条件通过（2026-10-22，D-054；比例/Research/Mock覆盖/审核B通过；c3-2 时长失败与峰值见 VGATE5_REVIEW.md 末节；默认启用须 V13a + V-Gate6） |
+| V13a | **阻塞**：时长约束（brief 明确时长与容差 → 编译器按实际片段总长校验，PLAN_DURATION_MISMATCH → QC 核对成片时长；契约先行） | Codex | V-Gate5b | 待开始 |
+| V13b | 无损规范化减少成批纠错（非生成节点 characters=[] 忽略；compose/QC 只给比例时推导尺寸） | Codex | V-Gate5b | 待开始 |
+| V13c | 上下文压缩：取代的失败 check_plan 回执与重复模型目录只保留最新；峰值门槛 ≤80k token | Codex | V-Gate5b | 待开始 |
+| V13d | 小修：固定事件须在镜头内完成；投影标记专用错误码；统计识别续验标签；审定标记更新 | Codex | V-Gate5b | 待开始 |
+| V-Gate6 | 默认启用前验收：c3×2、c7×1 + 双人身份抽检（真实图片 ≤6、视频 0、文本/视觉 ≤120），Claude 审读 | Codex（测试）、Claude（审读） | V13a–V13d | 待开始 |
 | V8 | 经典路径：生产意图、系列 + 模板、`run_workflow_template`（契约开工前补写） | Codex | V-Gate3 | 按用户指令暂跳过 |
 

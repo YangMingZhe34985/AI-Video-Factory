@@ -1295,3 +1295,23 @@ E完整验证并本地合并后，从当前源生成并人工审阅13文件补�
 证据：TEMP=C:/Users/MingZheYang/AppData/Local/Temp；工作根 cinecrew-v12-gate5b-20261022-01，最终readonly-statistics与原readonly-statistics-before-resume并存，07-resume-control.json与results/hybrid_V12-story-resume07-agent_be1e06bb981b4dd2_agent_be1e06bb981b4dd2.json（SHA256 8d4c84b44743eb78b488291849fa9c2496a4e5c24d62ef2b56aad0f5d9456776）；最终全量cc-v12-eval-recovery-10220204-formal；各次失败根因、上下文冻结证据及独立审阅在cinecrew-v12c-review。原05、06与74次物理记录全部保留。
 
 接手：请Claude审读V12_TEST_REPORT、D-048–D-053、V.22及本轮Skill增补，裁定V-Gate5b并安排token预算、时长意图校验和纠错效率后续任务。当前不能宣布Gate通过，默认开启v3继续阻塞。不推送、不建PR、不进入V8；保留Claude美化、原工作树及用户未跟踪的AI_Video_Factory_Technical_Notes_CN.md。不要重跑06/07入口或把recommended当默认回答；新一轮真实测试另按批准范围执行。
+
+## 2026-10-22 · Claude · V-Gate5b 评审
+状态：完成（结论：有条件通过；默认开启 v3 仍阻塞，须完成 V13a 并通过 V-Gate6）
+分支与提交：`agent-v3/V-Gate5b`，已合并到 `feat/agent-v2`
+完成内容：
+- 审读 V12_TEST_REPORT.md、D-048–D-053、V12 提交及提示词/Skill 增补；抽查确认通用 PlanDraft 不核对计划总时长与 brief 时长。
+- 判定：比例、Research 上下文、Mock 覆盖、审核 B 局部修订与来源全部通过；c1 4 轮通过；c3 1/2 达下限（c3-1 的品牌形象提问属合理行为）；c3-2 时长 70 秒 vs 约 120 秒失败；峰值 65k/68k 未达 60k；“一起上楼”为轻微偏差不阻塞。
+- 峰值 Gate 门槛调整为 ≤80k token（60k 保留为优化方向）；新增 D-054；结论与 V13 任务写入 `docs/agent_v3/VGATE5_REVIEW.md` 末节。
+测试：本次只改文档，未运行测试；真实调用 0。
+未完成 / 下一步：
+
+### 给 Codex：V13 任务（顺序 V13a → V13b → V13c → V13d → V-Gate6；规则与 D-030 不变）
+详细验收见 `docs/agent_v3/VGATE5_REVIEW.md`“V-Gate5b 补验结论 / V13 任务”。要点：
+- V13a 契约先行（D-055 起）：用户明确时长才校验；编译器按 compose 实际片段总长判断容差，超出报 PLAN_DURATION_MISMATCH；QC 核对成片时长；复现 c3-2（120 秒 brief、7×10 计划）必须被拒。
+- V13b：只做无损规范化（非生成节点 characters=[] 忽略；compose/QC 只给比例时推导尺寸），其他错误照旧拒绝。
+- V13c：取代的失败 check_plan 回执与重复模型目录只保留最新一份；最新契约/草稿/回执保护不变；峰值门槛 ≤80k。
+- V13d：固定事件须在镜头内完成（Director 提示词）；草稿含 context_projection 时返回专用错误码；统计识别续验标签；“待 Claude V-Gate5b 审阅”标记改为已审定并递增版本。
+- V-Gate6：c3×2、c7×1；身份抽检只真实执行 2 张定妆 + 2 张双人关键帧（真实图片 ≤6，视频与后期 Mock），qwen3.7-plus 一次调用多图同传判断一致性；文本/视觉 ≤120 次；报告 `docs/agent_v3/V13_TEST_REPORT.md` 交 Claude。
+- 每个任务一个分支，全量回归与前端构建通过后本地合并；不推送、不进入 V8。
+需要对方或用户决定：V-Gate6 会产生少量真实图片费用（≤6 张，属 D-030 授权范围）；如用户不希望本轮生成图片，可只做 1 项。
