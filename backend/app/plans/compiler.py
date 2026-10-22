@@ -591,7 +591,14 @@ def _compile(raw, run, *, registry, plan_version):
     for target in plan["deliverables"]:
         metadata = outputs.get(target["node_id"], {}).get(target["output"])
         if metadata is None:
-            issue("INVALID_DELIVERABLE", "Deliverable output is unavailable", target["node_id"])
+            # Name the tool's real outputs so a planner can fix the reference in one revision.
+            source = nodes.get(target["node_id"])
+            spec = registry._specs.get(source["tool"]) if source else None
+            available = sorted((spec.io_types.get("outputs") or {}) if spec else outputs.get(target["node_id"], {}))
+            requested = target["output"] if re.fullmatch(r"[a-z_]{1,40}", str(target["output"])) else "<field>"
+            issue("INVALID_DELIVERABLE", "Deliverable output is unavailable", target["node_id"],
+                  details={"output": requested, "available_outputs": available} if source else
+                  {"hint": "Deliverable node_id is not a plan node."})
         elif metadata["type"] not in ({"image", "image[]"} if target["kind"] == "image" else {target["kind"]}):
             issue("INVALID_DELIVERABLE_TYPE", "Deliverable kind does not match its output", target["node_id"])
         elif target["kind"] == "video":

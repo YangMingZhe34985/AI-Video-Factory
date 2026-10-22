@@ -52,8 +52,9 @@ class VideoCompositionService:
         draw.rectangle((12, 12, max(13, width - 13), max(13, height - 13)), outline=(190, 210, 225), width=2)
         draw.text((30, 50), f"CINECREW MOCK\nSHOT {shot_id}\nLOCAL DEMO - NOT GENERATED VIDEO", fill="white", spacing=8)
         image.save(slate)
+        # No setsar: like real provider outputs (wan2.7), the Mock clip leaves SAR unspecified.
         cls._run(["-loop", "1", "-i", str(slate), "-t", str(duration), "-r", "25",
-            "-vf", "setsar=1", "-an", "-c:v", "libx264", "-preset", "fast", "-crf", "18", "-pix_fmt", "yuv420p",
+            "-an", "-c:v", "libx264", "-preset", "fast", "-crf", "18", "-pix_fmt", "yuv420p",
             "-metadata", "comment=CineCrew local Mock preview; not generated video", str(target)], 180)
         return target
 

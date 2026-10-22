@@ -59,7 +59,8 @@ def process_event(event_id, expected_phase=None):
                 if task.branch_key not in {"submit_r2v_flash", "r2v_flash"}:
                     raise AppError("TRANSFORM_APPROVAL_MISMATCH", "Queued transform operation differs from approval", 409)
             if logical_inputs is not None:
-                payload = adapter.build_payload(logical_inputs, params or {})
+                from app.plans.provider_params import provider_params
+                payload = adapter.build_payload(logical_inputs, provider_params(job, task.adapter_name, params or {}))
                 task = owned(task_id, token)
                 if not task:
                     db.session.rollback()

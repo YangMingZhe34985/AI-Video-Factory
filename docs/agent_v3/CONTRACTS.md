@@ -740,3 +740,34 @@ patches.diff_preview 为逐操作 {op,node_id,before,after}：输入更新仅展
 - 检查详情保留原current/target/duration_tolerance/mode/minimum/maximum，另外给出measurement_error_sec、measurement_frame_allowance_sec、measurement_segment_count、measurement_unknown_fps_segments、effective_minimum_duration_sec、effective_maximum_duration_sec及passed。QC检查中details沿用同一详情；不改冻结Plan/批准hash/历史回执。归属、输出指纹前后复核及原结构QC保持。
 - 仅离线覆盖，Gate6 Mock视频不能验证真实帧偏差。应单独报告此限制。
 - v3视频输出登记的旧+0.05秒技术上限同步使用同一E；compose片段数取服务端冻结解析的task.inputs，其他输出1。按完整解码时长比较批准输出秒数，前后指纹一致才登记；不改变费用、参数或下游引用时长限制。v3专用QcOutput.checks支持可选details，缺失时不序列化，经典QC不变。
+
+## V.24 简单任务降耗与结果稳定性（D-062，Claude）
+
+### V.24.1 内联提交计划
+
+- `submit_plan` 输入为 `{plan_ref:WorkspaceRef}` 或 `{plan:PlanDraft}`，严格有且仅有一个非 null 值（与 check_plan 相同）。仍只有 Producer 可调用。
+- 内联 plan 先按 write_workspace 的同一校验与来源规则保存为工作区 key=`draft`、kind=plan_draft 的新版本（请求键沿用本次工具调用，重放返回同一版本），再走原有编译、dry-run 与原子提交；未通过时返回 issues 且不提交，草稿保留可继续修订。输出与 delegation.output 的 plan_ref 为保存后的 `{key:"draft",version}`。
+- 导出给 Agent 的函数 Schema 中 `plan` 只声明为 object 并引用 check_plan 的结构，避免重复导出完整 PlanDraft Schema；服务端校验仍使用完整 PlanDraft。
+- 同一轮先 write_workspace(brief) 再 submit_plan({plan}) 合法：工具按顺序执行，submit 成功后本委派结束、后续调用取消。
+
+### V.24.2 模型偏好的选择器解析与适用范围
+
+- brief 中的偏好/排除保留用户原文；匹配时从原文中提取已注册模型 ID、显示名或系列名（最长匹配优先，`wan2.7` 不匹配 `wan2.70`）。原文中没有任何已注册名称时按原值匹配并照旧失败，不猜测。`constraints_for_mode` 返回值仍为原文。
+- 偏好原文中的范围词优先：含“视频”（如“wan2.7系列视频模型”“图生视频”）只约束视频节点，含“图片/图像/生图”只约束图片节点。没有范围词时，一个模型或系列约束其实际拥有模型的生成类型：系列同时含图片与视频模型时（如 wan2.7）同时约束图片与视频节点；单个视频模型只约束视频，单个图片模型只约束图片。无匹配的值归入视频侧并显式失败。deliverable=image 时规则不变。
+
+### V.24.3 Agent 计划图片节点的提供方载荷
+
+- agent_plan 与 agent_plan_preview 作业中 adapter 为 dashscope_image 的提交，提供方载荷使用 `enable_interleave=true` 并设 `max_images=n`（wan2.6-image 文生图只在交错模式下工作，该模式忽略 n、默认最多 5 张；关闭交错为图像编辑模式，必须输入图片）。同步执行与 MQ 提交消费者一致。审批绑定的 params、任务 inputs、费用与校验不变；经典工作流不变。运行期输出张数检查保持。
+
+### V.24.4 未声明 SAR 的视频
+
+- 媒体探测在视频流未声明 SAR 时记录 `sar="1:1"`、`sar_source="unspecified"`（与 FFmpeg 的显示与缩放语义一致）；显式非方形 SAR 照旧参与几何计算。拼接、显示比例与 QC 因此接受真实服务商输出（wan2.7 不带 SAR）。Mock 拼接素材不再显式 setsar，与真实输出形态一致。
+
+### V.24.5 模型参数错误诊断
+
+- 模型参数校验错误的 payload 增加 `allowed_params`（该模型参数 Schema 的名称列表）；计划 issue 的 details 相应给出 `fields`（如 `params.aspect_ratio`）与 `allowed_params`。只改诊断信息，不改校验规则、不接受别名。
+
+### V.24.6 提示词写作标准与 Producer 速通
+
+- t2v / i2v / t2i-prompt-writing Skill（version 2）为提示词质量标准，提炼自经典工作流系统提示词；Producer、Director 系统提示词包含要点，Producer 含简单任务速通与可编译示例。Agent 系统提示词长度上限由 12000 调整为 14000 字符。
+- 多镜头短片默认 compose 成一个成片交付，各镜头首帧对应本镜头画面（Director 指引）。这些是规划指引，不是生成质量保证。

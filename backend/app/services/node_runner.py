@@ -122,7 +122,8 @@ class NodeRunner:
             from app.agent.transform_policy import validate_before_submit
             merged_params = dict((job.config.get("node_model_params") or {}).get(effective_node_key) or {})
             validate_before_submit(job, model, inputs, merged_params, operation=effective_node_key)
-        payload = self._build_adapter_payload(adapter, model, inputs, merged_params)
+        payload = self._build_adapter_payload(adapter, model, inputs,
+                                              self._provider_params(job, model.adapter_name, merged_params))
         self._release_db_connection()
         try:
             response = self._submit_adapter(adapter, model, payload, inputs, merged_params, job, model.adapter_name, effective_node_key)
@@ -190,7 +191,8 @@ class NodeRunner:
             merged_params = dict((job.config.get("node_model_params") or {}).get(effective_node_key) or {})
             validate_before_submit(job, model, inputs, merged_params, operation=effective_node_key,
                                    adapter_name=effective_adapter_name)
-        payload = self._build_adapter_payload(adapter, model, inputs, merged_params)
+        payload = self._build_adapter_payload(adapter, model, inputs,
+                                              self._provider_params(job, effective_adapter_name, merged_params))
         self._release_db_connection()
         try:
             response = self._submit_adapter(adapter, model, payload, inputs, merged_params, job, effective_adapter_name, effective_node_key)
@@ -224,6 +226,11 @@ class NodeRunner:
             from app.agent.transform_policy import validate_before_submit
             validate_before_submit(job, model, inputs, params, operation=operation, adapter_name=adapter_name)
         return adapter.submit(payload)
+
+    @staticmethod
+    def _provider_params(job, adapter_name, params):
+        from app.plans.provider_params import provider_params
+        return provider_params(job, adapter_name, params)
 
     def _build_adapter_payload(self, adapter, model, inputs, params):
         if getattr(self, "_mq", False):

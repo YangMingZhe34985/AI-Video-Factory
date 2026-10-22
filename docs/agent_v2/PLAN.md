@@ -172,10 +172,10 @@
 | V13d | 小修：固定事件须在镜头内完成；投影标记专用错误码；统计识别续验标签；审定标记更新 | Codex | V-Gate5b | 实现完成（2026-10-22；D-058 / V.23.4；3097项后端与前端构建通过，新文案待Gate6审读） |
 | V13e | 成片实测技术误差与用户容差分离，编译严格不变 | Codex | V13a | 完成（D-060 / V.23.6；定向176、全量3205项与构建通过；仅离线覆盖） |
 | V-Gate6 | 默认启用前验收：c3×2、c7×1 + 双人身份抽检（真实图片 ≤6、视频 0、文本/视觉 ≤120），Claude 审读 | Codex（测试）、Claude（审读） | V13a–V13e | 用户要求暂挂（2026-10-22；首个c3被非公网DNS护栏阻断，预留1/120保留unknown、无响应；其余样本及四图未启动，见V13_TEST_REPORT） |
-| V14a | **阻塞**：真实视频缺 SAR 标记时拼接失败（本系统生成的视频按 1:1 处理；Mock 与真实形态一致；补回归） | Codex | 真实 E2E（D-061） | 待开始 |
-| V14b | **阻塞**：wan2.6-image 交错输出（agent 图片节点发送 enable_interleave=false；按实际返回张数记账） | Codex | 真实 E2E（D-061） | 待开始 |
-| V14c | 模型偏好整句无法匹配（selector 与原文分开存，或复用 model_policy 的提取） | Codex | 真实 E2E（D-061） | 待开始 |
-| V14d | 系列偏好是否约束图片；经用户确认的修改可更新 brief 模型约束 | Codex（契约需 Claude 审） | 真实 E2E（D-061） | 待开始 |
-| V14e | 多镜头短片默认拼接成一个成片、各镜头首帧各自对应（Director 提示词 / long-form-video Skill） | Codex | 真实 E2E（D-061） | 待开始 |
+| V14a | **阻塞**：真实视频缺 SAR 标记时拼接失败（本系统生成的视频按 1:1 处理；Mock 与真实形态一致；补回归） | Claude | 真实 E2E（D-061） | 完成（2026-10-23，D-062 / V.24.4；未声明 SAR 记为 1:1；真实 wan2.7 两段视频 stream_copy 拼接与 QC 通过） |
+| V14b | **阻塞**：wan2.6-image 交错输出（agent 图片节点发送 enable_interleave=false；按实际返回张数记账） | Claude | 真实 E2E（D-061） | 完成（D-062 / V.24.3；改为 enable_interleave=true + max_images=n；真实调用返回 1 张） |
+| V14c | 模型偏好整句无法匹配（selector 与原文分开存，或复用 model_policy 的提取） | Claude | 真实 E2E（D-061） | 完成（D-062 / V.24.2；从原文提取模型/系列名，最长匹配） |
+| V14d | 系列偏好是否约束图片；经用户确认的修改可更新 brief 模型约束 | Claude | 真实 E2E（D-061） | 完成（D-062 / V.24.2；系列同时约束图片与视频；brief 更新路径暂不改） |
+| V14e | 多镜头短片默认拼接成一个成片、各镜头首帧各自对应（Director 提示词 / long-form-video Skill） | Claude | 真实 E2E（D-061） | 完成（D-062 / V.24.6；Director 指引） |
 | V8 | 经典路径：生产意图、系列 + 模板、`run_workflow_template`（契约开工前补写） | Codex | V-Gate3 | 按用户指令暂跳过 |
 

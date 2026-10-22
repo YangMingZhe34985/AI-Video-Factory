@@ -101,7 +101,11 @@ def test_embedded_policy_json_examples_match_actual_input_contracts(app_ctx, rol
     examples = [json.loads(block) for block in re.findall(r"```json\s*(.*?)\s*```", body, re.S)]
     assert examples
     for value in examples:
-        if role == "producer":
+        if role == "producer" and "nodes" in value:
+            # Fast-path examples are complete PlanDrafts for inline submit_plan (D-062).
+            plan = PlanDraft.model_validate(value)
+            assert all(node.model_id is None for node in plan.nodes)
+        elif role == "producer":
             command = WriteInput.model_validate(value)
             validate_payload(command.kind, command.payload)
         elif role == "director":

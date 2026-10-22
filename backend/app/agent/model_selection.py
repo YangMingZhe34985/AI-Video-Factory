@@ -35,7 +35,7 @@ def _label(value):
     return re.sub(r"(?:\s*(?:系列|(?:的)?(?:视频|图像|图片)?(?:生成)?模型|family|series|models?))+\s*$", "", value, flags=re.I).strip()
 
 
-def _matches(value, model):
+def _matches_selector(value, model):
     label = _label(value)
     if ModelService.canonical_model_id(label) == model.model_id or _normal(label) == _normal(model.display_name):
         return True
@@ -44,19 +44,71 @@ def _matches(value, model):
     return name == prefix or (name.startswith(prefix) and prefix[-1:].isalpha())
 
 
+def _selectors(value, catalog):
+    """Registered model IDs or families named in a preference written as a sentence.
+
+    Briefs keep the user's wording ("图片使用wan2.7-image模型"); matching uses the
+    names inside it. The longest name wins, so wan2.7-image is not read as the
+    wan2.7 family. Text without any registered name stays as-is and keeps failing visibly.
+    """
+    if any(_matches_selector(value, item) for item in catalog):
+        return [value]
+    text = unicodedata.normalize("NFKC", value).casefold()
+    names = {}
+    for item in catalog:
+        family = ModelService.model_family(item)
+        for alias, selector in ((item.model_id, item.model_id), (item.display_name, item.model_id),
+                                (family, f"{family}系列")):
+            parts = [re.escape(part) for part in re.split(r"[\s_-]+", unicodedata.normalize("NFKC", alias or "").casefold()) if part]
+            if parts:
+                # Separators are optional between name parts: "Wan 2.7 I2V", "wan2.7-i2v".
+                names.setdefault(r"[\s_-]*".join(parts), (len(_normal(alias)), selector))
+    found, spans = [], []
+    for pattern, (_length, selector) in sorted(names.items(), key=lambda item: item[1][0], reverse=True):
+        # wan2.7 must not match inside wan2.70 or xwan2.7; English words around it are fine.
+        for match in re.finditer(r"(?<![0-9a-z.])" + pattern + r"(?![0-9a-z]|\.[0-9])", text):
+            if not any(match.start() < right and left < match.end() for left, right in spans):
+                spans.append((match.start(), match.end()))
+                found.append(selector)
+    return list(dict.fromkeys(found)) or [value]
+
+
+def _matches(value, model, catalog=None):
+    catalog = catalog if catalog is not None else ModelRegistry.query.all()
+    return any(_matches_selector(selector, model) for selector in _selectors(value, catalog))
+
+
 def constraints_for_mode(spec, mode):
-    """A video family constrains video generation, not its supporting images."""
+    """A model or family constrains each generation type it actually has models for.
+
+    A family such as wan2.7 with both image and video models therefore applies to
+    images and videos; wan2.7-i2v only to video. Returned values keep the brief text.
+    """
     spec = RequestSpec.model_validate(spec)
     catalog = ModelRegistry.query.order_by(ModelRegistry.model_id).all()
 
     def belongs(value):
         if spec.deliverable == "image":
             return mode not in VIDEO_MODES
-        exact = [item for item in catalog if ModelService.canonical_model_id(_label(value)) == item.model_id
-                 or _normal(_label(value)) == _normal(item.display_name)]
-        matches = exact or [item for item in catalog if _matches(value, item)]
-        image_only = bool(matches) and all(item.task_type == "text_to_image" for item in matches)
-        return image_only == (mode not in VIDEO_MODES)
+        # The user's own scope word wins: "wan2.7系列视频模型" limits video only,
+        # "图片用wan2.7" limits images only; "图生视频" counts as video.
+        video_scope = "视频" in value or re.search(r"\bvideos?\b", value, re.I)
+        image_scope = re.search(r"图片|图像|生图|\bimages?\b", value, re.I)
+        if video_scope and not image_scope and mode not in VIDEO_MODES:
+            return False
+        if image_scope and not video_scope and mode in VIDEO_MODES:
+            return False
+        matches = []
+        for selector in _selectors(value, catalog):
+            exact = [item for item in catalog if ModelService.canonical_model_id(_label(selector)) == item.model_id
+                     or _normal(_label(selector)) == _normal(item.display_name)]
+            matches += exact or [item for item in catalog if _matches_selector(selector, item)]
+        if not matches:
+            # Unknown names stay on the video side, where they fail visibly.
+            return mode in VIDEO_MODES
+        if mode in VIDEO_MODES:
+            return any(item.task_type != "text_to_image" for item in matches)
+        return any(item.task_type == "text_to_image" for item in matches)
 
     return ([value for value in spec.constraints.model_preferences if belongs(value)],
             [value for value in spec.constraints.model_exclusions if belongs(value)])
@@ -77,12 +129,15 @@ def candidates_for_request(spec, mode, *, use_default=True):
     models = [item for item in catalog if item.enabled
               and ModelService.supports_task_type(item, task_type) and (item.capabilities or {}).get("agent_selectable")
               and mode in (item.capabilities or {}).get("modes", [])]
-    def matches(value, item):
+    def matches_selector(value, item):
         explicit_family = re.search(r"系列|\b(?:family|series)\b", value, re.I)
         exact = [] if explicit_family else [model.model_id for model in catalog
             if ModelService.canonical_model_id(_label(value)) == model.model_id
             or _normal(_label(value)) == _normal(model.display_name)]
-        return item.model_id in exact if exact else _matches(value, item)
+        return item.model_id in exact if exact else _matches_selector(value, item)
+
+    def matches(value, item):
+        return any(matches_selector(selector, item) for selector in _selectors(value, catalog))
     for value in requested:
         models = [item for item in models if matches(value, item)]
     models = [item for item in models if not any(matches(value, item) for value in excluded)]

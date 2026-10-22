@@ -2,13 +2,14 @@
 
 from copy import deepcopy
 from hashlib import sha256
+from typing import Annotated
 
-from pydantic import Field, RootModel, ValidationError, model_serializer, model_validator
+from pydantic import Field, RootModel, ValidationError, WithJsonSchema, model_serializer, model_validator
 
 from app.agent.plan_versions import _lock_run, inputs_hash
 from app.agent.request_spec import StrictModel
 from app.agents.schemas import PlanDraft, PlanDraftNode, WorkspaceRef, finite_json, validate_payload
-from app.agents.workspace import require_context, resolve_workspace_ref, validate_artifact_references
+from app.agents.workspace import require_context, resolve_workspace_ref, validate_artifact_references, write_workspace
 from app.api import AppError
 from app.extensions import db
 from app.models import AgentDelegation, AgentPlanVersion, AgentWorkspaceItem
@@ -62,7 +63,34 @@ class InstantiateInput(StrictModel):
 
 
 class SubmitInput(StrictModel):
-    plan_ref: WorkspaceRef
+    """Submit a saved draft, or an inline draft that is saved first (one round instead of three)."""
+
+    model_config = {**StrictModel.model_config, "json_schema_extra": {"oneOf": [
+        {"required": ["plan"], "not": {"required": ["plan_ref"]}},
+        {"required": ["plan_ref"], "not": {"required": ["plan"]}},
+    ]}}
+    # check_plan already exports the full PlanDraft schema once; repeating it
+    # here would add about 6k characters to every Producer request.
+    plan: Annotated[PlanDraft | None, WithJsonSchema({"type": "object", "description":
+        "Complete PlanDraft, same shape as check_plan.plan. Saved as workspace key 'draft', then compiled, "
+        "dry-run and submitted when it has no issues; otherwise the issues are returned and nothing is submitted."})] = None
+    plan_ref: WorkspaceRef | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def require_exactly_one(cls, value):
+        from app.plans.projection_input import reject_context_projection
+        reject_context_projection(value)
+        if not isinstance(value, dict) or (set(value) & {"plan", "plan_ref"}) not in ({"plan"}, {"plan_ref"}):
+            raise ValueError("Provide exactly one of plan or plan_ref")
+        if value.get("plan", value.get("plan_ref")) is None:
+            raise ValueError("Plan input cannot be null")
+        return value
+
+    @model_serializer(mode="wrap")
+    def omit_absent_input(self, handler):
+        value = handler(self)
+        return {key: child for key, child in value.items() if child is not None}
 
 
 class ObjectOutput(RootModel[dict]):
@@ -252,10 +280,15 @@ def instantiate_blueprint(data, ctx):
 
 def submit_plan(data, ctx):
     normalized = data.model_dump(mode="json")
+    if ctx.caller_agent != "producer":
+        raise AppError("TOOL_FORBIDDEN", "Only Producer can submit a plan for user review", 403)
+    plan_ref = normalized.get("plan_ref")
+    if plan_ref is None:
+        # An ordinary immutable draft with write_workspace validation and provenance;
+        # the per-call request key makes a replay return the same saved version.
+        plan_ref = write_workspace("draft", "plan_draft", normalized["plan"], ctx)["workspace_ref"]
     try:
         run, delegation = _active_locked(ctx)
-        if ctx.caller_agent != "producer":
-            raise AppError("TOOL_FORBIDDEN", "Only Producer can submit a plan for user review", 403)
         previous = _receipt(run, "submit_plan", normalized, ctx)
         if previous is not None:
             db.session.commit()
@@ -263,12 +296,12 @@ def submit_plan(data, ctx):
         _assert_active(run, delegation)
         if (run.snapshot or {}).get("v3_execution", {}).get("approved_version"):
             raise AppError("PATCH_REQUIRED", "Approved plans can only change through a reviewed Patch", 409)
-        item = resolve_workspace_ref(normalized["plan_ref"], ctx, expected_kind="plan_draft")
+        item = resolve_workspace_ref(plan_ref, ctx, expected_kind="plan_draft")
         latest = AgentPlanVersion.query.filter_by(run_id=run.run_id).order_by(AgentPlanVersion.version.desc()).first()
         version = (latest.version if latest else 0) + 1
         compiled = compile_plan(item["payload"], run, plan_version=version)
         checked = dry_run(compiled)
-        output = {"submitted": False, "plan_ref": normalized["plan_ref"], "plan_version": None,
+        output = {"submitted": False, "plan_ref": plan_ref, "plan_version": None,
                   "issues": checked["issues"], "estimates": compiled["estimates"],
                   "experimental": compiled["experimental"], "dry_run": checked}
         if not checked["passed"]:
@@ -283,10 +316,10 @@ def submit_plan(data, ctx):
                 parent_version=latest.version if latest else None, plan=compiled["plan"], story_package={}, check=check)
             db.session.add(row)
             snapshot = deepcopy(run.snapshot or {})
-            snapshot.update(plan_version=version, plan_issues=[], v3_plan_submission={"plan_ref": normalized["plan_ref"], "plan_version": version})
+            snapshot.update(plan_version=version, plan_issues=[], v3_plan_submission={"plan_ref": plan_ref, "plan_version": version})
             run.snapshot, run.status, run.error = snapshot, "awaiting_plan_review", None
             delegation.status = "completed"
-            delegation.output = {"kind": "completed", "outcome": "plan_submitted", "plan_ref": normalized["plan_ref"],
+            delegation.output = {"kind": "completed", "outcome": "plan_submitted", "plan_ref": plan_ref,
                                  "message": "计划已提交，请审核后开始生成。"}
             output.update(submitted=True, plan_version=version)
         _save_receipt(run, "submit_plan", normalized, ctx, output)
@@ -308,7 +341,7 @@ def register_plan_tools(registry):
         ToolSpec(name="instantiate_blueprint", description="Instantiate a registered deterministic Blueprint into an immutable workspace draft; this does not approve or execute it.",
             input_model=InstantiateInput, output_model=ObjectOutput, handler=instantiate_blueprint, permission="write",
             allowed_roles=frozenset(AGENT_ROLES), agent_visible=True, max_retries=0),
-        ToolSpec(name="submit_plan", description="Producer submits an exact workspace plan version to user review after compilation and zero-cost dry-run. Never grants execution approval.",
+        ToolSpec(name="submit_plan", description="Producer submits a plan to user review after compilation and zero-cost dry-run: an exact saved plan_ref, or an inline complete plan that is saved first. Returns issues without submitting when it does not pass. Never grants execution approval.",
             input_model=SubmitInput, output_model=ObjectOutput, handler=submit_plan, permission="write",
             allowed_roles=frozenset({"producer"}), agent_visible=True, max_retries=0),
     ):

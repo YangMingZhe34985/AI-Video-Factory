@@ -55,7 +55,9 @@ class AgentCatalog:
             if not prompt.is_relative_to(self.root / "prompts") or not prompt.is_file():
                 raise ValueError("Card prompt must be a repository prompt file")
             body = prompt.read_text(encoding="utf-8")
-            if not body.strip() or len(body) > 12000:
+            # 14k leaves room for the Producer's compilable fast-path examples, which
+            # replace several Skill/Schema reading rounds on simple tasks (D-062).
+            if not body.strip() or len(body) > 14000:
                 raise ValueError("Agent prompt is empty or too long")
             self.cards[card.name] = card
             self.prompts[card.name] = body

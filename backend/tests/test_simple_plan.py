@@ -82,14 +82,20 @@ def test_reference_count_and_parameter_errors_cannot_reach_generation(app_ctx):
     assert invalid.value.code == "INVALID_INPUT"
 
 
-def test_video_family_does_not_limit_supporting_image(app_ctx):
+def test_family_preference_also_limits_supporting_image(app_ctx):
+    # D-062: a family with image models (wan2.7-image) constrains images too;
+    # previously "wan2.7系列" silently left the first frame on wan2.6-image.
     spec = request_spec("single_clip", preferences=["wan2.7系列"], exclusions=["HappyHorse"])
-    assert select_for_request(spec, "t2i").model_id == "wan2.6-image"
+    assert select_for_request(spec, "t2i").model_id == "wan2.7-image"
     assert select_for_request(spec, "i2v").model_id == "wan2.7-i2v"
     policy = video_policy_for_request(spec)
     assert policy["source"] == "user"
     assert policy["allowed_model_ids"] == ["wan2.7-i2v", "wan2.7-t2v"]
-    assert validate_simple_plan(clip_plan(), spec, owner_id="owner")["estimated_cost"] == 7
+    with pytest.raises(AppError):
+        validate_simple_plan(clip_plan(), spec, owner_id="owner")
+    plan = clip_plan()
+    plan["image"]["model_id"] = "wan2.7-image"
+    assert validate_simple_plan(plan, spec, owner_id="owner")["estimated_cost"] > 0
 
 
 def test_unknown_family_and_disabled_default_never_silently_switch(app_ctx):

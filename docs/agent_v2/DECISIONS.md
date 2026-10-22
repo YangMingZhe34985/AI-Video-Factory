@@ -518,3 +518,17 @@ FPS只取同一受管成片本次decode=True探测的文件FPS，不取模型参
 决策：作为 D-030 的一次性例外执行（真实视频总计 ≤60 秒，仅 wan2.7 视频模型；隔离 SQLite 与存储；仅白名单读取 DashScope 凭据；每个付费步骤人工审批）。实际用量：视频 4 段共 33 秒，图片实际 20 张，规划 LLM 75 轮。D-030 对自动化测试与其他评测的限制不变。
 
 结果与影响：发现 F1（真实视频无 SAR 导致指定比例时拼接失败）、F2（wan2.6-image 交错输出使 n=1 返回 5 张）两个阻塞缺陷，F3（模型偏好整句无法匹配）高优先级缺陷，以及 F4、F5。详见 docs/agent_v3/REAL_E2E_20261022.md。默认开启 v3 前须修复 F1–F3；V-Gate6 的视频仍为 Mock，测不出 F1/F2。影响任务：新增 V14a–V14e。
+
+## D-062 · 2026-10-23 · 简单任务降耗、交互效率与结果稳定性优化（Claude，用户指示）
+
+原因：用户要求在继续交给 Codex 开发前，整体降低简单任务消耗、提升 Agent 交互效率、保证结果稳定。真实测试（D-061）与日志显示：简单任务 7–14 轮，前几轮都在读取 Skill/Schema/工具合同，随后反复 check_plan；模型偏好整句无法匹配、系列偏好管不到图片导致多余提问；wan2.6-image 交错模式忽略 n 返回 5 张；真实视频不带 SAR 导致指定比例时拼接与 QC 失败；视频提示词基本照抄用户原话（wan2.7 默认不扩写），画质平庸。
+
+决策（契约 V.24）：
+1. submit_plan 支持内联 `{plan}`：保存为 draft 新版本后编译、dry-run、提交；Producer 简单任务速通：同一轮 write_workspace(brief) + submit_plan({plan})，不预读，按回执只改出错处。函数 Schema 不重复导出完整 PlanDraft。Agent 系统提示词上限 12000→14000 字符，用于 Producer 内置可编译示例。
+2. 模型偏好从原文提取已注册模型/系列名（最长匹配）；系列约束其拥有模型的生成类型，wan2.7 系列同时约束图片与视频（取代此前“视频系列不约束辅助图片”的规则）。
+3. Agent 计划的 dashscope_image 提交固定 enable_interleave=true、max_images=n（真实调用验证：返回 1 张）；审批参数不变，经典工作流不变。
+4. 媒体探测对未声明 SAR 记为 1:1 并标注 sar_source=unspecified；Mock 拼接素材不再 setsar。用当日两段真实 wan2.7 视频验证：stream_copy 拼接、QC 尺寸与比例均通过。
+5. 模型参数错误给出 fields 与 allowed_params。
+6. t2v/i2v/t2i-prompt-writing 重写为写作标准（提炼自经典工作流 factory_prompts），Producer/Director/Prompt Smith 引用；多镜头短片默认 compose 成一个成片、各镜头首帧对应本镜头。
+
+范围：本次由 Claude 按用户指示直接实现（不同于 D-031 的常规分工），在独立 worktree 完成，全量后端回归通过后本地合并。真实验证：2 次图片调用（1 次失败未出图、1 次 1 张），A/B 规划对比仅调用文本/视觉模型（D-030 范围），未生成视频。影响：V14a–V14e 由本决策完成（V14d 的取舍按上述第 2 条）；Codex 后续任务从 PROGRESS 最新条目继续。

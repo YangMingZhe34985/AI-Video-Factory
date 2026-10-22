@@ -78,9 +78,14 @@ class MediaProbeService:
             audio = {"codec": acodec[1] if acodec else None, "profile": acodec[2] if acodec else None,
                      "sample_rate": int(rate[1]) if rate else None,
                      "channels": channels, "channel_layout": layout}
+        # FFmpeg prints SAR only when the stream sets one; an unspecified SAR (0:1)
+        # is displayed and scaled as square pixels by FFmpeg itself. Real provider
+        # outputs (wan2.7) carry no SAR, so treating absence as unknown blocked every
+        # explicit-ratio composition (D-062). An explicit non-square SAR stays as-is.
         video = {"codec": codec[1] if codec else None, "profile": codec[2] if codec else None,
                  "pixel_format": pixel[1] if pixel else None, "time_base": tbn[1] if tbn else None,
-                 "sar": sar[1] if sar else None, "level": None}
+                 "sar": sar[1] if sar else "1:1", "sar_source": "stream" if sar else "unspecified",
+                 "level": None}
         complete = all(video[key] for key in ("codec", "profile", "pixel_format", "time_base", "sar"))
         complete = bool(complete and fps and (audio is None or (all(audio.values())
             and audio["codec"] == "aac" and audio["profile"] == "LC")))

@@ -26,6 +26,11 @@ def issue_details(error, node, spec):
     raw = error.errors(include_url=False, include_context=False, include_input=False) if isinstance(error, ValidationError) else payload.get("errors", [])
     if isinstance(raw, list):
         for item in raw[:8]:
+            if isinstance(item, str) and payload.get("allowed_params") is not None:
+                # Model parameter errors are "name: reason" strings; locate the param.
+                name = _field(item.split(":", 1)[0].strip())
+                if name != "<field>":
+                    fields.append("params." + name)
             if isinstance(item, dict) and isinstance(item.get("loc"), (tuple, list)):
                 location = [_field(part) for part in item["loc"][:8]]
                 if location:
@@ -55,6 +60,8 @@ def issue_details(error, node, spec):
                "allowed_input_fields": sorted(key for key in spec.input_model.model_fields if key not in server_owned) if spec else []}
     if hints:
         details["field_hints"] = hints
+    if isinstance(payload.get("allowed_params"), list):
+        details["allowed_params"] = [_field(name) for name in payload["allowed_params"][:20]]
     if code == "INVALID_NODE_MODEL":
         details["hint"] = "Local tools accept options in inputs, not model_id or params; only the listed input fields are valid."
     elif code == "UNTYPED_REFERENCE":

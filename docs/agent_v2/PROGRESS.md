@@ -1432,3 +1432,25 @@ V13c已以a22d5bb本地合并；D基于该提交，先D-058/V.23.4。新增PLAN_
 交Claude：审读D-055–D-060、V.23与各阶段实现/新Skill；V13e三个指定样例及完整Mock链均通过，但真实Gate仍未验收，默认开启v3继续阻塞。暂挂原因是网络环境与护栏条件不匹配，不是模型规划能力失败；不得据此宣称V13真实指标通过。待用户恢复该域名真实公网DNS并明确续验安排后，先只读核实，再约定如何保留原Run、尝试1及原失败继续剩余固定样本，禁止直接重跑01入口或新建目录清账。不进入V8，不推送或建PR，私人未跟踪技术笔记保持原样。
 
 收尾合并说明：Claude并行新增0e910c8（D-061独立真实E2E报告/执行器与V14a–e看板），本次正常合并保留全部内容，PLAN取本轮Gate暂挂状态，PROGRESS保留双方完整记录。报告补充引用其无SAR拼接、交错多图输出、模型偏好问题；这些独立样本不替代Gate6、不混入本轮120/6/0账本。3205项证据仍精确对应90175c7，不涵盖其随后新增real_e2e.py；本次仅合并文档，没有运行该执行器或V14，不把另一轮剩余额度当成本轮续验授权。此前DEFAULT_ON_PLAN中的“V14a运行指标”与新看板编号重名，后续由Claude协调编号，当前不改其方案。
+
+## 2026-10-23 · Claude · 整体优化：简单任务降耗、交互效率与结果稳定性（D-062，用户指示）
+状态：完成；V14a–V14e 一并完成
+分支与提交：`agent-v3/prompt-quality`（独立 worktree），已合并到 `feat/agent-v2`
+完成内容（详见 `docs/agent_v3/OPTIMIZATION_20261023.md`，契约 V.24）：
+- `submit_plan` 支持内联 `{plan}`（保存 + 编译 + dry-run + 提交一步完成）；Producer 新增“简单任务速通”与 4 个可编译示例（测试保证一次提交成功），多镜头默认 compose 成一个成片。
+- 模型偏好从原话提取模型/系列名（最长匹配、尊重“视频/图片”范围词）；系列同时约束其拥有的图片与视频模型。
+- wan2.6-image：Agent 计划提交使用交错模式 + `max_images=n`（真实调用返回 1 张；注意：此前 V14b 建议的 enable_interleave=false 是图像编辑模式，需要输入图片，已作废）。
+- 未声明 SAR 按 1:1；Mock 拼接素材不再 setsar。两段真实 wan2.7 视频 stream_copy 拼接、QC 通过。
+- 参数错误与交付输出错误的诊断给出 fields / allowed_params / available_outputs。
+- t2v / i2v / t2i-prompt-writing 重写为写作标准（提炼自 factory_prompts），Producer / Director / Prompt Smith 引用；Agent 提示词上限 12000 → 14000。
+测试：后端全量 3237 passed（12 组并行，约 11 分钟；脚本思路：按测试文件轮转分组、各组独立 basetemp）。新增 5 个测试文件，按 D-062 调整 test_simple_plan、test_v6_policy、test_v6_agent_scenarios、test_story_director 的旧预期。前端未改动。
+真实调用（D-030 范围）：A/B 规划约 105 次文本 + 5 次视觉；真实图片 2 次（1 次失败未出图、1 次出图 1 张）；视频 0。A/B：4 个简单任务轮数 29→8、输入 token 59.2 万→12.8 万、耗时 195→85 秒、提问 1→0；两镜头短片 10→4 轮。
+未完成 / 下一步：
+- 新提示词在真实视频上的画质提升尚未验证：需用户授权少量真实视频（可用 D-061 剩余约 27 秒）复跑 T1/T3b。
+- 复杂任务仍会读取 2–5 个 Skill，可在后续把 long-form-video / character-consistency 的要点压缩进 Director。
+
+### 给 Codex
+- 本次改动由 Claude 直接实现，已合并；后续开发从 feat/agent-v2 最新提交切分支。修改 producer.md 时注意 14000 字符上限与 `tests/test_fast_path_examples.py`（示例必须能一次 submit 成功）。
+- 全量回归可并行：12 组约 11 分钟（单进程需数小时）。建议每个任务跑定向测试 + 并行全量，不必串行。
+- 默认开启 v3 的阶段 1（只对用户本人开放）前置条件见 `docs/agent_v3/DEFAULT_ON_PLAN.md`；V-Gate6 是否补跑由用户决定（失败原因为 Clash fake-ip 与 gate6 DNS 护栏不兼容，不是网络故障）。
+需要对方或用户决定：是否授权少量真实视频验证新提示词画质；是否采用更快的开发流程（见 Claude 回复）。

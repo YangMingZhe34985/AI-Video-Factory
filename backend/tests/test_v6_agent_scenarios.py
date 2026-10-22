@@ -51,7 +51,8 @@ def test_single_clip_uses_default_or_literal_family_and_explicit_seconds(app_ctx
     if duration == 10:
         text += "，长度10秒"
     scenario = Scenario(app_ctx, client, text)
-    constraints = {"model_preferences": ["wan2.7系列"] if explicit else []}
+    # The brief keeps the user's wording; "视频模型" limits the family to video nodes (D-062).
+    constraints = {"model_preferences": ["wan2.7系列视频模型"] if explicit else []}
     requested_duration = ({"target_duration_sec": duration, "duration_mode": "exact",
                            "duration_source_text": "长度10秒"} if duration == 10 else {})
     scenario.step("producer", [call("load_skill", {"name": "intent-analysis"}),

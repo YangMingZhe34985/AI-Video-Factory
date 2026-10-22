@@ -32,6 +32,9 @@ class DashScopeImageAdapter(DashScopeGenerationAdapter):
             "enable_interleave": bool(params.get("enable_interleave", True)),
             "size": params.get("size", "1280*1280"),
         }
+        if params.get("max_images") is not None:
+            # Interleaved mode ignores n; max_images sets how many images are returned.
+            parameters["max_images"] = int(params["max_images"])
         if inputs.get("negative_prompt"):
             parameters["negative_prompt"] = inputs["negative_prompt"]
         return {

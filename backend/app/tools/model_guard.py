@@ -102,6 +102,7 @@ def validate_params(model: ModelRegistry, params: dict) -> dict:
             "INVALID_INPUT",
             f"Invalid parameters for model {model.model_id}",
             422,
-            payload={"errors": errors},
+            # Allowed names let a planner fix every bad parameter in one revision.
+            payload={"errors": errors, "allowed_params": sorted(schema)},
         )
     return dict(params)
