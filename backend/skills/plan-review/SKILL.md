@@ -18,7 +18,7 @@ tools:
 related:
 - long-form-video
 - budget-planning
-version: 9
+version: 10
 ---
 # 计划审阅
 
@@ -46,7 +46,7 @@ Critic 返回 verdict=pass|revise 和 issues[{severity,message,node_id?}]，明�
 
 指定 Director 审阅 Patch 必须给 intent_preserved（严格布尔）和 changed_elements（元素、changed/removed、前后内容、原因）。按最终草稿核对原用户点名内容及本次修订；不确定或有降级就如实标 false / 列出变化。prompt-only 不是语义保真证据；供应商记录与政策原因推测分开。改变或未知保真均需要人工确认，不能靠审阅通过自动恢复生成。
 
-V12f 最终候选审阅规则（待 Claude V-Gate5b 审阅）：评估对象必须是本次最终候选，而不是 Repair 原提议。verdict=revise 时以 revised_draft 为准；approve/reject 以被审阅 draft 为准。reason、intent_preserved 和 changed_elements 必须针对同一候选，与原用户需求及已确认修订逐项对照。已在最终候选恢复的点名要求，不得继续沿用原提议中“删除/弱化该要求”的理由或变化项。若仍不确定，保持 intent_preserved=false，说明最终候选尚不能确认的具体内容；不要为自动通过把 false 改成 true。历史提议与旧审阅保留，不回写。
+V12f 最终候选审阅规则（已由 Claude 审定 · V-Gate5b）：评估对象必须是本次最终候选，而不是 Repair 原提议。verdict=revise 时以 revised_draft 为准；approve/reject 以被审阅 draft 为准。reason、intent_preserved 和 changed_elements 必须针对同一候选，与原用户需求及已确认修订逐项对照。已在最终候选恢复的点名要求，不得继续沿用原提议中“删除/弱化该要求”的理由或变化项。若仍不确定，保持 intent_preserved=false，说明最终候选尚不能确认的具体内容；不要为自动通过把 false 改成 true。历史提议与旧审阅保留，不回写。
 
 ## 多候选选择
 

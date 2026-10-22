@@ -666,3 +666,16 @@ patches.diff_preview 为逐操作 {op,node_id,before,after}：输入更新仅展
 - 这两类已证明superseded回执可越过最近两轮保护，不依赖软字符目标触发，但仅在替换实际更短时投影。其余最新Skill资源、最新计划/读回、最近两轮及权限/硬约束保护沿用D-050。
 - context_projection含policy_version、request_view_only、not_executable、原回执SHA256/字符数。旧check保留issue数量/码摘要、原精确WorkspaceRef、替代版本、免费read_workspace和check_plan入口；重check只提供当前规则诊断，不声称重现旧错误。目录保留规范过滤器、model_count与免费list_models入口；重读可变目录不是原历史快照。
 - metrics新增compacted_check_result_count、compacted_catalog_result_count及对应indexes，总体索引去重；字符统计不证明真实token峰值。helper仅处理历史数据，不查询数据库、调用工具/LLM或改变预算。
+
+### V.23.4 完整输入诊断、规划指引与只读统计（V13d，D-058）
+
+- PlanDraft、PlanDraftNode、CheckInput根、AppendInput根、PatchDraft根在原解析前扫描已有dict/list/tuple/模型字段；结构键context_projection无论值是否有效均拒绝，422 / PLAN_CONTEXT_PROJECTION。普通字符串不匹配；无标记原对象返回，不额外拒绝原有类型化嵌套。迭代扫描循环安全，原工作区256KiB/64层有限JSON限制不变。
+- 错误含固定说明、repair_guidance和最多3个去重read_workspace提示；条目精确{tool,arguments}，arguments精确{key,version}且通过WorkspaceRef，版本严格正整数、不能强制转换或含额外字段。不回显原标记任意元数据/路径/内容，不执行重读；地址存在性、Run归属与权限仍由Registry核验。无有效地址时要求定位已保存原稿，不猜缺失字段。
+- compiler仅对专用错误保留安全message/details，其余错误沿用原通用说明；context_plans遇AppError/过深JSON保守保留。持久历史、冻结pending_context、旧批准内容与幂等收据不改。
+- 固定事件须在镜头实际视频提示词中发生并达到完成状态，可跨连续镜头但明确完成位置；goal/rationale或“准备/打算/走向”不能代替要求动作。能力/预算不足退回Producer澄清，不删事件/改结局/推测目标时长。这是规划指引，不是实物剧情质量证明。时长文案与D-055一致，旧legacy读取兼容不变。
+- Director文案版本V13，plan-review版本10，long-form-video版本4；仅旧V12f已由Claude V-Gate5b审定，新增V13a/d仍待Gate6审读。Blueprint来源版本不改。
+- 统计CLI显式--profile V12|V13；work在系统TEMP对应前缀且精确marker。仅mode=ro、query_only=ON读取eval.db与real_call_audit.sqlite，不初始化app、读.env或联网；两个DB独立快照，worker停机后运行。默认readonly-statistics-v2，后续显式独立snapshot-name；已有输出拒绝覆盖。
+- V12阈值维持150次文本/视觉、图片0、视频0、峰值60k；V13为120/6/0/80k。V13仅接受phase=planning及固定audit_label 01-c3-1:<run_id>、02-c3-2:<run_id>对应c3_story，03-c7:<run_id>对应c7_complete_story，各一次；身份04-identity同Run调用不并入初始规划。缺/错标签列诊断，不凭case猜测。
+- 物理次数以calls行计，逻辑Registry拒绝另列；已知真实usage峰值超门槛即失败，不能被预算拒绝缺usage掩为未覆盖。演示credits按唯一(budget_scope,invocation_id)计一次；gate6_identity_review归视觉，generate_image依审计invocation映射真实/Mock，缺映射列未归因，不冒称实际货币账单。
+- resumed_story_scope_and_origin_passed只在有效归档/覆盖证据成立时补充审核B通过，首次失败仍单列、保留源hash。planned_delivery_video_seconds为编译交付估计，generated_video_seconds独立；V12旧语义标明范围，不冒称实测或计费秒。
+- 图片预留requested、POST、终态actual_images与下载分别报告；只读gate6_image_policy/images/downloads/violations/http_events、唯一gate6_identity_request及派生输入证据。缺失/未知/超产保留诊断。身份归档索引原图与展示副本路径/hash/尺寸，核对固定四图与专用qwen3.7-plus物理call_id/label；转换和执行权限另由V.23.5定义。计数/哈希证据不能代替视觉正文与人工身份判断，语义状态保持needs_review。

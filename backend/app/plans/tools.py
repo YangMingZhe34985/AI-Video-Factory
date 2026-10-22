@@ -31,6 +31,8 @@ class CheckInput(StrictModel):
     @model_validator(mode="before")
     @classmethod
     def require_exactly_one(cls, value):
+        from app.plans.projection_input import reject_context_projection
+        reject_context_projection(value)
         if not isinstance(value, dict) or (set(value) & {"plan", "plan_ref"}) not in ({"plan"}, {"plan_ref"}):
             raise ValueError("Provide exactly one of plan or plan_ref")
         if value.get("plan", value.get("plan_ref")) is None:
@@ -46,6 +48,12 @@ class CheckInput(StrictModel):
 class AppendInput(StrictModel):
     plan_ref: WorkspaceRef
     nodes: list[PlanDraftNode] = Field(min_length=1, max_length=12)
+
+    @model_validator(mode="before")
+    @classmethod
+    def reject_model_projection(cls, value):
+        from app.plans.projection_input import reject_context_projection
+        return reject_context_projection(value)
 
 
 class InstantiateInput(StrictModel):

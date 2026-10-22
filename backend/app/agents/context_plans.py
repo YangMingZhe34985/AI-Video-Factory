@@ -4,6 +4,8 @@ from hashlib import sha256
 import json
 import re
 
+from app.api import AppError
+
 
 _HASH = re.compile(r"^[a-f0-9]{64}$")
 
@@ -20,7 +22,7 @@ def _parsed(value):
     try:
         result = json.loads(value)
         return result if isinstance(result, dict) else None
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, RecursionError):
         return None
 
 
@@ -138,7 +140,7 @@ def project_saved_plans(messages, projected, rounds, *, policy_version):
                     from app.agents.schemas import PlanDraft
                     normalized = PlanDraft.model_validate(arguments["plan"]).model_dump(mode="json")
                     checks.append({**common, "payload_hash": _digest(normalized), "input_hash": _digest({"plan": normalized})})
-            except (ImportError, TypeError, ValueError, KeyError):
+            except (AppError, ImportError, TypeError, ValueError, KeyError, RecursionError):
                 # Schema drift and old/malformed receipts are kept verbatim.
                 continue
 

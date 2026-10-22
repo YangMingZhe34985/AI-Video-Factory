@@ -140,6 +140,12 @@ class PlanDraftNode(StrictModel):
     rationale: str = Field(max_length=300)
     characters: list[CharacterId] | None = Field(default=None, max_length=8)
 
+    @model_validator(mode="before")
+    @classmethod
+    def reject_model_projection(cls, value):
+        from app.plans.projection_input import reject_context_projection
+        return reject_context_projection(value)
+
     @model_validator(mode="after")
     def unique_characters(self):
         if self.characters is not None and len(set(self.characters)) != len(self.characters):
@@ -188,6 +194,12 @@ class PlanDraft(StrictModel):
     character_references: dict[CharacterId, IdentityReferences] = Field(default_factory=dict, max_length=8)
     story_ref: WorkspaceRef | None = None
     duration_constraint: DurationConstraint | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def reject_model_projection(cls, value):
+        from app.plans.projection_input import reject_context_projection
+        return reject_context_projection(value)
 
     @model_validator(mode="after")
     def unique_ids(self):

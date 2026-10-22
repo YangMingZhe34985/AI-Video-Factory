@@ -454,7 +454,10 @@ def _compile(raw, run, *, registry, plan_version):
         if type(plan_version) is not int or plan_version < 1:
             raise ValueError("Invalid server plan version")
     except (ValidationError, AppError, ValueError) as error:
-        issue(getattr(error, "code", "INVALID_PLAN"), "Plan does not match the authoring schema")
+        if isinstance(error, AppError) and error.code == "PLAN_CONTEXT_PROJECTION":
+            issue(error.code, error.message, details=error.payload)
+        else:
+            issue(getattr(error, "code", "INVALID_PLAN"), "Plan does not match the authoring schema")
         return {"plan": editable, "issues": issues, "estimates": PlanEstimates().model_dump(), "experimental": True,
                 "dag": dag, "validated_inputs": {}, "output_metadata": {}, "source_artifact_ids": [], "input_artifact_metadata": {}}
     try:

@@ -1354,3 +1354,11 @@ V13b已以e1acfbe本地合并，当前agent-v3/V13c。已先记录D-057/V.23.3�
 正式证据TEMP/cc-v13c-1022212916-7761/summary.json：2996项/148文件精确收集与报告全通过，无遗漏/额外/重复/跳过/失败；前端构建与所有进程通过，source/HEAD/branch冻结、guard0；提交前复核source-after一致。旧失败检查只在同key更高版本完成合法check后投影；目录只去同规范过滤器旧副本；原历史、最新资料/计划/回执与冻结恢复保护已回归。
 
 当前准备提交agent-v3/V13c并本地合并，再切agent-v3/V13d；真实80k峰值仍待Gate6 usage，不能由字符统计宣布达标。本轮真实调用全0，私人笔记保持原样。D/Gate候选安全审查中发现的HTTP继承包装、非JSON原证据等问题均先在TEMP修复，未发真实请求。
+
+## 2026-10-22 · Codex · V13d 完成
+
+V13c已以a22d5bb本地合并；D基于该提交，先D-058/V.23.4。新增PLAN_CONTEXT_PROJECTION及受限重读提示，保持原JSON边界/历史恢复；Director明确固定事件完成，long-form-video旧±10秒与D-055对齐；Director文案V13，plan-review10、long-form-video4。仅旧V12f已审，新V13待Claude Gate6。正式只读统计区分新旧阈值、续验标签、阶段/图片/副本/逻辑费用归属，计划交付秒不再误称计费秒。
+
+正式定向TEMP/cc-v13d-focus-1022213947-e4d2：234项全通过。全量TEMP/cc-v13d-1022214039-a9a4：3097项/153文件精确全通过、无遗漏/额外/重复/失败/跳过，前端构建及所有进程通过、source/HEAD/branch冻结、guard0；提交前再次复核source-after一致。本轮比前轮慢（约15分钟），多个未修改经典用例同样变慢；独立旧defaults用例profile通过，create_app1.082秒，投影验证器未调用，没有已证实的D性能回归。诊断保留TEMP/cinecrew-v13d-performance-profile，未因此改代码或跳测试。
+
+准备本地提交合并后切agent-v3/V-Gate6，先D-059/V.23.5、迁入已独立审查的评测护栏，再定向与全量验证后才真实执行。候选56项Stub不是正式Gate结论。所有真实调用仍0；默认启用v3不变，不推送、不建PR、不进V8，不读写私人笔记。

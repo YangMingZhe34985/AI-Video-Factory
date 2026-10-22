@@ -78,6 +78,12 @@ class PatchDraft(StrictModel):
     scope: Literal["only", "cascade"] = "only"
     identity_upgrade: IdentityUpgrade | None = None
 
+    @model_validator(mode="before")
+    @classmethod
+    def reject_model_projection(cls, value):
+        from app.plans.projection_input import reject_context_projection
+        return reject_context_projection(value)
+
     @model_validator(mode="after")
     def unique_targets(self):
         if self.identity_upgrade is None and len(self.ops) > 50:
