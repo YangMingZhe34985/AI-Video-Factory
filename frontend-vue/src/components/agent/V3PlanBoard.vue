@@ -16,6 +16,19 @@
       <div class="stat"><dt><PhFilmSlate :size="13" />累计生成视频时长</dt><dd><strong>{{ secondsLabel(totals.generatedSeconds) }}</strong></dd></div>
       <div class="stat"><dt><PhCoins :size="13" />本计划估价</dt><dd><strong>{{ creditLabel(totals.credits) }}</strong><small v-if="totals.credits !== null"> credits</small></dd></div>
     </div>
+    <div v-if="constraints.visible" class="constraints" role="group" aria-label="需求约束" data-testid="plan-constraints">
+      <span class="constraints-label">需求约束</span>
+      <span v-if="constraints.duration" class="constraint" :data-state="constraints.duration.state">
+        <PhTarget :size="14" class="flex-none text-slate-400" />
+        <span>目标时长 <strong>{{ durationTargetLabel(constraints.duration) }}</strong></span>
+        <span class="pill pill-sm" :class="`tone-${durationTone}`">{{ durationStateLabel(constraints.duration) }}</span>
+      </span>
+      <span v-if="constraints.aspect" class="constraint">
+        <PhFrameCorners :size="14" class="flex-none text-slate-400" />
+        <span>画面比例 <strong>{{ constraints.aspect }}</strong></span>
+        <span class="text-[11px] text-slate-400">拼接与质检按此校验</span>
+      </span>
+    </div>
     <p class="mt-2 text-[11px] leading-relaxed text-slate-400">费用为服务器演示估价；图像按张、视频按秒，部分变换按输入视频 + 完整输出秒数。交付时长不能直接当作计费时长。</p>
     <p v-if="run.mock" class="notice notice-amber mt-3"><PhInfo :size="15" class="mt-0.5 flex-none" />Mock 演示素材不代表真实生成质量或账单。</p>
     <div v-if="issues.length" class="notice notice-red mt-3 flex-col" aria-label="计划问题" role="group">
@@ -120,8 +133,9 @@ import AuthedImage from './AuthedImage.vue'
 import AuthedVideo from './AuthedVideo.vue'
 import { creditLabel, v3StatusLabel } from './v3-actions.js'
 import { statusTone } from './v3-tones'
-import { PhCaretRight, PhCheck, PhCheckCircle, PhCircleNotch, PhClock, PhCoins, PhCursorClick, PhEye, PhFile, PhFilmReel, PhFilmSlate, PhFilmStrip, PhFlask, PhGitBranch, PhHourglass, PhImage, PhInfo, PhMagicWand, PhPencilSimple, PhRecycle, PhScissors, PhSealCheck, PhVideoCamera, PhWarning } from '@phosphor-icons/vue'
+import { PhCaretRight, PhCheck, PhCheckCircle, PhCircleNotch, PhClock, PhCoins, PhCursorClick, PhEye, PhFile, PhFilmReel, PhFilmSlate, PhFilmStrip, PhFlask, PhFrameCorners, PhGitBranch, PhHourglass, PhImage, PhInfo, PhMagicWand, PhPencilSimple, PhRecycle, PhScissors, PhSealCheck, PhTarget, PhVideoCamera, PhWarning } from '@phosphor-icons/vue'
 import { buildPlanAction, choiceIdentity, dependencyState, gateReady, initialApprovalCost, planGroups, planRows, planTotals, planVersion, readableJson, secondsLabel, toolLabel } from './v3-plan.js'
+import { durationStateLabel, durationTargetLabel, planConstraints } from './v3-constraints.js'
 
 const props = defineProps({ run: { type: Object, required: true }, disabled: { type: Boolean, default: false } })
 const emit = defineEmits(['action'])
@@ -133,6 +147,8 @@ const rows = computed(() => planRows(props.run))
 const groups = computed(() => planGroups(props.run, rows.value))
 const totals = computed(() => planTotals(props.run))
 const issues = computed(() => Array.isArray(props.run.plan_issues) ? props.run.plan_issues : [])
+const constraints = computed(() => planConstraints(props.run))
+const durationTone = computed(() => ({ ok: 'emerald', mismatch: 'red' })[constraints.value.duration?.state] || 'slate')
 const locked = computed(() => props.disabled || props.run.action_pending === true)
 const canShowRevision = computed(() => ['awaiting_plan_review', 'awaiting_result_review', 'attention'].includes(props.run.status) && version.value)
 const approvalCost = computed(() => { try { return initialApprovalCost(props.run, repairCredits.value) } catch { return null } })
@@ -180,6 +196,11 @@ function submitRevision() { submit('revise_plan', { message: revisionMessage.val
 .stat dd { @apply flex items-baseline gap-1 tabular-nums; }
 .stat dd strong { @apply text-base font-semibold text-slate-900 dark:text-white; }
 .stat dd small { @apply text-[11px] text-slate-400; }
+.constraints { @apply mt-2.5 flex min-w-0 flex-wrap items-center gap-2 rounded-xl border border-dashed border-slate-200 px-3 py-2 dark:border-slate-700; }
+.constraints-label { @apply text-[11px] font-medium text-slate-500 dark:text-slate-400; }
+.constraint { @apply inline-flex min-w-0 flex-wrap items-center gap-1.5 rounded-lg bg-slate-50 px-2.5 py-1 text-xs text-slate-600 dark:bg-slate-800/60 dark:text-slate-300; }
+.constraint strong { @apply font-semibold text-slate-900 dark:text-white; }
+.constraint[data-state="mismatch"] { @apply bg-red-50/70 ring-1 ring-red-200 dark:bg-red-950/30 dark:ring-red-900; }
 .sub-title { @apply mb-3 flex items-center gap-1.5 text-sm font-semibold text-slate-900 dark:text-slate-100; }
 .node { @apply min-w-0 rounded-xl border border-slate-200 bg-white p-3.5 transition hover:shadow-sm dark:border-slate-700 dark:bg-slate-900; border-left-width: 3px; }
 .edge-emerald { border-left-color: #10b981; }
