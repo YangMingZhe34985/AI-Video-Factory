@@ -679,3 +679,54 @@ patches.diff_preview 为逐操作 {op,node_id,before,after}：输入更新仅展
 - 物理次数以calls行计，逻辑Registry拒绝另列；已知真实usage峰值超门槛即失败，不能被预算拒绝缺usage掩为未覆盖。演示credits按唯一(budget_scope,invocation_id)计一次；gate6_identity_review归视觉，generate_image依审计invocation映射真实/Mock，缺映射列未归因，不冒称实际货币账单。
 - resumed_story_scope_and_origin_passed只在有效归档/覆盖证据成立时补充审核B通过，首次失败仍单列、保留源hash。planned_delivery_video_seconds为编译交付估计，generated_video_seconds独立；V12旧语义标明范围，不冒称实测或计费秒。
 - 图片预留requested、POST、终态actual_images与下载分别报告；只读gate6_image_policy/images/downloads/violations/http_events、唯一gate6_identity_request及派生输入证据。缺失/未知/超产保留诊断。身份归档索引原图与展示副本路径/hash/尺寸，核对固定四图与专用qwen3.7-plus物理call_id/label；转换和执行权限另由V.23.5定义。计数/哈希证据不能代替视觉正文与人工身份判断，语义状态保持needs_review。
+
+## V.23.5 V-Gate6 评测基础设施（D-059）
+
+本节仅定义隔离评测接口，不属于产品公开 API；不向 Agent 暴露生成或评测工具。
+
+### 固定阶段与隔离
+
+- marker `v13-round.json`：`{"round":"V13-Gate6","call_limit":120,"real_image_limit":6,"real_video_limit":0,"media_mode":"identity_sample"}`。
+- 阶段 `01-c3-1` / `02-c3-2` / `03-c7` / `04-identity`，前三归档 `phase=planning`、明确 `audit_label=<阶段>:<run_id>`；身份归档 `phase=identity_sample`。
+- 独占锁与不可覆盖的 started/finished 文件；同轮固定提交、源码文件集合和全量验证。入口显式 `--execute`，身份额外 `--manifest` 与 `--approve-manifest-sha256`。没有自动重采或凭据文件读取。
+- 120 为持久总额度；planning admission119，execution/complete 禁全部新 LLM，identity仅一次四图 Qwen。每次请求预留在传输前提交；失败不返还。图片最多6个单图预留，当前选择器仅原节点attempt1，不自动重试；视频0。
+
+### 真实图选择 manifest
+
+```json
+{"run_id":"agent_...","plan_version":1,"plan_hash":"<64hex>","nodes":[
+ {"node_id":"cast_a","kind":"cast","model":"wan2.6-image","node_hash":"<64hex>","n":1},
+ {"node_id":"cast_b","kind":"cast","model":"wan2.6-image","node_hash":"<64hex>","n":1},
+ {"node_id":"kf_a","kind":"keyframe","model":"qwen-image-3.0","node_hash":"<64hex>","n":1},
+ {"node_id":"kf_b","kind":"keyframe","model":"qwen-image-3.0","node_hash":"<64hex>","n":1}]}
+```
+
+模型字段是原计划精确值，示例不授权替换。`plan_hash` / `node_hash` 均为 canonical JSON（排序键、紧凑分隔、UTF-8、禁止NaN）SHA256。严格两个单角色定妆preview、两个实际引用双方定妆的双人关键帧；两个关键帧不能是会被正常幂等复用的相同执行输入。只许可已审定老API、无上传的参考协议；不符合即停，不能修计划来凑样本。
+
+### 持久审计
+
+与旧 `calls/blocked/limits` 共用隔离 `real_call_audit.sqlite`，不修改旧表含义：
+
+- `gate6_image_policy`：精确manifest及不可提高image_limit。
+- `gate6_images`：attempt_key、选中node/model、request_hash、requested=1、retry_of、status、started/finished、response_hash、actual_images、request_id/provider_task_id、http_status/provider_usage、transport_started、实际inputs_hash/job_id/invocation_id、output_url_hash。
+- `gate6_image_downloads`：reservation_id唯一、url_hash、sha256、bytes、completed_at，必须来自单图成功返回。
+- `gate6_http_events`：kind（image_submit/poll/download）、reservation_id、url_hash、method、started/finished、status/http_status、response_hash/bytes。HTTP已返回后即保存，异常不能擦除；下载超限证据可为partial，status=unknown。
+- `gate6_image_violations`：reservation_id/reason/at；超n等异常锁住后续请求。UNKNOWN不能转换成可重试的确定失败。
+- `gate6_phase`：phase、identity_hashes（JSON数组，四个实际视觉副本哈希）；`gate6_identity_request`：单行call_id绑定旧calls。
+- `gate6_identity_inputs`：单行records（JSON数组四项，顺序同manifest）。每项精确字段：`source_path/source_sha256/source_bytes/source_size` 与 `path/sha256/bytes/size/transform`。前者是原图，后者是展示副本；transform固定format=JPEG/max_edge=1024/quality=85/subsampling=2/optimize=false/resample=LANCZOS/alpha_background=#FFFFFF/crop=false/enhance=false，另记录exif_orientation_applied与pillow_version。
+
+计数分开报告：预留图片单位、进入POST传输的尝试数、实际返回图数、已验证下载图数。失败/未知均不退款，原图过量返回如实记录。文本/视觉严格按物理calls与唯一逻辑invocation对账；媒体demo credits按唯一生成invocation，不把Mock费用当真实媒体账单。
+
+### 私有视觉工具与归档
+
+`gate6_identity_review` 输入仅 `{selection_hash:<64hex>}`；私有server持有四图映射，role=system/approved=true/caller_agent=None/budget_scope原Run，max_retries=0、agent_visible=false、非Plan节点。输入所有权/生成收据验证先于Registry；不存在重新调用的便捷重试路径。
+
+输出包含四项 `comparisons`（character、keyframe_node、verdict=consistent/inconsistent/uncertain、visible_traits、differences）、limitations、usage。四项集合必须恰为两角色×两关键帧。一次调用同时传入四个固定展示副本，沿用实际token预留/结算，不能改预算/换模型或拆成逐图调用。
+
+身份归档 `results/identity_04-identity_<run_id>.json`：round、phase、audit_label、run_id、manifest、budget_preflight、identity（selection_hash/images/display_inputs/tool_receipt/provider_response/path）、meter/images/ledger、review_b/tasks/actions、原图owned_images。`identity-provider-response.json`在适配器解析前独立保存完整原字节base64、响应hash/HTTP状态、完整正文/raw_response/finish_reason，格式错也留证。该归档与所有源图/副本均仅TEMP私有证据。
+
+首个图片POST前预检原Run剩余可覆盖四图估价与512KiB×4副本上限推导的视觉预留，并用不可变 Plan.estimates.total_credits 检查完整计划（含四图、其余Mock）加视觉上界；两项覆盖不足均停止，明细保存在 identity-budget-preflight.json。实际副本超过上限停止，不改变转换。四图完成后先做视觉，再继续其余Mock；最终成片可停在结果审核，不能把抽检自动算作用户批准交付。固定展示副本的细节损失须在报告中说明，质量判断需结合原图人工复核。
+
+启动器 gate6_launch 默认只校验正式已提交源码、完整回归与唯一工作目录，不读取凭证或执行子进程。显式 --execute 后只提取 DASHSCOPE_API_KEY 白名单行进入子进程环境；禁止解释数据库/Redis配置、不输出或保存凭证，实际执行入口继续禁dotenv。
+
+身份Run必须属于三个固定规划归档之一，且 round、phase、case、audit_label、run_id 与审核状态逐项匹配；优先最早合格c3，均不合格可用固定c7。至少一个c3进入审核仍是独立验收目标，不因c7抽检成功而算通过。

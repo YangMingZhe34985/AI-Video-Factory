@@ -1379,3 +1379,9 @@ V13c已以a22d5bb本地合并；D基于该提交，先D-058/V.23.4。新增PLAN_
 - 另建议 V14a（默认开启前）：v3 运行指标。现有 `agent/monitoring.py: run_metrics` 按 v2 结构编写（shots、needs_attention），不覆盖 v3 计划节点与 attention；需求见 DEFAULT_ON_PLAN.md 第 5 节。
 - V3PlanBoard 新增了“需求约束”区块与 `data-testid=plan-constraints`，改该组件时请保留。
 需要对方或用户决定：DEFAULT_ON_PLAN.md 第 7 节三项，待 V-Gate6 通过后一并交用户确认。
+
+## 2026-10-22 · Codex · V-Gate6 评测入口离线验证完成，插入 V13e
+
+先D-059/V.23.5，新增独立评测入口与120/6/0持久预留、固定样本与四图一次视觉、选择性真实图片及传输护栏。正式定向TEMP/cc-v13gate6-focus-1022215804-d252：80项全通过；全量TEMP/cc-v13gate6-1022215930-e652：3153项/157文件精确全通过、无遗漏/额外/重复/失败/跳过，前端构建及所有进程通过、source/HEAD/branch冻结、guard0。提交前再次核对source-after一致。仅本地合并评测基础设施，真实调用仍0，不代表Gate通过。
+
+用户与Claude追加V13e：现有exact/at_most运行时实测使用近零误差，5.04秒可能误拒5秒目标；QC同样存在。将在真实Gate前从feat/agent-v2切agent-v3/V13e，D-059已用于评测入口，按“D-059起”使用下一号D-060并同步契约。编译严格不变，仅运行期增加技术测量余量，补全量与构建；报告明确本项只有离线覆盖，不以Mock证明真实帧级行为。之后才运行固定c3×2、c7×1和四图身份抽检。
