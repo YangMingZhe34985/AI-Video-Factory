@@ -1399,3 +1399,15 @@ V13c已以a22d5bb本地合并；D基于该提交，先D-058/V.23.4。新增PLAN_
 正式TEMP/cc-v13e-1022222538-40ec/summary.json：3205项/158文件精确收集与报告全通过，无遗漏/额外/重复/失败/跳过；前端构建和所有进程通过，source/HEAD/branch冻结、guard0。提交前再次确认source-after与当前源码完全一致。全量约28分钟，比前轮慢，未修改或跳过用例，未证实具体性能根因；定向176项已通过。
 
 准备仅本地提交合并V13e；之后在agent-v3/V-Gate6固定最终提交，使用上述全量证据与唯一TEMP/cinecrew-v13-gate6-20261022-01运行固定样本。本轮真实调用当前全0，后续限120文本/视觉、6图片、0视频。V13e三指定样例和真实Registry/Mock Job链均离线通过；不能称真实视频帧偏差已验收。Claude评审及用户默认开启确认仍待后续。
+
+## 2026-10-22 · Codex · V13 开发交付；用户要求暂挂 V-Gate6 真实验收
+
+状态：V13a–e实现与离线回归完成并本地合并，V13e提交90175c745912d7d20c99e2dc0d505916e9cdafdb。最终全量3205项/158文件、构建全通过，定向176项；精确清单无失败/skip/遗漏/重复，source冻结、guard0。保留Claude约束界面和DEFAULT_ON_PLAN草稿。报告docs/agent_v3/V13_TEST_REPORT.md供Claude审读，V13e只有离线覆盖。
+
+真实阶段固定源码90175c7。TEMP/cinecrew-v13-gate6-20261022-01首个01-c3-1创建Run agent_1f18acf306c742a2后0.4秒进入attention：Provider DNS resolved to nonpublic addresses。现场系统解析dashscope.aliyuncs.com为198.18.0.83；传输在TCP连接前拒绝，未收到HTTP响应或usage。审计保留1次文本预留（deepseek-v4.1-flash）、unknown1、network blocked1、usage缺失1，不重置或退款求通过。逻辑账本演示0.54391 credits，非实际服务商账单；输入/输出已知合计0但峰值未知，不能以0宣称≤80k。入口图片/视频/视觉计数均0，图片抽检表尚未创建，不等于质量验收通过。
+
+02-c3-2、03-c7、04-identity均未启动；无可审核计划、无4张原图或多模态判断原文，真实时长/比例/峰值/纠错改善与V12对比全部未覆盖。已按只读方式生成readonly-statistics-v2-network-stop01，network-stop-readonly-proof.json确认原13个证据文件SHA不变；safety=failed、reconciliation=needs_review原样保留，data_quality=passed只表示归档可读完整。首次失败及started/finished不可删除。
+
+用户明确回复“先完成报告，真实验收暂挂”，后续不发任何模型请求。本轮未放宽DNS护栏、未改代理或.env、未连接真实MySQL/Redis；只读取既有白名单服务商密钥进入子进程，不保存密钥。真实费用/请求未知状态按保守账本保留。没有重采样、图片重试、视频生成或默认开关变更。
+
+交Claude：审读D-055–D-060、V.23与各阶段实现/新Skill；V13e三个指定样例及完整Mock链均通过，但真实Gate仍未验收，默认开启v3继续阻塞。暂挂原因是网络环境与护栏条件不匹配，不是模型规划能力失败；不得据此宣称V13真实指标通过。待用户恢复该域名真实公网DNS并明确续验安排后，先只读核实，再约定如何保留原Run、尝试1及原失败继续剩余固定样本，禁止直接重跑01入口或新建目录清账。不进入V8，不推送或建PR，私人未跟踪技术笔记保持原样。
