@@ -107,6 +107,11 @@ def _validate_brief(payload, run):
     if actual != expected:
         raise AppError("INVALID_WORKSPACE_PAYLOAD", "Brief must describe every uploaded attachment with its original kind", 422)
     text = (run.request or {}).get("text", "")
+    if payload.get("target_duration_sec") is not None:
+        source = payload.get("duration_source_text")
+        if not payload.get("duration_mode") or not source or source not in text:
+            raise AppError("INVALID_DURATION_SOURCE",
+                "An explicit duration requires duration_mode and duration_source_text quoted from the user's original request", 422)
     constraints = payload["constraints"]
     frozen = (run.snapshot or {}).get("v3_revision_constraints")
     if frozen is not None and constraints != frozen:

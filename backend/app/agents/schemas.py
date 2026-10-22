@@ -25,6 +25,18 @@ class WorkspaceRef(StrictModel):
     version: int = Field(ge=1, strict=True)
 
 
+class DurationConstraint(StrictModel):
+    target_duration_sec: float = Field(ge=1, le=600, strict=True, allow_inf_nan=False)
+    duration_tolerance_sec: float = Field(ge=0, le=120, strict=True, allow_inf_nan=False)
+    mode: Literal["approx", "exact", "at_most"]
+
+    @model_validator(mode="after")
+    def strict_bounds(self):
+        if self.mode != "approx" and self.duration_tolerance_sec != 0:
+            raise ValueError("Exact and maximum durations cannot have a tolerance")
+        return self
+
+
 class RequirementBrief(StrictModel):
     """RequestSpec fields independent of the v2 fixed recipe router."""
 
@@ -32,7 +44,10 @@ class RequirementBrief(StrictModel):
     transform: TransformIntent | None = None
     summary: str = Field(min_length=1, max_length=500)
     target_duration_sec: int | None = Field(default=None, ge=1, le=600, strict=True)
-    duration_tolerance_sec: int = Field(default=10, ge=0, le=120, strict=True)
+    duration_tolerance_sec: (Annotated[int, Field(ge=0, le=120, strict=True)]
+                             | Annotated[float, Field(ge=0, le=120, strict=True, allow_inf_nan=False)]) = 10
+    duration_mode: Literal["approx", "exact", "at_most"] | None = None
+    duration_source_text: str | None = Field(default=None, min_length=1, max_length=500)
     aspect_ratio: Literal["16:9", "9:16", "1:1", "4:3", "3:4"] | None = None
     output_count: int = Field(default=1, ge=1, le=4, strict=True)
     subjects: list[Subject] = Field(default_factory=list, max_length=12)
@@ -44,8 +59,34 @@ class RequirementBrief(StrictModel):
     intent_notes: str = Field(default="", max_length=2000)
     production_intent: bool = Field(default=False, strict=True)
 
+    @model_validator(mode="before")
+    @classmethod
+    def explicit_duration_defaults(cls, value):
+        if not isinstance(value, dict) or value.get("duration_mode") is None:
+            return value
+        target = value.get("target_duration_sec")
+        if type(target) is not int or not 1 <= target <= 600:
+            raise ValueError("An explicit duration mode requires a valid target duration")
+        expected = max(3.0, target * .125) if value["duration_mode"] == "approx" else 0.0
+        if "duration_tolerance_sec" in value and (
+            type(value["duration_tolerance_sec"]) not in {int, float}
+            or value["duration_tolerance_sec"] != expected
+        ):
+            raise ValueError("Duration tolerance must match the explicit mode's deterministic bounds")
+        return {**value, "duration_tolerance_sec": expected}
+
+    @model_serializer(mode="wrap")
+    def compatible_duration(self, handler):
+        value = handler(self)
+        for key in ("duration_mode", "duration_source_text"):
+            if value[key] is None:
+                value.pop(key)
+        return value
+
     @model_validator(mode="after")
     def consistent_brief(self):
+        if self.target_duration_sec is None and (self.duration_mode is not None or self.duration_source_text is not None):
+            raise ValueError("A duration mode or source requires an explicit duration target")
         if self.deliverable == "image" and (self.target_duration_sec is not None or self.transform is not None):
             raise ValueError("Image requests cannot specify video duration or transform intent")
         if self.deliverable == "video" and self.output_count != 1:
@@ -146,6 +187,7 @@ class PlanDraft(StrictModel):
     stages: list[PlanStage] = Field(default_factory=list, max_length=200)
     character_references: dict[CharacterId, IdentityReferences] = Field(default_factory=dict, max_length=8)
     story_ref: WorkspaceRef | None = None
+    duration_constraint: DurationConstraint | None = None
 
     @model_validator(mode="after")
     def unique_ids(self):
@@ -168,6 +210,8 @@ class PlanDraft(StrictModel):
             value.pop("character_references", None)
         if self.story_ref is None:
             value.pop("story_ref", None)
+        if self.duration_constraint is None:
+            value.pop("duration_constraint", None)
         return value
 
 

@@ -53,6 +53,39 @@
       "title": "CharacterNodeRef",
       "type": "object"
     },
+    "DurationConstraint": {
+      "additionalProperties": false,
+      "properties": {
+        "target_duration_sec": {
+          "maximum": 600,
+          "minimum": 1,
+          "title": "Target Duration Sec",
+          "type": "number"
+        },
+        "duration_tolerance_sec": {
+          "maximum": 120,
+          "minimum": 0,
+          "title": "Duration Tolerance Sec",
+          "type": "number"
+        },
+        "mode": {
+          "enum": [
+            "approx",
+            "exact",
+            "at_most"
+          ],
+          "title": "Mode",
+          "type": "string"
+        }
+      },
+      "required": [
+        "target_duration_sec",
+        "duration_tolerance_sec",
+        "mode"
+      ],
+      "title": "DurationConstraint",
+      "type": "object"
+    },
     "PlanDeliverable": {
       "additionalProperties": false,
       "properties": {
@@ -347,6 +380,17 @@
       "anyOf": [
         {
           "$ref": "#/$defs/WorkspaceRef"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "duration_constraint": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/DurationConstraint"
         },
         {
           "type": "null"

@@ -210,6 +210,11 @@ def qc_video(data, ctx):
          "summary": "源音轨保留"}]
     from app.plans.aspect import delivery_checks
     checks.extend(delivery_checks(media, data.target_aspect_ratio, data.target_size))
+    if data.duration_constraint is not None:
+        from app.plans.duration import matches_duration
+        checks.append({"code": "USER_TARGET_DURATION",
+            "passed": matches_duration(media["duration_sec"], data.duration_constraint.model_dump(mode="json")),
+            "summary": "主片实测时长符合已批准的用户目标"})
     return _finish(ctx, {"passed": all(item["passed"] for item in checks), "checks": checks,
         "warnings": ["仅验证文件结构与时长，未验证审美、角色一致性或叙事质量。"]})
 

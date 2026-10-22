@@ -18,7 +18,7 @@ tools:
 related:
 - long-form-video
 - budget-planning
-version: 8
+version: 9
 ---
 # 计划审阅
 
@@ -78,3 +78,7 @@ AGENT_OUTPUT_TRUNCATED 表示该轮全部工具均未执行，包括看似完整
 ## 用户明确的输出比例
 
 读取 brief.aspect_ratio 后，成片关键帧和视频须使用匹配的合法 size/ratio。首帧生视频继承首帧比例，不添加模型不支持的参数；选择门的所有候选都需匹配。纯定妆/参考图可保留自身尺寸。compose/QC 的目标比例和画布由编译冻结，冲突必须修草稿；提示词写16:9不代表参数已符合。
+
+## 显式时长检查（V13a · 待 Claude V-Gate6 审阅）
+
+用户明确时长时，brief 记录 target_duration_sec、duration_mode 与 duration_source_text 原文出处；approx 容差固定 max(3秒,12.5%)，exact/at_most 为0。未明确则不写目标。编译器冻结 duration_constraint；以最终视频数据路径求和，compose 按实际有序输入计时，不按 rationale；不重复计算 master、压缩版及包内同一视频。PLAN_DURATION_MISMATCH/PLAN_DURATION_UNKNOWN 都阻塞提交，不能删除约束消错。QC检查实测主片；最终交付聚合也检查批准目标，不自动生成补片。

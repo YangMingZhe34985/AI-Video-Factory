@@ -14,6 +14,7 @@ from app.tools.spec import ToolContext
 
 ACTIVE = {"executing", "awaiting_gate", "delivering"}
 TERMINAL_TOOLS = {"compose_video", "probe_media", "qc_video", "package_story"}
+_KEEP_RUN_ERROR = object()
 
 
 def latest_tasks(run, version=None):
@@ -25,13 +26,15 @@ def latest_tasks(run, version=None):
         plan_version=number).order_by(PlanNodeTask.id).all()}
 
 
-def _update(run, *, status=None, **changes):
+def _update(run, *, status=None, run_error=_KEEP_RUN_ERROR, **changes):
     locked = versions._lock_run(run)
     snapshot = deepcopy(locked.snapshot or {})
     snapshot.setdefault("v3_execution", {}).update(deepcopy(changes))
     locked.snapshot = snapshot
     if status:
         locked.status = status
+    if run_error is not _KEEP_RUN_ERROR:
+        locked.error = deepcopy(run_error)
     db.session.commit()
     return locked
 
@@ -69,6 +72,8 @@ def begin(run, version, repair_budget_credits=0, *, registry=None):
         raise AppError("MODEL_PRICE_CHANGED", "Plan quote changed; review a new version", 409)
     if checked["plan"]["nodes"] != version.plan["nodes"]:
         raise AppError("PLAN_INPUT_CHANGED", "Effective Plan inputs changed since review", 409)
+    if checked["plan"].get("duration_constraint") != version.plan.get("duration_constraint"):
+        raise AppError("PLAN_INPUT_CHANGED", "Plan duration constraint changed since review", 409)
     total = sum(costs.values())
     run = versions._lock_run(run)
     BudgetGuard.check(run.run_id, run.request["budget_limit"], total + repair_budget_credits)
@@ -295,6 +300,23 @@ def _gate_blocks(node_id, dag, gates):
     return False
 
 
+def _check_result_duration(run, version, tasks):
+    from app.plans.runtime_duration import check_delivery_duration
+    if version.plan.get("duration_constraint") is None:
+        return
+    receipt = _frozen(run, version)
+    try:
+        check_delivery_duration(run, version.plan, tasks, receipt)
+    except AppError as error:
+        failure = {**execution.failure(error, known_not_submitted=True),
+            "check": "USER_TARGET_DURATION", "summary": error.message,
+            "details": deepcopy(error.payload)}
+        _update(run, status="attention", run_error=failure)
+        raise
+    if (run.error or {}).get("check") == "USER_TARGET_DURATION":
+        _update(run, run_error=None)
+
+
 def advance(run, registry=None):
     from app.tools import build_v3_registry
     registry = registry or build_v3_registry()
@@ -348,6 +370,10 @@ def advance(run, registry=None):
     gates.extend(key for key, node in nodes.items() if node.get("gate") == "choice" and tasks[key].status == "pending"
                  and tasks[key].state.get("choice_pending") and key not in receipt.get("approved_gates", []))
     if not gates and all(item.status == "success" for item in tasks.values()):
+        try:
+            _check_result_duration(run, version, tasks)
+        except AppError:
+            return run.status
         return _update(run, status="awaiting_result_review").status
     status = "awaiting_gate" if gates else "delivering" if any(item.status == "running" and nodes[key]["tool"] in TERMINAL_TOOLS
         for key, item in tasks.items()) else "executing"
@@ -392,6 +418,7 @@ def approve_results(run, version):
         return "success"
     if run.status != "awaiting_result_review" or not all(execution.usable(run, item) for item in latest_tasks(run, version).values()):
         raise AppError("INVALID_AGENT_STATE", "All outputs must be available before acceptance", 409)
+    _check_result_duration(run, version, latest_tasks(run, version))
     return _update(run, status="success", results_approved=True).status
 
 

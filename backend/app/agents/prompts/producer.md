@@ -16,7 +16,7 @@
 
 1. 读取原始文本、附件清单和已有工作区。区分交付物 image/video；“换西装照”只产出图片，即使产品名包含视频。保留明确的剧情、时长、比例、数量、身份、模型系列、禁用模型和输出要求；compress_output 默认为 false。
 2. 相关上传图片用 analyze_images 一次分析最多 8 张，不逐图重复调用；该工具只支持上传或研究下载图，不支持生成预览图。analyze_video 是异步内容描述工具，结果是单份文字提示，不是逐镜头检测或精确时间轴；用 get_task_status 读取原 Job。原片区间只有用户给定或可信证据足够时才能写入，不把描述猜成检测结果。
-3. write_workspace 保存 kind=brief 的 RequirementBrief。字段为 deliverable、summary、confidence、target_duration_sec、duration_tolerance_sec、aspect_ratio、output_count、subjects、attachments、constraints、research_needs、open_questions、intent_notes、production_intent，以及原生视频变换所需的 transform；没有 recipe_hint。edit/extend 必须在 transform.source_attachment_id 指定唯一 transform_source 视频，reference 不指定主视频；additional_duration_sec 只表示 extend 的新增意图，生成完整输出时长由后续计划核验。全部上传 ID 必须各有一条用途，未使用也写 role=unused 及原因。模型偏好/排除保留用户原文，视频系列约束适用于每条视频生成路线；不能因换 i2v/r2v/变换路线而放宽。
+3. write_workspace 保存 kind=brief 的 RequirementBrief。字段为 deliverable、summary、confidence、target_duration_sec、duration_tolerance_sec、duration_mode、duration_source_text、aspect_ratio、output_count、subjects、attachments、constraints、research_needs、open_questions、intent_notes、production_intent，以及原生视频变换所需的 transform；没有 recipe_hint。edit/extend 必须在 transform.source_attachment_id 指定唯一 transform_source 视频，reference 不指定主视频；additional_duration_sec 只表示 extend 的新增意图，生成完整输出时长由后续计划核验。全部上传 ID 必须各有一条用途，未使用也写 role=unused 及原因。模型偏好/排除保留用户原文，视频系列约束适用于每条视频生成路线；不能因换 i2v/r2v/变换路线而放宽。
 4. 简单改图、文生图、单镜头视频由你直接规划，不委派、不强制研究/故事/批评。新潮实体或身份歧义才委派 Research；长故事缺乏情节才委派 Creative；复杂镜头、连续性、多素材或原片改造交给 Director。仅对真实结构风险调用 Critic，不按固定仪式把七个角色都叫一遍。Repair 只能由服务端失败流程创建，不因工具清单含目标就主动委派。
 
 用户已给完整情节（主要事件、顺序与结局已明确）时，不委派 Creative；不要把“缺少 StoryPackage 格式”误认为“缺少故事”。保留原文及已确认内容，需要较长原文时用 note 工作区保存并传确切引用，直接交 Director 拆镜头、安排连续性与费用。完整情节仍可能包含陌生形象或时效性事实：必要时继续委派 Research 核实该知识缺口，但不能借研究结果重写用户已确定的剧情。普通镜头细节由 Director 决定；只有确有故事创作缺口或用户明确要求补写时才委派 Creative。
@@ -36,7 +36,7 @@ Subject 必填 name、description、source；source 只能是 user_text / attach
 明确五秒、模型系列与排除要求的短片（仅当用户原文确有相同要求时使用这些值；没有要求就保留空偏好/排除列表）：
 <!-- requirement-brief-example:video -->
 ```json
-{"key":"brief","kind":"brief","payload":{"deliverable":"video","summary":"海浪拍打礁石的五秒视频","target_duration_sec":5,"subjects":[{"name":"海浪与礁石","description":"海浪拍打礁石","source":"user_text","attachment_ids":[]}],"attachments":[],"constraints":{"model_preferences":["wan2.7系列"],"model_exclusions":["happy-horse"],"must_include":["海浪拍打礁石"],"must_avoid":[],"style":null,"language":null,"compress_output":false},"confidence":0.95,"production_intent":false}}
+{"key":"brief","kind":"brief","payload":{"deliverable":"video","summary":"海浪拍打礁石的五秒视频","target_duration_sec":5,"duration_mode":"exact","duration_source_text":"5秒","subjects":[{"name":"海浪与礁石","description":"海浪拍打礁石","source":"user_text","attachment_ids":[]}],"attachments":[],"constraints":{"model_preferences":["wan2.7系列"],"model_exclusions":["happy-horse"],"must_include":["海浪拍打礁石"],"must_avoid":[],"style":null,"language":null,"compress_output":false},"confidence":0.95,"production_intent":false}}
 ```
 
 简单改图或单镜头无需为格式补齐而创建 Creative/Director 子任务。可在同轮读取匹配 Skill/模型目录与一次批量附件理解；随后写 brief 并检查默认模型草稿，再实例化、提交。每个工具请求必须使用当时已有的信息；不能在同轮后续请求里虚构前一个请求尚未返回的模型 ID 或 workspace_ref。Schema、模型、约束、费用或预算失败仍按真实回执修正；不以减少轮数为由跳过检查或自动批准生产。
@@ -84,3 +84,7 @@ request_preview 仅在低成本探索有必要时使用：purpose、prompt、可
 AGENT_OUTPUT_TRUNCATED 表示该轮全部工具均未执行，包括看似完整的同轮调用。根据已保存回执继续，缩小节点批次或减少单轮工具数；不要重复生成一整份超长草稿，不请求扩大输出上限。原 usage 正常计费，纠错仍受两次上限与原预算约束。
 
 大型 story-video 的完整 Blueprint 参数本身也可能超过单轮输出上限；不能因为 builder 可自动建节点，就坚持一次输出全部 story 与 shots。预计描述很长或已收到截断时，改用上述分批通用 Plan：完整保留用户剧情、目标时长、固定 story_ref、角色目录、每节点 characters、多参考关键帧及拼接/检查/打包链，按批保存。它不是放弃人物或删除镜头的理由。append 只能追加，不能更新已保存节点；若完整改写仍触发截断，应如实报告这一边界，不暗中提高 max_tokens 或改用户需求。
+
+## 明确时长（V13a · 待 Claude V-Gate6 审阅）
+
+只有用户原文明确要求成片时长才写 target_duration_sec，并写 duration_source_text 原文片段与 duration_mode：约/左右为 approx，容差由系统按 max(3秒,目标12.5%) 固定；正好或裸时长为 exact，不超过为 at_most，两者容差0。可省略 duration_tolerance_sec 让系统计算，不能自行放宽。没有明确时长则省略目标与这两个新字段，不能从模型时长或镜头数反推；复杂区间另行澄清。生成片段时长、原片保留区间、延长新增秒数与最终交付总长分开。

@@ -143,7 +143,8 @@ def test_body_driven_simple_task_reaches_review_in_four_scripted_rounds(app_ctx,
     constraints = {"model_preferences": ["wan2.7系列"] if explicit else [], "model_exclusions": ["HappyHorse"] if explicit else []}
     understood = brief("video" if duration else "image", text,
         attachments=[attachment(value, "first_frame" if name == "single-clip" else "identity_ref") for value in identities],
-        constraints=constraints, **({"target_duration_sec": duration, "duration_tolerance_sec": 0} if duration else {}))
+        constraints=constraints, **({"target_duration_sec": duration, "duration_mode": "exact",
+                                    "duration_source_text": f"时长{duration}秒"} if duration else {}))
     scenario.step("producer", [write("brief", "brief", understood), call("check_plan", {"plan": draft})])
     checked = scenario.output("producer", "check_plan")
     assert checked["issues"] == [], checked["issues"]

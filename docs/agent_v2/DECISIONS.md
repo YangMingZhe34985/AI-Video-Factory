@@ -428,3 +428,17 @@ V-Gate5b 固定样本已使用74次真实调用（73文本、1视觉，媒体0�
 决策：V-Gate5b 有条件通过，V11a–g、V12a–f 验收；默认开启 v3 仍阻塞，须完成 V13a 并通过 V-Gate6。长片单轮输入峰值的 Gate 门槛由 60k 调整为 80k token，60k 保留为优化方向。新增 V13a（时长约束，契约先行）、V13b（无损规范化）、V13c（失败检查回执与模型目录去重投影）、V13d（固定事件完成、投影标记错误码、统计标签、审定标记）。V-Gate6 允许最多 6 张真实图片用于身份抽检，视频生成仍禁止。
 
 范围：V13a 改契约时由 Codex 另记决策（D-055 起）。详细依据见 docs/agent_v3/VGATE5_REVIEW.md“V-Gate5b 补验结论”。影响任务：V13a–V13d、V-Gate6。
+
+## D-055 · 2026-10-22 · 明确时长的编译、批准冻结与实际交付校验
+
+原因：V12 c3-2 的用户目标约120秒，实际计划只有70秒；既有brief虽保存target_duration_sec，编译器未读取，QC只比较片段合计。叙述中的“120秒”不是可执行证据。
+
+决定：只对非空的用户明确目标校验，不从镜头数、模型上限、故事、提示词或计费秒数推测目标。新写入的视频brief有目标时，必须同时提供duration_mode（approx/exact/at_most）和duration_source_text（原用户请求的非空原文片段）；出处校验不声称证明LLM数值解析绝对正确。approx默认容差固定为max(3秒,目标的12.5%)；exact及at_most容差为0，只有浮点比较epsilon=1e-6。当前不接受Agent任意扩大容差，用户另给复杂区间/容差时应澄清为可表达约束。裸“120秒”按exact表达，明确“约/左右”才approx，“不超过”只检查上限。无目标时不产生约束。旧brief读取兼容既有target及显式容差，不迁移历史载荷；v2/经典规则不改。
+
+PlanDraft增加可省略的duration_constraint，含规范target_duration_sec、duration_tolerance_sec、mode；编译从已验证brief绑定，已有非空字段必须一致，不允许借Patch删除或放宽。该根字段进入计划批准哈希；begin除节点外也比较根约束，已批准恢复仍只用旧receipt，不从最新brief重写。原文证据留在工作区，不重复放入计划。旧已批准Plan无字段时继续原规则。
+
+时长取实际交付媒体的数据路径：compose按有序video_artifact_ids逐项求和，同一片段重复出现须重复计时；retain用源区间差，生成/transform用验证后的完整输出duration，已存在工件用实测。交付video、包内master及压缩副本按同一逻辑主片去重；多个独立交付视频按去重后的合计判断，中间参考视频不计入。缺时长证明阻塞，不用生成费用秒数代替。偏差返回PLAN_DURATION_MISMATCH，details包含当前总长、目标、容差、模式和上下界；未知返回PLAN_DURATION_UNKNOWN。
+
+单一交付主片的QC冻结同一约束并检查实际成片；多个独立主片不把全片目标套给每个片段，而在进入结果审核前与结果批准时聚合实测。直接视频无QC节点也必须经过这一交付检查。只用批准版本中的约束，失败沿qc_failed/attention处理；不得自动补片、拉伸、裁剪或付费重试。
+
+影响：V13a、V-Gate6；v3 brief/Plan Schema、workspace验证、compiler/duration、QC与确定性runtime、作者资源与Mock回归。无数据库迁移、媒体权限或经典/v2变更。新增提示词/Skill说明待Claude V-Gate6审阅；默认启用仍须审读后交用户确认。

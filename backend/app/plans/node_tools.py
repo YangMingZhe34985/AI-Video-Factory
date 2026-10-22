@@ -5,6 +5,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_serializer, model_validator
 
+from app.agents.schemas import DurationConstraint
 from app.tools.spec import ToolSpec
 
 
@@ -73,6 +74,14 @@ class ProbeInput(Strict):
 
 class QcInput(ProbeInput, TargetGeometry):
     video_artifact_ids: list[str] = Field(min_length=1, max_length=120)
+    duration_constraint: DurationConstraint | None = None
+
+    @model_serializer(mode="wrap")
+    def compatible_qc(self, handler):
+        value = super().compatible_geometry(handler)
+        if self.duration_constraint is None:
+            value.pop("duration_constraint", None)
+        return value
 
 
 class PackageInput(ProbeInput):

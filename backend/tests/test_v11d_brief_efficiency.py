@@ -171,7 +171,7 @@ def test_complete_user_plot_can_reach_review_through_director_without_story_or_c
     scenario = Scenario(app_ctx, client, text, budget=200)
     brief_ref, source_ref = {"key": "brief", "version": 1}, {"key": "user_plot", "version": 1}
     scenario.step("producer", [write("brief", "brief", brief("video", "按完整剧情制作列车短片",
-        target_duration_sec=120, duration_tolerance_sec=0)),
+        target_duration_sec=120, duration_mode="exact", duration_source_text="制作120秒短片")),
         write("user_plot", "note", {"text": text}),
         delegate("director", [brief_ref, source_ref], task="原情节已完整，只做技术分镜，不委派Creative。",
                  expected="PlanDraft", planning_credits=8)])
@@ -194,6 +194,7 @@ def test_complete_plot_does_not_remove_research_authority_or_copy_story_content(
     text = "完整情节：列车出发、遇断桥、修桥、抵达终点。片长120秒；车身用本周新发布品牌图案，先核实外观。"
     scenario = Scenario(app_ctx, client, text, budget=200)
     scenario.step("producer", [write("brief", "brief", brief("video", text, target_duration_sec=120,
+        duration_mode="exact", duration_source_text="片长120秒",
         research_needs=[{"query": "本周新发布品牌图案", "reason": "核实影响画面的时效性外观"}])),
         write("user_plot", "note", {"text": text}),
         delegate("research", [{"key": "brief", "version": 1}, {"key": "user_plot", "version": 1}],

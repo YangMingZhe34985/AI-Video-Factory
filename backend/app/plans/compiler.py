@@ -48,12 +48,16 @@ def plan_digest(raw):
     return sha256(json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(",", ":"), allow_nan=False).encode()).hexdigest()
 
 
-def request_spec_for_run(run):
-    """Project a validated brief into the existing model-policy-only schema."""
+def brief_for_run(run):
     row = AgentWorkspaceItem.query.filter_by(run_id=run.run_id, kind="brief").order_by(AgentWorkspaceItem.id.desc()).first()
     if row is None:
         raise AppError("BRIEF_REQUIRED", "A validated requirement brief is required before compiling a plan", 422)
-    brief = RequirementBrief.model_validate(row.payload)
+    return RequirementBrief.model_validate(row.payload)
+
+
+def request_spec_for_run(run):
+    """Project a validated brief into the existing model-policy-only schema."""
+    brief = brief_for_run(run)
     return {"deliverable": brief.deliverable, "recipe_hint": "image_create" if brief.deliverable == "image" else "single_clip",
             "summary": brief.summary, "confidence": brief.confidence, "aspect_ratio": brief.aspect_ratio,
             "constraints": brief.constraints.model_dump(mode="json")}
@@ -447,9 +451,11 @@ def _compile(raw, run, *, registry, plan_version):
                 "dag": dag, "validated_inputs": {}, "output_metadata": {}, "source_artifact_ids": [], "input_artifact_metadata": {}}
     try:
         request_spec = request_spec_for_run(run)
+        from app.plans.duration import bind_constraint
+        bind_constraint(plan, brief_for_run(run))
     except (AppError, ValidationError) as error:
         request_spec = None
-        issue(getattr(error, "code", "INVALID_BRIEF"), "A valid Run requirement brief is required")
+        issue(getattr(error, "code", "INVALID_BRIEF"), getattr(error, "message", "A valid Run requirement brief is required"))
     from app.plans.identity_context import bind_story
     issues.extend(bind_story(plan, run, raw))
     verified_origin = _provenance(plan, run)
@@ -506,6 +512,8 @@ def _compile(raw, run, *, registry, plan_version):
                 raise AppError("PLAN_TOOL_FORBIDDEN", "Tool is not Plan executable", 422)
             payload, input_metadata = _typed_inputs(node, spec, outputs, run, cache, plan_version)
             delivery_inputs(node, input_metadata, required_aspect if node_id in aspect_nodes else None)
+            from app.plans.duration import bind_qc_constraint
+            bind_qc_constraint(node, plan)
             payload, input_metadata = _typed_inputs(node, spec, outputs, run, cache, plan_version)
             if node["tool"] in GENERATION_TOOLS and payload.get("model_id") is None:
                 # A model ID is required by the execution schema, but defaults
@@ -599,6 +607,18 @@ def _compile(raw, run, *, registry, plan_version):
                     counted_videos.add(identity)
             except (AppError, AttributeError, KeyError, TypeError) as error:
                 issue(getattr(error, "code", "INVALID_DELIVERABLE"), "Packaged video needs a verified duration", target["node_id"])
+    from app.plans.duration import delivery_seconds, duration_details, matches_duration
+    try:
+        total_seconds = delivery_seconds(plan, outputs, lambda artifact_id: _artifact_info(artifact_id, run, cache))
+        constraint = plan.get("duration_constraint")
+        if constraint is not None and not matches_duration(total_seconds, constraint):
+            details = duration_details(total_seconds, constraint)
+            issue("PLAN_DURATION_MISMATCH", f"Delivered duration {total_seconds:g}s does not meet target "
+                  f"{constraint['target_duration_sec']:g}s, tolerance {constraint['duration_tolerance_sec']:g}s "
+                  f"({constraint['mode']}).", details=details)
+    except AppError as error:
+        if plan.get("duration_constraint") is not None:
+            issue("PLAN_DURATION_UNKNOWN", error.message)
     for node_id in _unused_paid_nodes(nodes, plan["deliverables"]):
         issue("PLAN_UNUSED_PAID_NODE",
               "Paid generation output does not reach a deliverable through data references; "

@@ -403,11 +403,51 @@
       "title": "Target Duration Sec"
     },
     "duration_tolerance_sec": {
+      "anyOf": [
+        {
+          "maximum": 120,
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "maximum": 120,
+          "minimum": 0,
+          "type": "number"
+        }
+      ],
       "default": 10,
-      "maximum": 120,
-      "minimum": 0,
-      "title": "Duration Tolerance Sec",
-      "type": "integer"
+      "title": "Duration Tolerance Sec"
+    },
+    "duration_mode": {
+      "anyOf": [
+        {
+          "enum": [
+            "approx",
+            "exact",
+            "at_most"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Duration Mode"
+    },
+    "duration_source_text": {
+      "anyOf": [
+        {
+          "maxLength": 500,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Duration Source Text"
     },
     "aspect_ratio": {
       "anyOf": [

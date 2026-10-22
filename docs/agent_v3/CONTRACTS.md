@@ -634,3 +634,18 @@ patches.diff_preview 为逐操作 {op,node_id,before,after}：输入更新仅展
 - Patch卡片：保留patch.review.reason原值；加“审阅对象：最终草稿与原需求、已确认修订。”及理由标签“最终草稿审阅理由”。历史 applied 仍只读，不重新生成审阅文本。
 - 不改变意图保真判定、人工门、不可变证据或已批准历史。原审阅文本保持原值；不在前端重写 reason 或猜测保真，保留现有组件结构、配色与报价授权路径。
 - V11 Skill 增补审定标记按 D-047 更新并递增文档版本；V12 新增澄清单列待 Claude V-Gate5b 审阅，不把旧审定冒用到新文案。Blueprint 来源版本独立且不改。
+
+## V.23 V-Gate5b 后续改进（V13）
+
+### V.23.1 明确时长约束（V13a，D-055）
+
+- RequirementBrief保留nullable target_duration_sec（1..600秒）；新增nullable duration_mode（approx/exact/at_most）、duration_source_text（非空，≤500字符）。duration_tolerance_sec支持有限非负浮点数（≤120）。新write_workspace有目标时必须提供mode/source，source须是run.request.text的原文子串，不能引用Agent补写的note；无目标时不得带mode/source。此校验证明出处，不代替语义理解。只有用户明确要求才填写目标，未指定就null；不按模型能力、片段数或故事自行补目标。图片无目标。
+- mode=approx缺省容差max(3,target_duration_sec×0.125)，显式传入也须等于此默认值；exact/at_most容差为0。approx表示对称区间[max(0,target-tolerance),target+tolerance]，exact为单点，at_most为(0,target]。目标/容差拒绝bool、NaN、Infinity；比较只允许1e-6数值epsilon，不套旧QC的0.5秒/2%业务容差。不支持的用户区间/自定义容差先澄清，不擅自放宽。
+- legacy读取：缺mode/source的旧brief继续接受原有target与duration_tolerance_sec，非空target按旧明确目标的对称容差处理；缺目标不产生约束。新字段为空时序列化省略，原有字段默认与旧工作区读取保持兼容。旧批准计划/收据不迁移、不重写。
+- PlanDraft可带duration_constraint或省略；其结构为`{target_duration_sec:number,duration_tolerance_sec:number,mode:approx|exact|at_most}`，值有限、范围同brief，exact/at_most仅容差0。compiler从有效brief确定规范值；第一次编译注入，显式提供必须完全相等，冲突报PLAN_DURATION_CONSTRAINT_CONFLICT。无用户目标不能注入约束；Patch继承原根字段，不能删除/放宽。空值序列化不输出，不改变旧无约束Plan的形状。
+- 原文出处保留在brief；Plan只冻结规范约束，进入审批、Patch与批准版本哈希。runtime.begin必须同时比较再编译的根约束与待审核版本；规则变化不能在仅比较nodes时绕过新审核。已存在批准receipt时只验证原approval_hash并恢复；后续执行、QC与结果批准不读最新brief。
+- 交付时长由真实typed媒体输入链决定：生成/transform用验证后的完整输出秒数；retain=end-start；已有视频用实测；compose按有序video_artifact_ids逐项求和，重复片段每次计时，不能按节点集合或计费输入+输出秒数代替。无compose时按交付视频。只统计交付video及package主片，包内master与同源视频/压缩副本去重；多个独立视频聚合，中间参考compose不按全片目标校验。
+- compiler的PLAN_DURATION_MISMATCH为阻塞，details包含current_duration_sec、target_duration_sec、duration_tolerance_sec、mode、minimum_duration_sec、maximum_duration_sec；消息含当前/目标/容差。不存在可验证交付时长时PLAN_DURATION_UNKNOWN；不得用goal/rationale补时长。check_plan、submit_plan、Patch重新编译走同一检查；原70秒与120秒目标结构必须拒绝，未给目标不追加该检查。
+- 单一主片对应qc_video.inputs可冻结duration_constraint，缺省不序列化；与Plan目标冲突拒绝，中间参考QC不能继承全片目标。QC继续原解码/批准片段合计检查，再增加USER_TARGET_DURATION，检查实测master。多个独立主片由运行时聚合检查；不把总目标逐片重复应用。
+- 进入awaiting_result_review前、approve_results时按批准Plan解析最终主片并聚合实测，直接视频无QC也覆盖。只信同Run有效工件、指纹及实际探测；失败不能进入success，沿PLAN_QC_FAILED/qc_failed进入attention或拒绝批准，不自动拉伸、裁剪、追加付费片段。旧批准Plan缺duration_constraint保持原行为。
+- 验收仅Mock/Stub：120秒目标+7×10拒绝；无目标不变；approx边界/exact/at_most；来源缺失/伪造/无目标禁止猜测；生成、retain、transform、compose重复片段、master/package/压缩别名与多交付；QC实测不足/超出；根约束审批漂移、Patch、旧批准恢复；资源Schema同步。真实样本另按V-Gate6固定次数，绝不为单例调提示词或重新采样。

@@ -52,9 +52,11 @@ def test_single_clip_uses_default_or_literal_family_and_explicit_seconds(app_ctx
         text += "，长度10秒"
     scenario = Scenario(app_ctx, client, text)
     constraints = {"model_preferences": ["wan2.7系列"] if explicit else []}
+    requested_duration = ({"target_duration_sec": duration, "duration_mode": "exact",
+                           "duration_source_text": "长度10秒"} if duration == 10 else {})
     scenario.step("producer", [call("load_skill", {"name": "intent-analysis"}),
         call("list_models", {"mode": "i2v"}), write("brief", "brief", brief("video", text,
-            constraints=constraints, target_duration_sec=duration, duration_tolerance_sec=0))])
+            constraints=constraints, **requested_duration))])
     catalog = scenario.output("producer", "list_models")["models"]
     if explicit:
         model = "wan2.7-i2v"
@@ -87,6 +89,7 @@ def test_single_clip_uses_default_or_literal_family_and_explicit_seconds(app_ctx
     assert model == ("wan2.7-i2v" if explicit else "wan2.6-i2v-flash")
     assert nodes["image"]["model_id"] == "wan2.6-image"
     assert nodes["video"]["inputs"]["first_frame_artifact_id"] == {"ref": "image.image"}
+    assert ("duration_constraint" in version.plan) is (duration == 10)
     assert version.check["estimates"]["video_seconds"] == duration
     assert version.check["estimates"]["generated_video_seconds"] == duration
     quoted = {item["node_id"]: item for item in version.check["estimates"]["nodes"]}
@@ -169,7 +172,8 @@ def test_long_story_research_choice_and_specialists_submit_real_reviewable_plan(
     brief_ref = {"key": "brief", "version": 1}
     research_ref = {"key": "research", "version": 1}
     scenario.step("producer", [call("load_skill", {"name": "delegation-policy"}), write("brief", "brief", brief("video", text,
-        target_duration_sec=120, duration_tolerance_sec=0, constraints={"model_preferences": ["wan2.7系列"]},
+        target_duration_sec=120, duration_mode="exact", duration_source_text="两分钟",
+        constraints={"model_preferences": ["wan2.7系列"]},
         research_needs=[{"query": "ChatGPT动漫形象", "reason": "形象有多个同人版本"}])),
         delegate("research", [brief_ref], task="查明演示资料范围，比较两种角色形象，给出可追溯候选。", expected="Dossier")])
     reference_ids, question = _research(scenario)
@@ -244,8 +248,8 @@ def test_remix_consumes_async_analysis_but_keeps_source_range_and_generated_time
     assert status["terminal"] is True and status["status"] == "success"
     assert status["prompts"]["t2v"]  # Dense analysis text; this is not a time-coded shot detector.
     scenario.step("producer", [write("analysis", "note", {"summary": status["prompts"]["t2v"], "job_id": launch["job_id"]}),
-        write("brief", "brief", brief("video", text, attachments=[attachment(source, "remix_source", kind="video")],
-            target_duration_sec=6, duration_tolerance_sec=0)), delegate("director", [{"key": "brief", "version": 1}, {"key": "analysis", "version": 1}],
+        write("brief", "brief", brief("video", text, attachments=[attachment(source, "remix_source", kind="video")])),
+        delegate("director", [{"key": "brief", "version": 1}, {"key": "analysis", "version": 1}],
             task="按用户明确区间保留与替换；原区间长1.5秒，但新生成段5秒。", expected="PlanDraft")])
     params = {"source_artifact_id": source, "plan": {"title": "局部改造", "mode": "remix", "shots": [
         {"shot_id": "keep", "action": "keep", "source_start": 0.0, "source_end": 1.0, "edit_reason": "保留原片开头"},
@@ -260,6 +264,7 @@ def test_remix_consumes_async_analysis_but_keeps_source_range_and_generated_time
     assert nodes["s002_frame"]["inputs"]["timestamp_sec"] == 1
     assert nodes["s002"]["params"]["duration"] == 5
     assert version.check["estimates"]["video_seconds"] == 6
+    assert "duration_constraint" not in version.plan
     assert version.check["estimates"]["generated_video_seconds"] == version.check["estimates"]["total_credits"] == 5
     assert nodes["compose"]["inputs"]["compress_output"] is False
     assert AgentDelegation.query.filter_by(run_id=scenario.run.run_id, agent="creative").count() == 0

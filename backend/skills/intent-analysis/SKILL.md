@@ -11,7 +11,7 @@ tools:
 related:
 - clarification
 - delegation-policy
-version: 3
+version: 4
 ---
 # 需求理解（已由 Claude 审定 · V-Gate3）
 
@@ -42,7 +42,7 @@ Subject 必填 name、description、source；source 只能是 user_text / attach
 明确五秒、模型系列与排除要求的短片（仅当用户原文确有相同要求时使用这些值；没有要求就保留空偏好/排除列表）：
 <!-- requirement-brief-example:video -->
 ```json
-{"key":"brief","kind":"brief","payload":{"deliverable":"video","summary":"海浪拍打礁石的五秒视频","target_duration_sec":5,"subjects":[{"name":"海浪与礁石","description":"海浪拍打礁石","source":"user_text","attachment_ids":[]}],"attachments":[],"constraints":{"model_preferences":["wan2.7系列"],"model_exclusions":["happy-horse"],"must_include":["海浪拍打礁石"],"must_avoid":[],"style":null,"language":null,"compress_output":false},"confidence":0.95,"production_intent":false}}
+{"key":"brief","kind":"brief","payload":{"deliverable":"video","summary":"海浪拍打礁石的五秒视频","target_duration_sec":5,"duration_mode":"exact","duration_source_text":"5秒","subjects":[{"name":"海浪与礁石","description":"海浪拍打礁石","source":"user_text","attachment_ids":[]}],"attachments":[],"constraints":{"model_preferences":["wan2.7系列"],"model_exclusions":["happy-horse"],"must_include":["海浪拍打礁石"],"must_avoid":[],"style":null,"language":null,"compress_output":false},"confidence":0.95,"production_intent":false}}
 ```
 
 简单改图或单镜头无需为格式补齐而创建 Creative/Director 子任务。可在同轮读取匹配 Skill/模型目录与一次批量附件理解；随后写 brief 并检查默认模型草稿，再实例化、提交。每个工具请求必须使用当时已有的信息；不能在同轮后续请求里虚构前一个请求尚未返回的模型 ID 或 workspace_ref。Schema、模型、约束、费用或预算失败仍按真实回执修正；不以减少轮数为由跳过检查或自动批准生产。
@@ -50,3 +50,7 @@ Subject 必填 name、description、source；source 只能是 user_text / attach
 V11d 增补已由 Claude 审定（V-Gate5）；不放宽原 Schema、工具权限或审批规则。
 
 来源：app/agent/intake.py、request_spec.py；v3 契约 V.6–V.7、V.21.4。
+
+## 明确时长（V13a · 待 Claude V-Gate6 审阅）
+
+只有用户原文明确要求成片时长才写 target_duration_sec，并写 duration_source_text 原文片段与 duration_mode：约/左右为 approx，容差由系统按 max(3秒,目标12.5%) 固定；正好或裸时长为 exact，不超过为 at_most，两者容差0。可省略 duration_tolerance_sec 让系统计算，不能自行放宽。没有明确时长则省略目标与这两个新字段，不能从模型时长或镜头数反推；复杂区间另行澄清。生成片段时长、原片保留区间、延长新增秒数与最终交付总长分开。
