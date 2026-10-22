@@ -1399,3 +1399,22 @@ V13c已以a22d5bb本地合并；D基于该提交，先D-058/V.23.4。新增PLAN_
 正式TEMP/cc-v13e-1022222538-40ec/summary.json：3205项/158文件精确收集与报告全通过，无遗漏/额外/重复/失败/跳过；前端构建和所有进程通过，source/HEAD/branch冻结、guard0。提交前再次确认source-after与当前源码完全一致。全量约28分钟，比前轮慢，未修改或跳过用例，未证实具体性能根因；定向176项已通过。
 
 准备仅本地提交合并V13e；之后在agent-v3/V-Gate6固定最终提交，使用上述全量证据与唯一TEMP/cinecrew-v13-gate6-20261022-01运行固定样本。本轮真实调用当前全0，后续限120文本/视觉、6图片、0视频。V13e三指定样例和真实Registry/Mock Job链均离线通过；不能称真实视频帧偏差已验收。Claude评审及用户默认开启确认仍待后续。
+
+## 2026-10-22 · Claude · 真实端到端测试（含真实视频，D-061）
+状态：完成（发现 2 个阻塞缺陷，默认开启 v3 继续阻塞）
+分支与提交：`agent-v3/real-e2e-report`，已合并到 `feat/agent-v2`
+完成内容：
+- 按用户授权在隔离环境用 v3 跑真实任务：T1 江南水乡 t2v ✅；T2 三风格（wan2.6-image）❌；T2b 三风格（wan2.7-image）✅；T3 小狐狸首次 ❌；T3b 小狐狸两镜头：生成全部成功，拼接失败。
+- 用量：真实视频 33 秒（wan2.7，720P）、图片实际 20 张、规划 LLM 75 轮。执行器 `backend/scripts/v3_eval/real_e2e.py`，证据目录 `%TEMP%/cinecrew-real-e2e-20261022`。
+- 报告 `docs/agent_v3/REAL_E2E_20261022.md`；新增 D-061。
+测试：本次只新增执行器与文档，未改产品代码；未运行自动化测试。
+未完成 / 下一步：
+
+### 给 Codex：V14 任务（V-Gate6 完成后、默认开启前；按 V14a → V14b → V14c → V14d → V14e）
+- **V14a（阻塞）**：wan2.7 真实视频不带 SAR 标记，`MediaProbeService` 给出 `geometry_unverified`，指定比例时 compose 在 `plans/aspect.py:54` 报 INVALID_SOURCE。对本系统生成适配器产出的视频，缺失 SAR 按 1:1 处理并记录依据；外部上传来源保持保守。V12a 给 Mock 加 `setsar=1` 的做法改为让 Mock 与真实形态一致（不带 SAR），补“无 SAR 视频 + 指定比例可拼接”的回归。先记决策再改契约。
+- **V14b（阻塞）**：wan2.6-image 默认参数与 `adapters/dashscope_image.py` 都带 `enable_interleave: true`，真实服务商对 n=1 返回 5 张，运行时报 PLAN_OUTPUT_COUNT_MISMATCH（计费已发生）。agent 计划的图片节点显式发送 false（确认经典首帧节点是否依赖多图后再决定是否改全局默认）；按实际返回张数记账；补测试。
+- **V14c**：V11d 让 brief 逐字存偏好，整句（“图片使用wan2.7-image模型”）在 `agent/model_selection.py` 匹配不到任何模型。selector 与 source_text 分开存，或复用 `model_policy` 的提取；补测试覆盖整句写法。
+- **V14d**：系列偏好是否同时约束图片（建议：系列内有图片模型时也约束）；经用户确认的修改能更新 brief 模型约束。涉及契约，交 Claude 审。
+- **V14e**：多镜头短片默认 compose 成一个成片、各镜头首帧各自对应。
+- 注意：V-Gate6 的视频仍是 Mock（且 Mock 带 setsar=1），测不出 V14a/V14b；请在 V-Gate6 报告中注明。修复后可用剩余授权（视频约 27 秒）复跑 T3b（执行器已在仓库）。
+需要对方或用户决定：V14d 的产品取舍（系列偏好是否覆盖图片）。
