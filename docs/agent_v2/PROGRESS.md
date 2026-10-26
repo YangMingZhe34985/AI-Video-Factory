@@ -1465,3 +1465,9 @@ V13c已以a22d5bb本地合并；D基于该提交，先D-058/V.23.4。新增PLAN_
 测试：新增 tests/test_v3_metrics.py；全量见本次并行回归（logs 路径记录在合并提交说明）。
 真实调用：视频 25 秒（总计 58/60 秒）、图片 3 张、规划文本约 10 次。
 下一步：阶段 1 开启需在部署环境设置 `AGENT_V3_ENABLED=true` 与 `AGENT_ALLOWED_USERS=<用户 ID>`；可选：前端展示 v3 指标、模型选择器。
+
+## 2026-10-26 · Claude · 仓库整理与推送 GitHub
+状态：完成。main 与 feat/agent-v2 均快进到最新提交并推送到 origin（无强推）。
+完成内容：README（中英）更新为 Agent v3 说明（已验证范围、实验性长片、已知限制、指标接口）；.env.example 默认 AGENT_V3_ENABLED=true；根目录 MQ 规格与重构说明书移入 docs/architecture/；同步 CLAUDE.md 与 AGENTS.md 的语言约定；删除 95 个已合并的本地分支（保留 Codex worktree 使用中的分支与未合并的 agent-v2/T1）。推送前检查：无密钥、无大文件、无临时/存储文件被跟踪；后端全量 3239 通过，前端 144 项与构建通过。
+已知限制（非阻塞）：联网检索只有 Mock 提供方；约 2 分钟长片真实成片未完整验证；wan2.7-i2v 对“叼起”等精细交互理解有限。
+下一步候选：真实检索提供方、前端展示 v3 指标、前端模型选择器、V8 经典路径。
