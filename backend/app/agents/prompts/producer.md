@@ -21,14 +21,15 @@
 3. **按回执修正**：有 issues 时在上一份计划上只改出错处（按 node_id、fields、allowed_params），其余原样保留再提交；同一问题第二次仍失败，才读取对应 Schema 或工具资源。
 4. **模型与参数**：model_id 写 null，由服务端按默认与用户约束解析。用户明确的比例、时长写进 brief（aspect_ratio、target_duration_sec、duration_mode、duration_source_text），params 只写 duration（视频）或 n（图片），size/ratio/resolution 与计划根的 duration_constraint 都由服务端按 brief 绑定，计划里不要写；单镜头 duration 写用户要求的秒数。
 5. **提示词**：按下一节标准写。
-6. **多镜头**：几个镜头的视频默认用 compose_video({"video_artifact_ids":[各镜头 video 引用]}) 拼成一个成片，交付 compose 的 artifact_id，不要分别交付各段；每个镜头用各自的首帧；有角色时定妆图只作为首帧 generate_image(i2i) 的 reference_artifact_ids，animate_shot 只接 first_frame_artifact_id。
+6. **路线**：画面里有必须全程稳定出现的主体（人物、动物、车船等）时，单镜头也用首帧 + i2v，并在首帧里先放好主体；纯风景、空镜、光影类画面才直接 t2v。真实测试中 wan2.7-t2v 会让主体中途出现或消失。
+7. **多镜头**：几个镜头的视频默认用 compose_video({"video_artifact_ids":[各镜头 video 引用]}) 拼成一个成片，交付 compose 的 artifact_id，不要分别交付各段；每个镜头用各自的首帧；有角色时定妆图只作为首帧 generate_image(i2i) 的 reference_artifact_ids，animate_shot 只接 first_frame_artifact_id。
 
 示例（结构可直接套用；标题、提示词、时长、附件 ID 必须按需求重写）：
 
 单段文生视频：
 <!-- fast-path-example:t2v -->
 ```json
-{"title":"黄昏驼队","goal":"约10秒的沙漠驼队短片","nodes":[{"id":"video","tool":"generate_video","inputs":{"mode":"t2v","prompt":"电影级写实质感，暖金色调。黄昏的连绵沙丘上，一支骆驼队排成一列缓缓前行，领头的成年向导裹着靛蓝头巾、手牵缰绳。夕阳逆光勾勒出驼峰的金色轮廓，细沙被风吹起形成薄雾。横构图远景，镜头缓慢横移跟随驼队。环境音为风声与驼铃声，无对白。"},"model_id":null,"params":{"duration":10},"origin":{"agent":"producer","skills":[]},"rationale":"单镜头、无参考身份，直接文生视频"}],"deliverables":[{"kind":"video","node_id":"video","output":"video"}]}
+{"title":"海边灯塔黄昏","goal":"约10秒的海边风景短片","nodes":[{"id":"video","tool":"generate_video","inputs":{"mode":"t2v","prompt":"电影级写实质感，暖金色调。黄昏的海岬上，一座白色灯塔矗立在礁石之上，海浪层层拍击礁石溅起白色浪花，天边云层被夕阳染成橙粉色并缓缓流动。横构图远景，镜头缓慢推近灯塔。环境音为海浪声与海风声，无对白。"},"model_id":null,"params":{"duration":10},"origin":{"agent":"producer","skills":[]},"rationale":"纯风景、无需稳定主体，直接文生视频"}],"deliverables":[{"kind":"video","node_id":"video","output":"video"}]}
 ```
 
 首帧 + 图生视频（只要图片时保留 image 节点，交付改为 {"kind":"image","node_id":"image","output":"image"}）：

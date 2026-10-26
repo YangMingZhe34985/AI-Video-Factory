@@ -1454,3 +1454,14 @@ V13c已以a22d5bb本地合并；D基于该提交，先D-058/V.23.4。新增PLAN_
 - 全量回归可并行：12 组约 11 分钟（单进程需数小时）。建议每个任务跑定向测试 + 并行全量，不必串行。
 - 默认开启 v3 的阶段 1（只对用户本人开放）前置条件见 `docs/agent_v3/DEFAULT_ON_PLAN.md`；V-Gate6 是否补跑由用户决定（失败原因为 Clash fake-ip 与 gate6 DNS 护栏不兼容，不是网络故障）。
 需要对方或用户决定：是否授权少量真实视频验证新提示词画质；是否采用更快的开发流程（见 Claude 回复）。
+
+## 2026-10-26 · Claude · 真实视频复测、快速流程与 v3 运行指标（D-063、D-064）
+状态：完成；分支 `agent-v3/fast-process`、`agent-v3/v3-metrics` 已本地合并到 `feat/agent-v2`
+完成内容：
+- 真实视频复测（用户授权，D-061 剩余额度）：两镜头小狐狸 20.05 秒成片一次规划通过，系统自身拼接成功（上次失败），角色外观两镜头一致；不足：第二镜灯笼未明显叼在嘴里。单镜头水乡 5.04 秒氛围更好，但船夫中途才出现（与上次“消失”同类）——wan2.7-t2v 主体稳定性不足，改为“有主体时单镜头也用首帧 + i2v”。
+- 协作流程（D-063）：CLAUDE.md / AGENTS.md 更新，Claude 主要实现；新增 `backend/scripts/test_parallel.sh`；`.gitattributes` 固定 .sh 为 LF。
+- v3 运行指标（D-064，契约 V.24.7）：`/api/agent/runs/<id>/metrics` 的 v3 段与 `/api/agent/metrics/v3?days=7`。
+- DEFAULT_ON_PLAN 前置条件已全部满足，剩阶段 1 是否开启待用户决定。
+测试：新增 tests/test_v3_metrics.py；全量见本次并行回归（logs 路径记录在合并提交说明）。
+真实调用：视频 25 秒（总计 58/60 秒）、图片 3 张、规划文本约 10 次。
+下一步：阶段 1 开启需在部署环境设置 `AGENT_V3_ENABLED=true` 与 `AGENT_ALLOWED_USERS=<用户 ID>`；可选：前端展示 v3 指标、模型选择器。

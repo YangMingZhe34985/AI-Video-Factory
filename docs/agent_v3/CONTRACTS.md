@@ -771,3 +771,9 @@ patches.diff_preview 为逐操作 {op,node_id,before,after}：输入更新仅展
 
 - t2v / i2v / t2i-prompt-writing Skill（version 2）为提示词质量标准，提炼自经典工作流系统提示词；Producer、Director 系统提示词包含要点，Producer 含简单任务速通与可编译示例。Agent 系统提示词长度上限由 12000 调整为 14000 字符。
 - 多镜头短片默认 compose 成一个成片交付，各镜头首帧对应本镜头画面（Director 指引）。这些是规划指引，不是生成质量保证。
+
+### V.24.7 v3 运行指标（D-064）
+
+- `GET /api/agent/runs/<run_id>/metrics` 对 v3 Run 在原结果上增加 `v3`：planning（llm_rounds、input/output_tokens、peak_input_tokens、usage_missing、credits、questions、agents、reached_plan、seconds_to_first_plan）、execution（plan_version、node_status、failed_node_codes、media_credits、run_error_code）、patches（total、by_status、auto_applied、manual_applied）、alerts（PEAK_INPUT_OVER_80K / ATTENTION / NODE_FAILED）。
+- `GET /api/agent/metrics/v3?days=N`（1–90，默认 7）只统计当前用户的 v3 Run：数量与状态分布、reached_plan_rate、asked_rate、各项中位数、峰值超 80k 的 Run 数、attention 原因、媒体费用与补丁计数。只读；credits 为演示估价。
+- 规划路线：画面有必须全程稳定出现的主体时单镜头也用首帧 + i2v，纯风景/空镜才用 t2v（Producer 指引与 t2v-prompt-writing v3）。

@@ -163,7 +163,25 @@ def steps(run_id):
 
 @bp.get("/runs/<run_id>/metrics")
 def metrics(run_id):
-    return api_success(run_metrics(get_run(run_id)))
+    row = get_run(run_id)
+    result = run_metrics(row)
+    if row.request.get("schema_version") == 3:
+        from app.agents.monitoring import v3_run_metrics
+        result["v3"] = v3_run_metrics(row)
+    return api_success(result)
+
+
+@bp.get("/metrics/v3")
+def v3_metrics():
+    """Owner-scoped v3 rollout metrics (DEFAULT_ON_PLAN section 5)."""
+    from app.agents.monitoring import v3_aggregate
+    try:
+        days = int(request.args.get("days", 7))
+    except ValueError:
+        raise AppError("INVALID_INPUT", "days must be an integer", 422)
+    if not 1 <= days <= 90:
+        raise AppError("INVALID_INPUT", "days must be between 1 and 90", 422)
+    return api_success(v3_aggregate(owner(), days))
 
 
 def approved_plan(row, edited):

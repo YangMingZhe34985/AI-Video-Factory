@@ -177,5 +177,8 @@
 | V14c | 模型偏好整句无法匹配（selector 与原文分开存，或复用 model_policy 的提取） | Claude | 真实 E2E（D-061） | 完成（D-062 / V.24.2；从原文提取模型/系列名，最长匹配） |
 | V14d | 系列偏好是否约束图片；经用户确认的修改可更新 brief 模型约束 | Claude | 真实 E2E（D-061） | 完成（D-062 / V.24.2；系列同时约束图片与视频；brief 更新路径暂不改） |
 | V14e | 多镜头短片默认拼接成一个成片、各镜头首帧各自对应（Director 提示词 / long-form-video Skill） | Claude | 真实 E2E（D-061） | 完成（D-062 / V.24.6；Director 指引） |
+| V15a | v3 运行指标：单 Run v3 段与 `/api/agent/metrics/v3` 聚合（契约 V.24.7） | Claude | D-062 | 完成（2026-10-26，D-064） |
+| V15b | 真实视频复测新提示词与修复（两镜头 20 秒 + 单镜头 5 秒） | Claude | D-062 | 完成（两段均成功交付；t2v 主体稳定性问题转为“主体优先 i2v”规则） |
+| V15c | 默认开启 v3 阶段 1（仅用户本人，环境变量切换，见 DEFAULT_ON_PLAN） | 用户（部署）/ Claude（检查） | V15a | 待用户决定 |
 | V8 | 经典路径：生产意图、系列 + 模板、`run_workflow_template`（契约开工前补写） | Codex | V-Gate3 | 按用户指令暂跳过 |
 
