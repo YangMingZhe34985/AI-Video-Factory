@@ -13,7 +13,16 @@ CineCrew (formerly AI Video Factory) is an AI video creation platform. Use Agent
 
 ### Agent Studio
 
-Write a required text request and optionally attach images, videos, audio or documents. Put webpage URLs in the request text. The Agent selects the recipe, duration and models, and asks multiple-choice questions when a material decision is uncertain.
+Write a required text request and optionally attach images, videos, audio or documents. Put webpage URLs in the request text.
+
+**Agent v3 (recommended, `AGENT_V3_ENABLED=true`)** is real multi-agent planning. The Producer understands the request and usually returns a reviewable plan for simple tasks in 1–3 model rounds; complex work is delegated on demand to the Director (shots, continuity), Creative (story) or Research. Plans are a structured Plan IR that is compiled, dry-run and approved by you before a deterministic runtime executes it; agents never call generation tools directly. Preview gates, pick-one-of-N, result review and local revisions (redo only affected shots) are supported. State ratio, duration and model preferences in the request, e.g. "about 20 seconds, 16:9, prefer the wan2.7 family".
+
+- Verified with real models: images and image edits, single clips, pick-one-then-animate, two-shot character-consistent shorts delivered as one composed film.
+- Experimental: ~2-minute films (planning verified, real end-to-end not fully verified).
+- Known limits: web research currently has only a mock provider, so the agent asks you about real brands or unfamiliar subjects; wan2.7 text-to-video does not keep a subject on screen reliably, so shots with a subject are planned as first frame + image-to-video.
+- Metrics: `GET /api/agent/metrics/v3?days=7`.
+
+Without v3 the Agent uses the v2 flow below: it selects the recipe, duration and models, and asks multiple-choice questions when a material decision is uncertain.
 
 - **Image edit / creation:** understand → plan → approve → deliver images.
 - **Single clip:** plan a first frame and motion → approve → generate.
@@ -78,6 +87,7 @@ DATABASE_URL=mysql+pymysql://root:password@127.0.0.1:3306/video_factory?charset=
 REDIS_URL=redis://127.0.0.1:6379/0
 MQ_ENABLED=true
 AGENT_MODE_ENABLED=true
+AGENT_V3_ENABLED=true
 MODEL_ADAPTER_MODE=mock
 ```
 
@@ -190,8 +200,8 @@ python -m pip install -r backend/requirements-dev.txt
 python -m pytest backend/tests -q
 ```
 
-Tests isolate SQLite/storage, force Mock and block provider HTTP. Source-video tests need FFmpeg. Frontend validation: `node --test tests/*.test.js` and `npm run build` in `frontend-vue/`. Reinstall backend requirements when upgrading; document validation adds pinned `pypdf==6.21.1`.
+The full suite has ~3200 tests; in Git Bash run them in parallel with `bash backend/scripts/test_parallel.sh` (12 groups, about 11–33 minutes depending on load). Tests isolate SQLite/storage, force Mock and block provider HTTP. Source-video tests need FFmpeg. Frontend validation: `node --test tests/*.test.js` and `npm run build` in `frontend-vue/`. Reinstall backend requirements when upgrading; document validation adds pinned `pypdf==6.21.1`.
 
-Further reading: [Agent creation](docs/architecture/phase2_langgraph_mvp.md), [source-video remix](docs/architecture/phase3_video_remix.md), [stability evaluation](docs/architecture/phase4_stability_evaluation.md), [MQ operations and rollback](docs/architecture/mq_implementation.md), [backend API](backend/README.md), [production deployment](DEPLOYMENT.md).
+Further reading: [Agent v3 proposal](docs/architecture/agent_v3_proposal_claude.md), [v3 contract](docs/agent_v3/CONTRACTS.md), [latest optimization](docs/agent_v3/OPTIMIZATION_20261023.md), [default-on plan](docs/agent_v3/DEFAULT_ON_PLAN.md), [development handoff](docs/agent_v2/PROGRESS.md), [Agent creation](docs/architecture/phase2_langgraph_mvp.md), [source-video remix](docs/architecture/phase3_video_remix.md), [stability evaluation](docs/architecture/phase4_stability_evaluation.md), [MQ operations and rollback](docs/architecture/mq_implementation.md), [backend API](backend/README.md), [production deployment](DEPLOYMENT.md).
 
 Production uses its own `.env.production` injected into containers; keep it separate from local `.env`. Licensed under [MIT](LICENSE).

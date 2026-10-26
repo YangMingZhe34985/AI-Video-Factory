@@ -1,6 +1,6 @@
 # Phase 4：消息队列只读审计
 
-依据 `AI_Video_Factory_MQ_Integration_Spec.md` 审计经典 DAG 和 Agent 共用执行层。本轮未引入 Redis、Outbox 表或新调度器。当前版本用于单主机、单 Agent worker 的受控评估，不能宣称已具备分布式可靠队列。
+依据 `docs/architecture/mq_integration_spec.md` 审计经典 DAG 和 Agent 共用执行层。本轮未引入 Redis、Outbox 表或新调度器。当前版本用于单主机、单 Agent worker 的受控评估，不能宣称已具备分布式可靠队列。
 
 ## 实体映射
 

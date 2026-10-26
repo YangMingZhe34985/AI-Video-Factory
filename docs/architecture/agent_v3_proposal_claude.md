@@ -3,7 +3,7 @@
 > 作者：Claude｜日期：2026-10-18｜状态：**r3，已确认**（D-029 – D-031；契约见 `docs/agent_v3/CONTRACTS.md`）
 > r3 修订：用户确认总体方案；真实测试范围（D-030）、分工（D-031）、经典路径定位与排期（§3.2、V8）。
 > r2 修订（按用户意见）：执行期失败由 Agent 诊断并提交局部 Plan Patch（§4.1）；委派按需、不以 Agent 数量为目标（§2.5）；Plan IR 改为“开放但受约束”并给出稳定性保证（§3.1）；v2 配方与经典工作流路径改为可被 Agent 选用的 Blueprint（§3.2）。
-> 前置阅读：`docs/private/CineCrew_Agent_Technical_Report_2026-10-18.md`（v2 现状）、`项目重构说明书.md`（最初目标）
+> 前置阅读：`docs/private/CineCrew_Agent_Technical_Report_2026-10-18.md`（v2 现状）、`docs/architecture/项目重构说明书.md`（最初目标）
 
 ---
 

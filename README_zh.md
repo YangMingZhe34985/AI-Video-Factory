@@ -13,7 +13,16 @@ CineCrew（原 AI Video Factory）是一个 AI 视频创作平台。你可以让
 
 ### Agent 模式
 
-只需要写下需求（必填），按需上传图片、视频、音频或文档；网页链接写在需求文字里。Intake 理解需求，Director 选择流程、时长和模型，有实质歧义时用选择题确认。生成前查看计划和费用，再明确审批。
+只需要写下需求（必填），按需上传图片、视频、音频或文档；网页链接写在需求文字里。生成前查看计划和费用，再明确审批。
+
+**Agent v3（推荐，`AGENT_V3_ENABLED=true`）**：真正的多 Agent 规划。Producer 理解需求，简单任务通常 1–3 轮直接给出可审核计划；复杂任务按需委派 Director（分镜、连续性）、Creative（故事）、Research（资料）。计划是结构化的 Plan IR，经编译、零成本试运行和你的审批后，由确定性运行时执行；Agent 不能直接调用生成工具。支持预览门、多图选一、结果审核与局部修改（只重做受影响的镜头）。比例、时长、模型偏好写在需求里即可，例如“约 20 秒、16:9、尽量使用 wan2.7 系列”。
+
+- 已用真实模型验证：单张图片与改图、单镜头视频、三选一后做动画、两镜头角色一致短片（拼成一个成片交付）。
+- 实验性：约 2 分钟的长片（规划已多次验证，真实成片未完整验证）。
+- 已知限制：联网检索目前只有演示用的 Mock 提供方，涉及真实品牌或陌生事物时 Agent 会询问你；wan2.7 文生视频难以保持主体全程出现，因此有主体的画面会规划为“首帧 + 图生视频”。
+- 运行指标：`GET /api/agent/metrics/v3?days=7`（规划轮数、费用、提问率、失败原因等）。
+
+未开启 v3 时使用下表所述的 v2 流程（Intake 理解需求，Director 选择配方）。
 
 | 任务类型（由 Agent 判断） | 示例 | 流程 |
 | --- | --- | --- |
@@ -91,6 +100,7 @@ MODEL_ADAPTER_MODE=mock
 | `REDIS_URL` | 与下一步 Docker 发布的本机端口一致；无需手动建 Redis 库或 Stream |
 | `MQ_ENABLED` | `true`：Agent/工作流分析与媒体任务共用持久化队列 |
 | `AGENT_MODE_ENABLED` | `true`：开放 Agent Studio；只测试经典工作流时可关闭 |
+| `AGENT_V3_ENABLED` | `true`：新建的 Agent 会话使用 v3；已创建的会话保持原版本。`AGENT_ALLOWED_USERS` 留空表示所有登录用户可用 |
 | `MODEL_ADAPTER_MODE` | `mock` 验证功能；`real` 调用真实模型；`auto` 有 Key 时可能直接调用真实服务 |
 | `FFMPEG_BINARY` | FFmpeg 已在 PATH 则留空，否则填写可执行文件路径，Windows 可用正斜杠 |
 | `SECRET_KEY` / `JWT_SECRET_KEY` | 设置自己的随机密钥；不要提交真实 `.env` |
@@ -245,10 +255,14 @@ python -m pip install -r backend/requirements-dev.txt
 python -m pytest backend/tests -q
 ```
 
+全量约 3200 项，单进程较慢；可在 Git Bash 中并行运行 `bash backend/scripts/test_parallel.sh`（12 组，约 11–33 分钟，取决于机器负载）。
+
 涉及原视频的测试需要 FFmpeg。测试使用独立 SQLite/storage、强制 Mock 并阻断供应商 HTTP。前端验证为在 `frontend-vue` 执行 `node --test tests/*.test.js` 和 `npm run build`。新文档校验依赖 `pypdf==6.21.1`，已列入后端 requirements；升级后先安装依赖。
 
 ## 进一步阅读
 
+- [Agent v3 方案](docs/architecture/agent_v3_proposal_claude.md)、[v3 契约](docs/agent_v3/CONTRACTS.md)、[最近一次整体优化](docs/agent_v3/OPTIMIZATION_20261023.md)、[默认开启方案](docs/agent_v3/DEFAULT_ON_PLAN.md)
+- 开发协作与交接：[CLAUDE.md](CLAUDE.md)、[任务看板](docs/agent_v2/PLAN.md)、[交接日志](docs/agent_v2/PROGRESS.md)
 - [Agent 从零创作实现](docs/architecture/phase2_langgraph_mvp.md)
 - [原视频二次创作与镜头协议](docs/architecture/phase3_video_remix.md)
 - [稳定性与系统评估](docs/architecture/phase4_stability_evaluation.md)
