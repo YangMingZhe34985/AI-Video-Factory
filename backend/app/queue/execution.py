@@ -50,9 +50,11 @@ def process_event(event_id, expected_phase=None):
             if (job.config or {}).get("agent_plan_preview"):
                 from app.plans.preview import validate_before_submit as validate_preview_submit
                 validate_preview_submit(job, model, logical_inputs, params, adapter_name=task.adapter_name)
+            # Multi-node classic workflow Jobs bind each queued operation explicitly.
+            operation = (task.queue_data or {}).get("operation") if (job.config or {}).get("agent_workflow") else None
             if (job.config or {}).get("agent_plan"):
                 from app.plans.policy import validate_before_submit as validate_plan_submit
-                validate_plan_submit(job, model, logical_inputs, params, adapter_name=task.adapter_name)
+                validate_plan_submit(job, model, logical_inputs, params, operation=operation, adapter_name=task.adapter_name)
             if (job.config or {}).get("agent_transform"):
                 from app.agent.transform_policy import validate_before_submit
                 validate_before_submit(job, model, logical_inputs, params, adapter_name=task.adapter_name)
@@ -70,7 +72,7 @@ def process_event(event_id, expected_phase=None):
             if (job.config or {}).get("agent_transform"):
                 validate_before_submit(job, model, logical_inputs, params, adapter_name=task.adapter_name)
             if (job.config or {}).get("agent_plan"):
-                validate_plan_submit(job, model, logical_inputs, params, adapter_name=task.adapter_name)
+                validate_plan_submit(job, model, logical_inputs, params, operation=operation, adapter_name=task.adapter_name)
             if (job.config or {}).get("agent_plan_preview"):
                 validate_preview_submit(job, model, logical_inputs, params, adapter_name=task.adapter_name)
             response = adapter.submit(payload)

@@ -25,7 +25,7 @@ def submit(node_run, job, model, adapter_name, payload, identity, *, generation)
                        status="queued", queue_generation=0,
                        request_payload=JobRunStateService.task_payload_for_job(job, payload),
                        queue_data={"inputs": identity["inputs"], "params": identity["params"], "generation": generation,
-                                   "dispatch": node_run.input_snapshot["mq_dispatch"]})
+                                   "dispatch": node_run.input_snapshot["mq_dispatch"], "operation": identity["operation"]})
         try:
             with db.session.begin_nested():
                 db.session.add(task)

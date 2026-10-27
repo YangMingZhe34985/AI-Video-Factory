@@ -263,15 +263,19 @@ def _submit(run, task, node, registry):
         if node["tool"] in policy.PAID_TOOLS:
             from app.services.model_service import ModelService
             from app.tools.budget import estimate_model_cost
-            model = ModelService.get_model(task.inputs["model_id"], require_enabled=True)
-            current_cost = estimate_model_cost(model, task.inputs.get("params", {}),
-                input_video_seconds=float(task.state.get("input_video_seconds", 0)))
+            if node["tool"] == "run_workflow_template":
+                from app.plans.workflow import quote
+                current_cost = quote(task.inputs)["total"]
+            else:
+                model = ModelService.get_model(task.inputs["model_id"], require_enabled=True)
+                current_cost = estimate_model_cost(model, task.inputs.get("params", {}),
+                    input_video_seconds=float(task.state.get("input_video_seconds", 0)))
             if current_cost > task.estimated_cost + 1e-6:
                 raise AppError("MODEL_PRICE_CHANGED", "Node price increased; review a new quote", 409)
         response = registry.invoke(node["tool"], task.inputs, ctx)
         task.invocation_id = response["invocation_id"]
         job_id = (response.get("output") or {}).get("job_id")
-        if job_id and node["tool"] in execution.ASYNC_OUTPUTS.keys() | {"generate_video"}:
+        if job_id and node["tool"] in execution.ASYNC_OUTPUTS.keys() | {"generate_video", "run_workflow_template"}:
             task.job_id, task.status = job_id, "running"
             db.session.commit()
             _poll(run, task, registry)

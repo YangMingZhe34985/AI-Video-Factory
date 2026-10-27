@@ -19,6 +19,7 @@ from app.extensions import db
 from app.models import AgentWorkspaceItem
 from app.plans.schemas import PlanEstimates
 from app.plans.diagnostics import issue_details
+from app.plans import workflow
 from app.services.model_service import ModelService
 from app.services.storage_service import StorageService
 from app.tools.budget import estimate_model_cost
@@ -26,7 +27,8 @@ from app.tools.spec import ToolContext
 from app.tools.specs.list_models import public_pricing
 
 PLAN_TOOLS = frozenset({"generate_image", "animate_shot", "generate_video", "transform_video",
-    "extract_frame", "retain_video_segment", "compose_video", "probe_media", "qc_video", "package_story", "select_image"})
+    "extract_frame", "retain_video_segment", "compose_video", "probe_media", "qc_video", "package_story", "select_image",
+    "run_workflow_template"})
 GENERATION_TOOLS = frozenset({"generate_image", "animate_shot", "generate_video", "transform_video"})
 VERSION_TOOLS = frozenset({"compose_video", "probe_media", "qc_video", "package_story"})
 MEDIA_TYPES = frozenset({"image", "video", "audio", "document", "package"})
@@ -463,7 +465,9 @@ def _compile(raw, run, *, registry, plan_version):
     try:
         request_spec = request_spec_for_run(run)
         from app.plans.duration import bind_constraint
-        bind_constraint(plan, brief_for_run(run))
+        # Classic branches take the brief's duration as each clip's parameter instead (V.25.2).
+        if not any(node.get("tool") == workflow.WORKFLOW_TOOL for node in plan["nodes"]):
+            bind_constraint(plan, brief_for_run(run))
     except (AppError, ValidationError) as error:
         request_spec = None
         issue(getattr(error, "code", "INVALID_BRIEF"), getattr(error, "message", "A valid Run requirement brief is required"))
@@ -539,6 +543,13 @@ def _compile(raw, run, *, registry, plan_version):
                     aspect=required_aspect if node_id in aspect_nodes else None)
                 payload, input_metadata = _typed_inputs(node, spec, outputs, run, cache, plan_version)
                 payload = spec.input_model.model_validate(payload).model_dump(mode="json")
+            elif node["tool"] == workflow.WORKFLOW_TOOL:
+                if request_spec is None:
+                    continue
+                workflow.freeze_models(node, request_spec, run)
+                payload, input_metadata = _typed_inputs(node, spec, outputs, run, cache, plan_version)
+                payload = spec.input_model.model_validate(payload).model_dump(mode="json")
+                estimate = workflow.estimate(node)
             output = _output_metadata(node, spec, payload, input_metadata, estimate)
             if (node["gate"] == "choice") != (node["tool"] == "select_image"):
                 raise AppError("INVALID_CHOICE_GATE", "select_image requires a choice gate, and only select_image may use it", 422)
@@ -560,8 +571,10 @@ def _compile(raw, run, *, registry, plan_version):
                     issue("PLAN_INVALID_CHARACTER_REFERENCE",
                           f"Character {character_id} reference must be an available image in this Run: "
                           f"{getattr(error, 'code', 'INVALID_REFERENCE')}")
-    issues.extend(delivery_geometry_issues(plan, outputs, required_aspect,
-        deliverable=(request_spec or {}).get("deliverable"), known_artifacts=cache))
+    if not any(node["tool"] == workflow.WORKFLOW_TOOL for node in nodes.values()):
+        # Classic branches carry their own ratio/size parameters; no plan geometry proof exists.
+        issues.extend(delivery_geometry_issues(plan, outputs, required_aspect,
+            deliverable=(request_spec or {}).get("deliverable"), known_artifacts=cache))
     from app.plans.identity import validate_identity
     issues.extend(validate_identity(plan, order=dag["order"], output_metadata=outputs,
                                     known_artifacts=cache, media_fields=media_fields))
@@ -588,8 +601,34 @@ def _compile(raw, run, *, registry, plan_version):
                 issue("QC_REQUIRED", "Packaging requires a QC predecessor for the same video", node_id)
     total_seconds = 0.0
     counted_videos = set()
+    workflow_nodes = [node for node in nodes.values() if node["tool"] == workflow.WORKFLOW_TOOL]
+    template_writes = []
+    if workflow_nodes:
+        if len(nodes) != 1:
+            issue("WORKFLOW_PLAN_SHAPE", "A classic workflow plan contains exactly one run_workflow_template node")
+        if plan.get("duration_constraint") is not None:
+            issue("WORKFLOW_DURATION_UNSUPPORTED", "Classic workflow plans do not take a duration constraint; "
+                  "set durations through the branch model parameters")
+        for node in workflow_nodes:
+            try:
+                template_writes.append(workflow.template_write(node, run))
+            except AppError as error:
+                issue(error.code, error.message, node["id"], issue_details(error, node, registry._specs.get(node["tool"])))
     for target in plan["deliverables"]:
         metadata = outputs.get(target["node_id"], {}).get(target["output"])
+        source = nodes.get(target["node_id"])
+        if source is not None and source["tool"] == workflow.WORKFLOW_TOOL:
+            expected = workflow.DELIVERY_OUTPUTS[target["kind"]]
+            if target["output"] != expected:
+                issue("INVALID_DELIVERABLE_TYPE", f"Classic workflow {target['kind']} deliverables use output {expected}",
+                      target["node_id"], details={"output": expected})
+            elif target["node_id"] in validated and expected not in workflow.produced_outputs(validated[target["node_id"]]):
+                issue("WORKFLOW_DELIVERABLE_UNAVAILABLE", "No enabled branch produces this deliverable", target["node_id"],
+                      details={"output": expected})
+            continue
+        if target["kind"] == "prompts":
+            issue("INVALID_DELIVERABLE_TYPE", "Prompt deliverables come from run_workflow_template", target["node_id"])
+            continue
         if metadata is None:
             # Name the tool's real outputs so a planner can fix the reference in one revision.
             source = nodes.get(target["node_id"])
@@ -652,4 +691,5 @@ def _compile(raw, run, *, registry, plan_version):
     plan.update(plan_version=plan_version, estimates=summary, experimental=experimental)
     return {"plan": plan, "issues": issues, "estimates": summary, "experimental": experimental, "dag": dag,
             "validated_inputs": validated, "output_metadata": outputs, "source_artifact_ids": sorted(cache),
+            "template_writes": template_writes,
             "input_artifact_metadata": deepcopy(cache)}

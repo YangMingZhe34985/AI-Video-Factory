@@ -278,6 +278,8 @@ def _quote(run, record, *, scope, registry):
         registry = build_v3_registry()
     draft = normalize_patch(record.get("draft"))
     base = require_current_version(run, draft["base_version"])
+    if any(node["tool"] == "run_workflow_template" for node in base.plan["nodes"]):
+        raise AppError("PATCH_UNSUPPORTED", "Classic workflow plans change by submitting a new plan", 409)
     approval = (run.snapshot or {}).get("v3_execution", {})
     if (approval.get("approved_version") != base.version or approval.get("approval_hash") != inputs_hash(base.plan)
             or record.get("status") in {"applied", "rejected"}):

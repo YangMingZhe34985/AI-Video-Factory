@@ -148,7 +148,10 @@ def _save_receipt(run, name, normalized, ctx, output):
 
 
 def public_check(compiled):
-    return {name: deepcopy(compiled[name]) for name in ("plan", "issues", "estimates", "experimental", "dag")}
+    result = {name: deepcopy(compiled[name]) for name in ("plan", "issues", "estimates", "experimental", "dag")}
+    if compiled.get("template_writes"):
+        result["template_writes"] = deepcopy(compiled["template_writes"])
+    return result
 
 
 def agent_check(compiled):

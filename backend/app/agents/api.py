@@ -36,13 +36,14 @@ class RuntimeAction(BaseModel):
     patch_id: str | None = Field(default=None, min_length=1, max_length=128)
     quote_id: str | None = Field(default=None, min_length=1, max_length=128)
     scope: Literal["only", "cascade"] | None = None
+    confirm_template_write: bool | None = None
 
     @model_validator(mode="after")
     def validate_action(self):
         if self.action == "answer" and self.card_id is None:
             raise ValueError("An answer needs card_id")
         fields = {"answer": {"card_id", "answers", "use_defaults"},
-            "approve_plan": {"plan_version", "repair_budget_credits"},
+            "approve_plan": {"plan_version", "repair_budget_credits", "confirm_template_write"},
             "approve_gate": {"plan_version", "gate_node_id", "selected_artifact_id", "choice_digest"}, "approve_results": {"plan_version"},
             "revise_plan": {"plan_version", "message", "gate_node_id"},
             "approve_patch": {"patch_id", "quote_id", "scope"},
@@ -119,7 +120,7 @@ def admit_action(run, data):
     run = _lock_run(run)
     body = data.model_dump(mode="json", exclude={"request_key"})
     # Optional V9 fields must not alter pre-V9 action receipt hashes.
-    for field in ("selected_artifact_id", "choice_digest"):
+    for field in ("selected_artifact_id", "choice_digest", "confirm_template_write"):
         if body[field] is None:
             body.pop(field)
     digest = hashlib.sha256(json.dumps(body, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
@@ -169,6 +170,9 @@ def admit_action(run, data):
             if total is None:
                 raise AppError("INVALID_EXECUTION_PLAN", "Plan estimate is unavailable", 409)
             BudgetGuard.check(run.run_id, run.request["budget_limit"], total + data.repair_budget_credits)
+            if version.check.get("template_writes") and data.confirm_template_write is not True:
+                raise AppError("TEMPLATE_WRITE_CONFIRMATION_REQUIRED",
+                               "Confirm writing prompt versions to the classic template before approval", 422)
         elif data.action == "approve_gate":
             from app.plans.execution import usable
             from app.plans.runtime import latest_tasks

@@ -13,7 +13,8 @@ from app.services.file_fingerprint import cached_digest
 from app.services.storage_service import StorageService
 
 _dispatch = ContextVar("plan_dispatch", default=None)
-PAID_TOOLS = {"generate_image", "animate_shot", "generate_video", "transform_video", "produce_shot", "remix_shot"}
+PAID_TOOLS = {"generate_image", "animate_shot", "generate_video", "transform_video", "produce_shot", "remix_shot",
+              "run_workflow_template"}
 PLAN_TOOLS = PAID_TOOLS | {"extract_frame", "retain_video_segment", "compose_video", "probe_media", "qc_video", "package_story", "select_image"}
 POLL_NODES = {"poll_first_frame_image", "poll_i2v", "poll_t2v", "poll_r2v_flash"}
 
@@ -85,7 +86,11 @@ def _job_snapshot(job):
     config = job.config or {}
     from app.services.prompt_service import PromptService
     prompts = {}
-    for kind in ("first_frame_image", "i2v", "t2v", "r2v_flash"):
+    if config.get("agent_workflow"):
+        # Classic LLM nodes add prompt versions while running; only seeded ones are bound.
+        from app.plans.workflow import initial_prompts
+        prompts = initial_prompts(job)
+    for kind in () if config.get("agent_workflow") else ("first_frame_image", "i2v", "t2v", "r2v_flash"):
         item = PromptService.get_active_for_template(job.template, kind, job_id=job.id)
         if item and item.job_id == job.id:
             prompts[kind] = {"content": item.content, "version": item.version}
@@ -96,6 +101,7 @@ def _job_snapshot(job):
             inputs.append({"artifact_id": artifact.artifact_id, "source_artifact_id": artifact.meta["source_artifact_id"],
                            "type": artifact.artifact_type, "path": artifact.file_path, "sha256": cached_digest(path)})
     fields = ("node_models", "node_model_params", "animation_mode", "image_generation_mode", "agent_plan_inputs", "negative_prompt")
+    fields += ("agent_workflow", "i2i_test") if config.get("agent_workflow") else ()
     return {"config": {key: deepcopy(config.get(key)) for key in fields},
             "nodes": deepcopy(job.node_overrides or {}), "prompts": prompts, "artifacts": inputs}
 
@@ -111,7 +117,12 @@ def bind_job(ctx, job):
     if node["tool"] == "generate_video":
         operation = {"t2v": "submit_t2v", "i2v": "submit_i2v", "r2v": "submit_r2v_flash"}[task.inputs["mode"]]
     expected_nodes = {"export_manifest"}
-    if operation:
+    workflow_costs = None
+    if node["tool"] == "run_workflow_template":
+        from app.plans import workflow
+        workflow_costs = workflow.bind(task, job)
+        expected_nodes |= set(workflow.enabled_nodes(task.inputs))
+    elif operation:
         expected_nodes |= {operation, operation.replace("submit_", "poll_", 1)}
         if ((job.config or {}).get("node_models") != {operation: task.inputs["model_id"]}
                 or (job.config or {}).get("node_model_params", {}) != {operation: task.inputs.get("params", {})}):
@@ -128,6 +139,8 @@ def bind_job(ctx, job):
     if old is not None and old != snapshot:
         raise AppError("PLAN_APPROVAL_MISMATCH", "Job binding is immutable", 409)
     task.state = {**task.state, "job_snapshot": snapshot}
+    if workflow_costs is not None and old is None:
+        task.state = {**task.state, "workflow_unit_costs": workflow_costs}
     task.job_id = job.job_id
     db.session.commit()
 
@@ -180,6 +193,10 @@ def validate_before_submit(job, model, inputs, params, *, operation=None, adapte
     versions.require_current_version(run, version.version)
     if run.status not in {"executing", "awaiting_gate", "delivering"}:
         raise AppError("PLAN_NOT_ACTIVE", "Plan no longer authorizes submission", 409)
+    if node["tool"] == "run_workflow_template":
+        from app.plans.workflow import validate_submit
+        validate_submit(run, task, model, inputs, params, operation, adapter_name)
+        return
     config = task.state["job_snapshot"]["config"]
     if operation is None:
         operations = list((config.get("node_models") or {}))

@@ -85,6 +85,10 @@ def validate_outputs(run, task, spec, output):
             raise AppError("PLAN_OUTPUT_MISSING", "A required named output is missing", 502)
         if result[field] is None and field == "compressed_artifact_id" and not task.inputs.get("compress_output"):
             continue
+        if spec.name == "run_workflow_template" and result[field] in ([], None):
+            from app.plans.workflow import produced_outputs
+            if field not in produced_outputs(task.inputs):
+                continue
         if kind.removesuffix("[]") in MEDIA_TYPES:
             values = _ids(result[field], kind)
             if kind.endswith("[]") and not values:
@@ -141,6 +145,9 @@ def job_outputs(run, task, spec, job):
     invocation = ToolInvocation.query.filter_by(invocation_id=task.invocation_id, budget_scope=run.run_id).first()
     if not invocation or invocation.job_id != job.id:
         raise AppError("PLAN_OUTPUT_SCOPE_MISMATCH", "Output Job has no matching invocation", 403)
+    if spec.name == "run_workflow_template":
+        from app.plans.workflow import job_outputs as workflow_outputs
+        return workflow_outputs(task, job)
     artifact_type = ASYNC_OUTPUTS.get(spec.name)
     if spec.name == "generate_video":
         artifact_type = {"t2v": "t2v_video", "i2v": "i2v_video", "r2v": "r2v_flash_video"}[task.inputs["mode"]]

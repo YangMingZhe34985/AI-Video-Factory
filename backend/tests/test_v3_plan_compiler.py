@@ -104,7 +104,7 @@ def test_server_owned_node_fields_are_rejected_inside_inputs(app_ctx, field, val
     assert "RESERVED_INPUT" in codes(value)
 
 
-@pytest.mark.parametrize("bad", ["web_search", "agent_llm_turn", "run_workflow_template"])
+@pytest.mark.parametrize("bad", ["web_search", "agent_llm_turn", "list_templates"])
 def test_non_execution_tools_are_rejected(app_ctx, bad):
     assert "PLAN_TOOL_FORBIDDEN" in codes(compile_plan(plan([node(tool=bad)]), make_run()))
 

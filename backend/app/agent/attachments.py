@@ -47,6 +47,9 @@ def attachment_for_owner(artifact_id: str, owner_id: str, *, run_id: str | None 
 
 
 def is_private_agent_job(job: Job) -> bool:
+    # Classic-path plan Jobs were explicitly confirmed into a classic template (D-066).
+    if (job.config or {}).get("agent_workflow"):
+        return False
     return job.strategy == "agent_upload" or any((job.config or {}).get(key) for key in ("agent_story_preview", "agent_story_production", "agent_transform", "agent_plan", "agent_plan_preview"))
 
 

@@ -173,7 +173,7 @@ IdentityReferences = Annotated[list[IdentityRef], Field(min_length=1, max_length
 
 
 class PlanDeliverable(StrictModel):
-    kind: Literal["image", "video", "package"]
+    kind: Literal["image", "video", "package", "prompts"]
     node_id: NodeId
     output: str = Field(pattern=r"^[A-Za-z0-9_]{1,80}$")
 

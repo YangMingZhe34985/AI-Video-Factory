@@ -91,6 +91,16 @@ def repair_budget(run):
     return {"limit": limit, "committed": reserved, "remaining": max(0, limit - reserved)}
 
 
+def _workflow_result(task):
+    """Classic-path result card: Job link, template, prompt versions and package (V.25.4)."""
+    if task is None or task.status != "success":
+        return {"job_id": task.job_id if task else None}
+    output = task.output or {}
+    return _safe({"job_id": output.get("job_id"), "template": output.get("template"), "package": output.get("package"),
+                  "prompts": {kind: {"version": item.get("version"), "content": (item.get("content") or "")[:4000]}
+                              for kind, item in (output.get("prompts") or {}).items()}})
+
+
 def public_plan(run):
     from app.plans.choices import public_choice
     version = current_version(run)
@@ -118,6 +128,7 @@ def public_plan(run):
             "retained": bool((task.state or {}).get("retained_by_only")) if task else False,
             "source_plan_version": (task.state or {}).get("source_plan_version") if task else None,
             "depends_on": version.check.get("dag", {}).get("dependencies", {}).get(node["id"], node.get("depends_on", [])),
+            "workflow": _workflow_result(task) if node["tool"] == "run_workflow_template" else None,
             "updated_at": isoformat(task.updated_at) if task else None})
     results = []
     for delivery in version.plan.get("deliverables", []):
@@ -131,6 +142,7 @@ def public_plan(run):
             results.append({**deepcopy(delivery), "artifact_id": key,
                 "preview_url": f"/api/artifacts/{key}/preview", "download_url": f"/api/artifacts/{key}/download"})
     return {"plan": _safe(version.plan), "plan_issues": _safe(version.check.get("issues", [])),
+        "template_writes": _safe(version.check.get("template_writes", [])),
         "estimates": deepcopy(version.check.get("estimates", version.plan.get("estimates"))),
         "experimental": bool(version.plan.get("experimental")), "nodes": nodes, "results": results,
         "summary": {"steps_total": len(nodes), "steps_success": sum(item["status"] == "success" for item in nodes),
