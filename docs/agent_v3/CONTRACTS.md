@@ -777,3 +777,48 @@ patches.diff_preview 为逐操作 {op,node_id,before,after}：输入更新仅展
 - `GET /api/agent/runs/<run_id>/metrics` 对 v3 Run 在原结果上增加 `v3`：planning（llm_rounds、input/output_tokens、peak_input_tokens、usage_missing、credits、questions、agents、reached_plan、seconds_to_first_plan）、execution（plan_version、node_status、failed_node_codes、media_credits、run_error_code）、patches（total、by_status、auto_applied、manual_applied）、alerts（PEAK_INPUT_OVER_80K / ATTENTION / NODE_FAILED）。
 - `GET /api/agent/metrics/v3?days=N`（1–90，默认 7）只统计当前用户的 v3 Run：数量与状态分布、reached_plan_rate、asked_rate、各项中位数、峰值超 80k 的 Run 数、attention 原因、媒体费用与补丁计数。只读；credits 为演示估价。
 - 规划路线：画面有必须全程稳定出现的主体时单镜头也用首帧 + i2v，纯风景/空镜才用 t2v（Producer 指引与 t2v-prompt-writing v3）。
+
+## V.25 经典路径：在系列与模板下运行工作流（D-066，Claude）
+
+只在用户明确表达生产意图（反推提示词、测试提示词、用于生产并保留提示词、放到某模板下）时使用；其余仍走 v3 私有计划。经典工作流（19 节点 DAG、经典 API 与页面）不变，只经 `JobService.create_job` / `JobRunService` 调用。
+
+### V.25.1 只读工具 `list_templates`
+
+- Agent 可见（producer、creative、director、research、prompt_smith、critic、repair、system），权限 read，无费用。
+- 输入：`series_id?`、`query?`（名称/描述子串，≤80 字）。输出：`series[]`，每项 `{series_id, name, description, templates[]}`；模板项 `{template_id, name, description, prompt_types: {类型: {version, preview}}}`，preview 为该类型当前激活模板提示词的前 120 字。最多返回 50 个模板。
+- 不列出 Agent 内部系列 `agent_studio` 及其模板 `agent_workspace`。
+
+### V.25.2 计划节点 `run_workflow_template`
+
+计划可执行、需审批、按启用分支计费；不暴露给 Agent 直接调用（D-029）。含此节点的计划称“经典路径计划”：计划只能有这一个节点，交付物只能引用它，不允许 `duration_constraint`，补丁不适用（需要修改时重新提交计划）。节点的 `model_id` 必须为空、`params` 必须为空；模型写在 inputs 中。
+
+inputs：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `template_target` | object | 二选一：`{"template_id"}`（已有模板）或 `{"series_id", "new_template_name"}`（在已有系列下新建，名称 1–80 字、系列内不重名）。不得指向 `agent_studio` / `agent_workspace`。 |
+| `branches` | list | 1–8 个且不重复，取值：`reverse_prompts`、`rewrite_prompts`、`r2v_prompt`、`t2v`、`first_frame_image`、`i2v`、`r2v`、`i2i_test`，分别对应经典节点 reverse_prompts、rewrite_prompts、reverse_prompts4r2v、t2v、首帧、i2v、r2v_flash、I2I Test 分支。 |
+| `source_video_artifact_id` | video | 启用 `reverse_prompts` 时必填。 |
+| `first_frame_artifact_id` | image | 启用 `i2v` 而未启用 `first_frame_image` 时必填。 |
+| `reference_artifact_ids` | image[] | 启用 `r2v` 时必填（1–4 张）。 |
+| `prompts` | object | 可选初始提示词：`t2v`、`first_frame_image`、`i2v`、`r2v_flash`、`i2i`（各 ≤8000 字）。 |
+| `i2i_test` | object | 启用 `i2i_test` 时必填：`{mode: single_male|single_female|couple, test_count: 1–8}`。 |
+| `models` / `model_params` | object | 可选，按槽位 `t2v`、`image`、`i2v`、`r2v`、`i2i_image`、`i2i_video` 指定模型与参数；未指定时编译器按需求简报的模型偏好与默认模型补全并冻结；文本/理解槽位 `understanding`、`rewrite` 只由编译器按经典默认模型冻结。 |
+| `package` | bool | 默认 true：作业结束后生成经典 ZIP 包（final/、assets/、prompts/、manifest）。 |
+
+- 依赖规则由经典 `WorkflowValidator` 判定（例如 `rewrite_prompts` 需要 t2v 提示词：来自 `reverse_prompts` 或 `prompts.t2v`）；编译期即报 `WORKFLOW_DEPENDENCY_MISSING`。
+- 报价：各生成槽位单价 × 次数（I2I 槽位 × test_count）+ 文本/理解节点的经典估价；`output_video_seconds` 为各视频分支时长之和。
+- outputs：`job_id`(json)、`template`(json：template_id、name、series_id、created)、`prompts`(json：类型 → {prompt_id, version, content})、`videos`(video[])、`images`(image[])、`package`(package)。未启用相应分支时 `videos`/`images` 为空、`package` 为 null，其余分支的产出缺失即判失败。
+- 交付物：`video`→`videos`、`image`→`images`、`package`→`package`；新增交付类型 `prompts`→`prompts`（只出提示词的任务用它交付）。
+
+### V.25.3 模板写入授权
+
+- 编译结果与计划版本的 check 增加 `template_writes[]`：`{node_id, mode: existing|new, series_id, series_name, template_id?, template_name, prompt_types[]}`，计划卡据此显示“将在 系列 X / 模板 Y 下创建作业，并把提示词新版本写回模板”。
+- `approve_plan` 动作新增可选字段 `confirm_template_write: true`；计划含 `template_writes` 而未确认时拒绝（`TEMPLATE_WRITE_CONFIRMATION_REQUIRED`，422）。不含写入的计划可省略该字段（缺省值不进入回执哈希，旧回执不变）。
+- 新模板在批准后、节点执行时才创建（模板 ID 由 run_id 与 node_id 确定性派生，重试复用）；提示词只经经典 PromptSync 追加版本（append-only，可回滚），不修改模板配置。
+
+### V.25.4 执行绑定
+
+- 作业 `config.agent_workflow = {branches, test_count}`，`node_models` / `node_model_params` 为冻结的全部槽位；作业快照只绑定初始提示词引用与初始素材，作业内 LLM 节点生成的提示词不在审批范围内（经典路径的固有特性，计划卡明示）。
+- 每次服务商提交校验：操作在冻结映射内、模型与参数一致、源素材指纹不变、初始提示词未变、单次价格不高于绑定时的单价；计划须为当前版本且处于执行状态。
+- 结果卡给出经典作业详情链接 `/jobs/<job_id>`，提示词可在经典“提示词管理”中查看。
