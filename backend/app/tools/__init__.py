@@ -24,7 +24,7 @@ def get_registry():
 
 def build_v3_registry():
     """Extend the legacy catalog without changing the public v1/v2 API."""
-    from app.tools.specs import analyze_images, list_models, estimate_cost
+    from app.tools.specs import analyze_images, list_models, list_templates, estimate_cost
 
     from dataclasses import replace
     from app.tools.registry import ToolRegistry
@@ -37,7 +37,7 @@ def build_v3_registry():
         registry.register(replace(spec, allowed_roles=spec.allowed_roles | roles) if spec.agent_visible else spec)
     for spec in extra_specs():
         registry.register(spec)
-    for module in (analyze_images, list_models, estimate_cost):
+    for module in (analyze_images, list_models, list_templates, estimate_cost):
         registry.register(module.SPEC)
     from app.tools.specs.skill_library import register_skill_tools
     from app.agents.tools import register_agent_tools

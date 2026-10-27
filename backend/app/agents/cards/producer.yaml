@@ -20,6 +20,7 @@
     "analyze_video",
     "get_task_status",
     "list_models",
+    "list_templates",
     "estimate_cost",
     "check_plan",
     "append_plan_nodes",

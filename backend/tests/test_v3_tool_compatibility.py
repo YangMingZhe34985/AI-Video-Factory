@@ -88,12 +88,12 @@ def test_v3_catalog_does_not_mutate_legacy_roles_or_descriptions():
     v3 = build_v3_registry()
     assert legacy.describe_all() == before == build_default_registry().describe_all()
     assert set(v3.names()) - set(LEGACY_NAMES) == {
-        "analyze_images", "estimate_cost", "list_models", "list_skills", "load_skill", "read_skill_resource",
+        "analyze_images", "estimate_cost", "list_models", "list_templates", "list_skills", "load_skill", "read_skill_resource",
         "list_agents", "delegate", "ask_user", "read_workspace", "write_workspace", "finish",
         "check_plan", "instantiate_blueprint", "submit_plan", "request_preview", "retain_video_segment",
         "propose_patch", "review_patch", "select_image", "append_plan_nodes",
     }
-    assert len(v3.names()) == 43
+    assert len(v3.names()) == 44
     append = v3.get("append_plan_nodes")
     assert append.allowed_roles == frozenset({"producer", "director"})
     assert append.permission == "write" and append.agent_visible and not append.plan_executable
