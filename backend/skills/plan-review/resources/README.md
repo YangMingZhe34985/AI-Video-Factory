@@ -42,6 +42,7 @@
 | extract_frame | resources/tools/extract_frame.json |
 | retain_video_segment | resources/tools/retain_video_segment.json |
 | select_image | resources/tools/select_image.json |
+| run_workflow_template | resources/tools/run_workflow_template.json（经典路径，先读 production-workflow Skill） |
 | compose_video | resources/tools/compose_video.json |
 | probe_media | resources/tools/probe_media.json |
 | qc_video | resources/tools/qc_video.json |

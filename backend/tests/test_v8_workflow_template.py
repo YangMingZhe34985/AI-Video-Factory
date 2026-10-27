@@ -193,6 +193,17 @@ def test_compile_refuses_invalid_workflow_nodes(app_ctx, inputs, deliverables, c
     assert code in {item["code"] for item in checked["issues"]}, checked["issues"]
 
 
+def test_image_only_and_prompt_only_jobs_are_not_packaged(app_ctx):
+    template = classic_template()
+    inputs = {"template_target": {"template_id": template.template_id}, "branches": ["first_frame_image"],
+              "prompts": {"first_frame_image": "雨夜街头，撑红伞的女子"}}
+    _run, _registry, checked = compile_run(inputs, [{"kind": "image", "node_id": "workflow", "output": "images"}])
+    assert not checked["issues"], checked["issues"]
+    assert checked["plan"]["nodes"][0]["inputs"]["package"] is False  # Classic packages need a video.
+    _run, _registry, checked = compile_run(inputs, [{"kind": "package", "node_id": "workflow", "output": "package"}])
+    assert "WORKFLOW_DELIVERABLE_UNAVAILABLE" in {item["code"] for item in checked["issues"]}
+
+
 def test_workflow_plans_are_single_node_without_duration(app_ctx):
     template = classic_template()
     inputs = {"template_target": {"template_id": template.template_id}, "branches": ["t2v"], "prompts": {"t2v": "雨夜街头"}}

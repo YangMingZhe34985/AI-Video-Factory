@@ -118,6 +118,7 @@ BRANCH_OUTPUTS = {"t2v": ("videos", "t2v_video"), "i2v": ("videos", "i2v_video")
 VIDEO_ARTIFACTS = ("t2v_video", "i2v_video", "r2v_flash_video", "i2i_test_video")
 IMAGE_ARTIFACTS = ("first_frame_image", "i2i_test_first_frame_image")
 DELIVERY_OUTPUTS = {"video": "videos", "image": "images", "package": "package", "prompts": "prompts"}
+VIDEO_BRANCHES = frozenset({"t2v", "i2v", "r2v", "i2i_test"})
 
 
 def _issue(code, message, field=None, **details):
@@ -147,8 +148,9 @@ def operations(inputs):
 
 def produced_outputs(inputs):
     branches = set(inputs["branches"])
+    packaged = inputs.get("package", True) is True and bool(branches & VIDEO_BRANCHES)
     return {field for branch, (field, _kind) in BRANCH_OUTPUTS.items() if branch in branches} | (
-        {"package"} if inputs.get("package", True) else set()) | {"prompts", "job_id", "template"}
+        {"package"} if packaged else set()) | {"prompts", "job_id", "template"}
 
 
 def prompt_types(inputs):
@@ -263,7 +265,8 @@ def freeze_models(node, request_spec, run):
             raise _issue("INVALID_OUTPUT_COUNT", "Classic image nodes produce one image per call", f"inputs.model_params.{slot}")
         frozen_models[slot], frozen_params[slot] = model.model_id, validated
     inputs["models"], inputs["model_params"] = frozen_models, frozen_params
-    inputs.setdefault("package", True)
+    # Classic packages are built around a video; prompts-only or image-only Jobs are not packable.
+    inputs["package"] = inputs.get("package", True) is True and bool(set(inputs["branches"]) & VIDEO_BRANCHES)
     return inputs
 
 
@@ -299,6 +302,16 @@ def template_write(node, run):
 # Classic submit nodes whose provider prompt is the stored prompt verbatim.
 VERBATIM_PROMPTS = {"submit_t2v": "t2v", "submit_first_frame_image": "first_frame_image",
                     "submit_i2v": "i2v", "submit_r2v_flash": "r2v_flash"}
+
+
+def classic_submit(adapter, payload):
+    """Run a classic node's provider call with classic semantics inside Agent/MQ workers."""
+    from app.adapters.qwen_chat import classic_json_fallback
+    token = classic_json_fallback.set(True)
+    try:
+        return adapter.submit(payload)
+    finally:
+        classic_json_fallback.reset(token)
 
 
 def _mismatch(message):

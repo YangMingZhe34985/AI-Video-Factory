@@ -49,9 +49,9 @@ def resource(directory, name="resources/example.md", content=b"cached text"):
     return target
 
 
-def test_repository_library_has_twenty_guides_and_six_implemented_blueprints():
+def test_repository_library_has_twenty_one_guides_and_six_implemented_blueprints():
     result = library(Path(__file__).resolve().parents[1] / "skills", strict=True)
-    assert len(result.names()) == 20
+    assert len(result.names()) == 21
     assert {"image-edit", "image-create", "single-clip", "story-video", "video-remix", "video-transform"} <= set(result.names())
     assert {skill["name"] for skill in result.list_skills() if skill["blueprint"]} == {
         "image-edit", "image-create", "single-clip", "story-video", "video-remix", "video-transform"}

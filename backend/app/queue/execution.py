@@ -75,7 +75,11 @@ def process_event(event_id, expected_phase=None):
                 validate_plan_submit(job, model, logical_inputs, params, operation=operation, adapter_name=task.adapter_name)
             if (job.config or {}).get("agent_plan_preview"):
                 validate_preview_submit(job, model, logical_inputs, params, adapter_name=task.adapter_name)
-            response = adapter.submit(payload)
+            if (job.config or {}).get("agent_workflow"):
+                from app.plans.workflow import classic_submit
+                response = classic_submit(adapter, payload)
+            else:
+                response = adapter.submit(payload)
         elif phase == "poll":
             response = adapter.poll(provider_id)
         else:

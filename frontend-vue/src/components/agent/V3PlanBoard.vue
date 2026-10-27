@@ -31,6 +31,13 @@
     </div>
     <p class="mt-2 text-[11px] leading-relaxed text-slate-400">费用为服务器演示估价；图像按张、视频按秒，部分变换按输入视频 + 完整输出秒数。交付时长不能直接当作计费时长。</p>
     <p v-if="run.mock" class="notice notice-amber mt-3"><PhInfo :size="15" class="mt-0.5 flex-none" />Mock 演示素材不代表真实生成质量或账单。</p>
+    <div v-if="writes.length" class="notice notice-blue mt-3 flex-col" role="group" aria-label="经典模板写入" data-testid="template-writes">
+      <p class="flex items-center gap-1.5 font-medium"><PhFlowArrow :size="15" />经典路径 · 写入你的模板</p>
+      <ul class="space-y-1 text-xs">
+        <li v-for="item in writes" :key="item.nodeId">将在 系列「{{ item.series }}」/ {{ item.isNew ? '新建' : '已有' }}模板「{{ item.template }}」下创建经典作业，并把提示词新版本（{{ item.promptTypes.join('、') || '—' }}）写回模板。</li>
+      </ul>
+      <p class="text-[11px] leading-relaxed opacity-80">作业与产物会出现在经典工作流页面；提示词版本只追加、可在“提示词管理”回滚。作业内经典节点生成的提示词不在本次审批范围内，模型、参数、分支与单价已冻结。</p>
+    </div>
     <div v-if="issues.length" class="notice notice-red mt-3 flex-col" aria-label="计划问题" role="group">
       <p class="flex items-center gap-1.5 font-medium"><PhWarning :size="15" />计划问题 · {{ issues.length }}</p>
       <ul class="space-y-1 text-xs"><li v-for="(issue, index) in issues" :key="index"><strong v-if="issue.node_id">{{ issue.node_id }}：</strong>{{ issue.message || issue.code || '计划需要修订' }}</li></ul>
@@ -53,7 +60,7 @@
           <p v-if="row.retained" class="notice notice-amber mt-2 text-xs">保留旧结果{{ row.source_plan_version ? `（来源版本 ${row.source_plan_version}）` : '' }}；本次不重生成，可能保留历史衔接。</p>
           <p v-else-if="row.reused_from_task_id" class="mt-1.5 flex items-center gap-1 text-[11px] text-emerald-700 dark:text-emerald-400"><PhRecycle :size="12" />复用已验证产物{{ row.source_plan_version ? ` · 来源版本 ${row.source_plan_version}` : '' }}</p>
           <dl class="node-stats">
-            <div><dt>模型</dt><dd>{{ row.model_id || (['generate_image', 'generate_video', 'animate_shot', 'transform_video'].includes(row.tool) ? '待服务器选型' : '无需模型') }}</dd></div>
+            <div><dt>模型</dt><dd>{{ row.model_id || (row.workflow ? '按分支冻结（见详情）' : ['generate_image', 'generate_video', 'animate_shot', 'transform_video'].includes(row.tool) ? '待服务器选型' : '无需模型') }}</dd></div>
             <div><dt>服务器估价</dt><dd>{{ creditLabel(row.estimated_cost) }}<small v-if="row.estimated_cost !== null"> credits</small></dd></div>
             <div v-if="row.duration !== null"><dt>{{ row.tool === 'retain_video_segment' ? '原片保留时长' : '生成输出时长' }}</dt><dd>{{ secondsLabel(row.duration) }}</dd></div>
             <div v-if="row.input_video_seconds > 0"><dt>计费输入视频</dt><dd>{{ secondsLabel(row.input_video_seconds) }}</dd></div>
@@ -61,6 +68,15 @@
           <p v-if="row.gate === 'preview'" class="gate" :class="row.gate_approved ? 'tone-emerald' : 'tone-blue'"><PhEye :size="13" class="flex-none" />{{ row.gate_approved ? '预览已确认' : row.status === 'success' ? '等待确认预览；后续依赖暂不执行' : '此节点生成后需要确认预览' }}</p>
           <p v-if="row.gate === 'choice'" class="gate" :class="row.gate_approved ? 'tone-emerald' : 'tone-blue'"><PhCursorClick :size="13" class="flex-none" />{{ row.gate_approved ? `已选择：${row.choice?.selected || '已确认候选'}` : '请选择一张候选，再确认用于后续生成。选择本身免费，所有候选的生成费已计入计划。' }}</p>
           <p v-if="row.error" class="notice notice-red mt-2 text-xs" role="alert">{{ row.error }}</p>
+          <div v-if="row.workflow" class="workflow" data-testid="workflow-node">
+            <p class="text-xs text-slate-500">经典分支：{{ row.workflow.branches.join(' → ') }}</p>
+            <p v-if="row.workflow.template" class="mt-1 text-xs text-slate-600 dark:text-slate-300">已写入模板「{{ row.workflow.template }}」{{ row.workflow.packaged ? ' · 已生成经典 ZIP 包' : '' }}</p>
+            <RouterLink v-if="row.workflow.jobUrl" :to="row.workflow.jobUrl" class="link"><PhArrowSquareOut :size="13" />打开经典作业详情</RouterLink>
+            <details v-for="prompt in row.workflow.prompts" :key="prompt.kind" class="details">
+              <summary><PhCaretRight :size="12" class="chev" />{{ prompt.label }}提示词 · 版本 {{ prompt.version || '—' }}</summary>
+              <p class="prompt-text">{{ prompt.content }}</p>
+            </details>
+          </div>
           <details class="details" @toggle="setExpanded(row.id, $event.target.open)">
             <summary><PhCaretRight :size="12" class="chev" />提示词、参数与输入引用</summary>
             <div v-if="expanded[row.id]" class="details-body">
@@ -112,8 +128,9 @@
       <label class="field-label">自动局部修复预授权（可选，credits）<input v-model.number="repairCredits" type="number" min="0" step="0.01" inputmode="decimal" :disabled="locked" placeholder="0" class="field max-w-[16rem]" /></label>
       <p class="text-[11px] leading-relaxed text-slate-500">用于满足受控条件的小范围修复，不会因新版本自动补满；未填写为 0。超出预授权的修改仍需确认。</p>
       <p class="text-sm">本次计划 + 修复预留：<strong class="tabular-nums">{{ creditLabel(approvalCost) }}</strong><small v-if="approvalCost !== null"> credits</small></p>
+      <label v-if="writes.length" class="confirm"><input v-model="confirmTemplateWrite" type="checkbox" :disabled="locked" data-testid="confirm-template-write" />我确认在上述系列与模板下创建经典作业，并把提示词新版本写回模板。</label>
       <p v-if="approvalIssue" class="notice notice-amber text-xs">{{ approvalIssue }}</p>
-      <div><button type="button" class="primary" :disabled="Boolean(approvalIssue) || locked" @click="submit('approve_plan', { repairCredits })">批准版本 {{ version }} 并执行</button></div>
+      <div><button type="button" class="primary" :disabled="Boolean(approvalIssue) || locked" @click="submit('approve_plan', { repairCredits, confirmTemplateWrite })">批准版本 {{ version }} 并执行</button></div>
     </section>
 
     <form v-if="canShowRevision || selectedGate" class="action-box" @submit.prevent="submitRevision">
@@ -129,17 +146,18 @@
 
 <script setup>
 import { computed, reactive, ref, watch } from 'vue'
+import { RouterLink } from 'vue-router'
 import AuthedImage from './AuthedImage.vue'
 import AuthedVideo from './AuthedVideo.vue'
 import { creditLabel, v3StatusLabel } from './v3-actions.js'
 import { statusTone } from './v3-tones'
-import { PhCaretRight, PhCheck, PhCheckCircle, PhCircleNotch, PhClock, PhCoins, PhCursorClick, PhEye, PhFile, PhFilmReel, PhFilmSlate, PhFilmStrip, PhFlask, PhFrameCorners, PhGitBranch, PhHourglass, PhImage, PhInfo, PhMagicWand, PhPencilSimple, PhRecycle, PhScissors, PhSealCheck, PhTarget, PhVideoCamera, PhWarning } from '@phosphor-icons/vue'
-import { buildPlanAction, choiceIdentity, dependencyState, gateReady, initialApprovalCost, planGroups, planRows, planTotals, planVersion, readableJson, secondsLabel, toolLabel } from './v3-plan.js'
+import { PhArrowSquareOut, PhCaretRight, PhCheck, PhCheckCircle, PhCircleNotch, PhClock, PhCoins, PhCursorClick, PhEye, PhFile, PhFilmReel, PhFilmSlate, PhFilmStrip, PhFlask, PhFlowArrow, PhFrameCorners, PhGitBranch, PhHourglass, PhImage, PhInfo, PhMagicWand, PhPencilSimple, PhRecycle, PhScissors, PhSealCheck, PhTarget, PhVideoCamera, PhWarning } from '@phosphor-icons/vue'
+import { buildPlanAction, choiceIdentity, dependencyState, gateReady, initialApprovalCost, planGroups, planRows, planTotals, planVersion, readableJson, secondsLabel, templateWrites, toolLabel } from './v3-plan.js'
 import { durationStateLabel, durationTargetLabel, planConstraints } from './v3-constraints.js'
 
 const props = defineProps({ run: { type: Object, required: true }, disabled: { type: Boolean, default: false } })
 const emit = defineEmits(['action'])
-const repairCredits = ref(''), revisionMessage = ref(''), selectedGate = ref(''), actionError = ref('')
+const repairCredits = ref(''), revisionMessage = ref(''), selectedGate = ref(''), actionError = ref(''), confirmTemplateWrite = ref(false)
 const expanded = reactive({})
 const selections = reactive({}), choiceKeys = reactive({})
 const version = computed(() => planVersion(props.run))
@@ -147,6 +165,7 @@ const rows = computed(() => planRows(props.run))
 const groups = computed(() => planGroups(props.run, rows.value))
 const totals = computed(() => planTotals(props.run))
 const issues = computed(() => Array.isArray(props.run.plan_issues) ? props.run.plan_issues : [])
+const writes = computed(() => templateWrites(props.run))
 const constraints = computed(() => planConstraints(props.run))
 const durationTone = computed(() => ({ ok: 'emerald', mismatch: 'red' })[constraints.value.duration?.state] || 'slate')
 const locked = computed(() => props.disabled || props.run.action_pending === true)
@@ -154,11 +173,11 @@ const canShowRevision = computed(() => ['awaiting_plan_review', 'awaiting_result
 const approvalCost = computed(() => { try { return initialApprovalCost(props.run, repairCredits.value) } catch { return null } })
 const approvalIssue = computed(() => {
   if (locked.value) return ''
-  try { buildPlanAction(props.run, 'approve_plan', { expectedVersion: version.value, repairCredits: repairCredits.value }); return '' }
+  try { buildPlanAction(props.run, 'approve_plan', { expectedVersion: version.value, repairCredits: repairCredits.value, confirmTemplateWrite: confirmTemplateWrite.value }); return '' }
   catch (error) { return error.message }
 })
 watch([() => props.run.run_id, () => version.value], () => {
-  repairCredits.value = ''; revisionMessage.value = ''; selectedGate.value = ''; actionError.value = ''
+  repairCredits.value = ''; revisionMessage.value = ''; selectedGate.value = ''; actionError.value = ''; confirmTemplateWrite.value = false
   for (const key of Object.keys(expanded)) delete expanded[key]
   for (const key of Object.keys(selections)) delete selections[key]
   for (const key of Object.keys(choiceKeys)) delete choiceKeys[key]
@@ -172,7 +191,7 @@ watch(() => rows.value.map((row) => [row.id, choiceIdentity(row)]), (keys) => {
 watch(() => props.run.status, (status) => { if (status !== 'awaiting_gate') selectedGate.value = '' })
 const TOOL_ICONS = { generate_image: PhImage, select_image: PhCursorClick, animate_shot: PhVideoCamera, generate_video: PhVideoCamera,
   transform_video: PhMagicWand, extract_frame: PhScissors, retain_video_segment: PhScissors, compose_video: PhFilmReel,
-  probe_media: PhSealCheck, qc_video: PhSealCheck, package_story: PhFile }
+  probe_media: PhSealCheck, qc_video: PhSealCheck, package_story: PhFile, run_workflow_template: PhFlowArrow }
 const toolIcon = (tool) => TOOL_ICONS[tool] || PhFile
 const readiness = (row) => dependencyState(row, rows.value)
 const setExpanded = (id, value) => { expanded[id] = value }
@@ -223,6 +242,12 @@ function submitRevision() { submit('revise_plan', { message: revisionMessage.val
 .details-body .prompt { @apply whitespace-pre-wrap rounded-lg bg-blue-50/60 px-3 py-2 text-[13px] leading-relaxed text-slate-700 dark:bg-blue-950/20 dark:text-slate-200; }
 .details-body .label { @apply mt-2.5 text-[11px] text-slate-400; }
 .details-body pre { @apply mt-1 max-w-full whitespace-pre-wrap break-words rounded-lg bg-slate-50 p-2.5 text-[11px] text-slate-600 dark:bg-slate-800/60 dark:text-slate-300; overflow-wrap: anywhere; }
+.workflow { @apply mt-2.5 grid gap-1 rounded-lg border border-blue-100 bg-blue-50/40 px-3 py-2.5 dark:border-blue-900/60 dark:bg-blue-950/20; }
+.workflow .details { @apply mt-1.5 pt-1.5; }
+.link { @apply mt-1 inline-flex w-fit items-center gap-1 text-xs font-medium text-blue-700 hover:underline dark:text-blue-300; }
+.prompt-text { @apply mt-1.5 whitespace-pre-wrap rounded-lg bg-white px-3 py-2 text-[13px] leading-relaxed text-slate-700 dark:bg-slate-900 dark:text-slate-200; }
+.confirm { @apply flex items-start gap-2 text-xs leading-relaxed text-slate-700 dark:text-slate-200; }
+.confirm input { @apply mt-0.5 h-4 w-4 flex-none accent-blue-600; }
 .node-media { @apply max-h-80 w-full rounded-lg bg-slate-100 object-contain dark:bg-slate-800; }
 .choice-list { @apply mt-3 min-w-0 rounded-xl border border-blue-200 bg-blue-50/40 p-3 dark:border-blue-900 dark:bg-blue-950/20; }
 .choice-list legend { @apply px-1 text-xs font-semibold text-blue-700 dark:text-blue-300; }

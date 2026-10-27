@@ -1,8 +1,13 @@
 import json
+from contextvars import ContextVar
 from typing import Any
 
 from app.adapters.mock import MockChatAdapter
 from app.api import AppError
+
+
+# Classic-path workflow Jobs keep the classic JSON-mode fallback inside Agent/MQ workers (D-066).
+classic_json_fallback = ContextVar("classic_json_fallback", default=False)
 
 
 class QwenChatAdapter(MockChatAdapter):
@@ -171,7 +176,8 @@ class QwenChatAdapter(MockChatAdapter):
         try:
             return self.request_json("POST", url, headers=headers, json=payload, timeout=timeout)
         except AppError:
-            if self.config("AGENT_WORKER_ACTIVE", False) or self.config("MQ_WORKER_ACTIVE", False):
+            if ((self.config("AGENT_WORKER_ACTIVE", False) or self.config("MQ_WORKER_ACTIVE", False))
+                    and not classic_json_fallback.get()):
                 # No implicit additional paid planning calls on schema errors.
                 raise
             if payload.get("response_format", {}).get("type") == "json_schema":

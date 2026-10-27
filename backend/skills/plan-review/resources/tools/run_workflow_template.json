@@ -1,0 +1,274 @@
+{
+  "tool": "run_workflow_template",
+  "resolved_input_schema": {
+    "$defs": {
+      "I2ITest": {
+        "additionalProperties": false,
+        "properties": {
+          "mode": {
+            "enum": [
+              "single_male",
+              "single_female",
+              "couple"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "test_count": {
+            "maximum": 8,
+            "minimum": 1,
+            "title": "Test Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "mode",
+          "test_count"
+        ],
+        "title": "I2ITest",
+        "type": "object"
+      },
+      "Prompts": {
+        "additionalProperties": false,
+        "properties": {
+          "t2v": {
+            "anyOf": [
+              {
+                "maxLength": 8000,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "T2V"
+          },
+          "first_frame_image": {
+            "anyOf": [
+              {
+                "maxLength": 8000,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "First Frame Image"
+          },
+          "i2v": {
+            "anyOf": [
+              {
+                "maxLength": 8000,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "I2V"
+          },
+          "r2v_flash": {
+            "anyOf": [
+              {
+                "maxLength": 8000,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "R2V Flash"
+          },
+          "i2i": {
+            "anyOf": [
+              {
+                "maxLength": 8000,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "I2I"
+          }
+        },
+        "title": "Prompts",
+        "type": "object"
+      }
+    },
+    "additionalProperties": false,
+    "properties": {
+      "template_target": {
+        "additionalProperties": true,
+        "title": "Template Target",
+        "type": "object"
+      },
+      "branches": {
+        "items": {
+          "enum": [
+            "reverse_prompts",
+            "rewrite_prompts",
+            "r2v_prompt",
+            "t2v",
+            "first_frame_image",
+            "i2v",
+            "r2v",
+            "i2i_test"
+          ],
+          "type": "string"
+        },
+        "maxItems": 8,
+        "minItems": 1,
+        "title": "Branches",
+        "type": "array"
+      },
+      "source_video_artifact_id": {
+        "anyOf": [
+          {
+            "maxLength": 100,
+            "minLength": 1,
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Source Video Artifact Id"
+      },
+      "first_frame_artifact_id": {
+        "anyOf": [
+          {
+            "maxLength": 100,
+            "minLength": 1,
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "First Frame Artifact Id"
+      },
+      "reference_artifact_ids": {
+        "anyOf": [
+          {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 4,
+            "minItems": 1,
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Reference Artifact Ids"
+      },
+      "prompts": {
+        "$ref": "#/$defs/Prompts"
+      },
+      "i2i_test": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/I2ITest"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "models": {
+        "additionalProperties": {
+          "type": "string"
+        },
+        "maxProperties": 12,
+        "title": "Models",
+        "type": "object"
+      },
+      "model_params": {
+        "additionalProperties": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "maxProperties": 12,
+        "title": "Model Params",
+        "type": "object"
+      },
+      "package": {
+        "default": true,
+        "title": "Package",
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "template_target",
+      "branches"
+    ],
+    "title": "RunWorkflowInput",
+    "type": "object"
+  },
+  "io_types": {
+    "inputs": {
+      "source_video_artifact_id": "video",
+      "first_frame_artifact_id": "image",
+      "reference_artifact_ids": "image[]"
+    },
+    "outputs": {
+      "job_id": "json",
+      "template": "json",
+      "prompts": "json",
+      "videos": "video[]",
+      "images": "image[]",
+      "package": "package"
+    }
+  },
+  "authoring": {
+    "purpose": "只读作者合同，不是可由 Agent 直接调用的函数，也不是审批许可。",
+    "resolved_schema_notice": "resolved_input_schema 描述引用解析及服务端注入后的工具载荷；编写 PlanNode.inputs 时必须遵守字段放置规则。",
+    "plan_node_fields": [],
+    "server_injected_fields": [],
+    "forbidden_input_fields": [
+      "model_id",
+      "params",
+      "template_id",
+      "plan_version"
+    ],
+    "model_selection": "生成节点 model_id/params 写在 PlanNode 顶层；无指定模型可置 model_id=null，由 check_plan 解析默认。非生成节点 model_id=null、params={}。",
+    "references": {
+      "existing_media": {
+        "artifact": "REPLACE_OWNED_ARTIFACT_ID"
+      },
+      "upstream_output": {
+        "ref": "node.output"
+      },
+      "rules": [
+        "artifact/ref 对象只能有该单个键。真实 ID 必须属于当前 Run；node.output 必须是对应 io_types.outputs 的命名输出。",
+        "仅在工具声明且编译器支持的输入位置使用类型匹配的引用。媒体位置接受工件或上游媒体；json 位置还须符合对应 Schema/特殊映射，不代表任意引用均可接受。prompt、params 和未声明位置不能夹带引用。",
+        "数组字段可用单媒体引用组成数组，或整个字段引用同类型数组输出；数组元素不能引用数组输出，解析器不做 flatten。",
+        "示例 ID 只是形状占位，必须替换；引用本身不证明素材存在、质量或批准。"
+      ]
+    },
+    "completion_outputs": "io_types.outputs 是 Plan 节点完成后的命名输出；异步 Job 的 job_id/status/prompts 等回执不能作为 Plan 媒体引用。",
+    "notes": [
+      "经典路径专用（V.25）：只在用户明确表达生产意图时使用，先读 production-workflow Skill；计划只能有这一个节点，交付物只引用它，不写 duration_constraint，不走补丁。",
+      "template_target 二选一：{template_id} 或 {series_id,new_template_name}；不得指向 agent_studio/agent_workspace；只能在已有系列下新建模板。",
+      "branches 取值 reverse_prompts、rewrite_prompts、r2v_prompt、t2v、first_frame_image、i2v、r2v、i2i_test；依赖由经典 WorkflowValidator 判定，未被使用的输入会被拒绝。",
+      "models/model_params 只按槽位 t2v、image、i2v、r2v、i2i_image、i2i_video 指定；省略时由服务端按简报与默认补全并冻结；文本/理解节点使用经典配置模型。",
+      "交付：video→videos、image→images、package→package、prompts→prompts；package 只在启用视频分支时有效。批准时用户须确认模板写入。"
+    ]
+  }
+}

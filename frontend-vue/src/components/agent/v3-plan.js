@@ -7,8 +7,13 @@ const TOOL_LABELS = {
   generate_image: '生成图像', generate_video: '生成视频', animate_shot: '首帧 / 首尾帧生视频',
   transform_video: '视频参考 / 编辑 / 延长', extract_frame: '提取关键帧', retain_video_segment: '保留原片片段',
   compose_video: '拼接成片', probe_media: '读取媒体信息', qc_video: '媒体质检', package_story: '打包交付',
-  select_image: '从候选图片中选择',
+  select_image: '从候选图片中选择', run_workflow_template: '经典工作流（系列 / 模板）',
 }
+const WORKFLOW_TOOL = 'run_workflow_template'
+const BRANCH_LABELS = { reverse_prompts: '视频反推提示词', rewrite_prompts: '拆分首帧与 i2v 提示词', r2v_prompt: '生成 R2V 提示词',
+  t2v: '文生视频', first_frame_image: '首帧图', i2v: '图生视频', r2v: '参考图生视频', i2i_test: 'I2I 批量测试' }
+const PROMPT_LABELS = { t2v: '文生视频', first_frame_image: '首帧图', i2v: '图生视频', r2v_flash: '参考图生视频', i2i: '图生图' }
+export const promptTypeLabel = (kind) => PROMPT_LABELS[kind] || String(kind || '提示词')
 const AGENT_LABELS = { producer: '制片协调', research: '资料研究', creative: '故事创作', director: '导演规划',
   prompt_smith: '提示词编写', critic: '计划审阅', repair: '局部修复' }
 const list = (value) => Array.isArray(value) ? value : []
@@ -57,12 +62,34 @@ export function planRows(run) {
       estimated_cost: cost, input_video_seconds: finiteValue(estimate?.input_video_seconds),
       output_video_seconds: finiteValue(estimate?.output_video_seconds),
       duration: VIDEO_TOOLS.has(node.tool) ? finiteValue(estimate?.output_video_seconds)
-        : node.tool === 'retain_video_segment' ? keptSeconds : null,
+        : node.tool === 'retain_video_segment' ? keptSeconds
+        : node.tool === WORKFLOW_TOOL && finiteValue(estimate?.output_video_seconds) ? estimate.output_video_seconds : null,
+      workflow: node.tool === WORKFLOW_TOOL ? workflowView(node, task.workflow) : null,
       assets: nodeAssets(task.artifacts),
       choice: task.choice ? { ready: task.choice.ready === true, digest: task.choice.choice_digest || '',
         selected: task.choice.selected_artifact_id || '', candidates: nodeAssets(task.choice.candidates) } : null,
     }
   })
+}
+
+// Server projection of template targets that approval writes to (V.25.3).
+export function templateWrites(run) {
+  return list(run?.template_writes).filter((item) => item && typeof item.template_name === 'string').map((item) => ({
+    nodeId: String(item.node_id || ''), isNew: item.mode === 'new', template: item.template_name,
+    series: String(item.series_name || item.series_id || ''), promptTypes: strings(item.prompt_types).map(promptTypeLabel),
+  }))
+}
+
+export function workflowView(node, result) {
+  const branches = strings(node?.inputs?.branches).map((key) => BRANCH_LABELS[key] || key)
+  const value = result && typeof result === 'object' ? result : {}
+  const jobId = typeof value.job_id === 'string' && /^[A-Za-z0-9_-]{1,80}$/.test(value.job_id) ? value.job_id : ''
+  const prompts = Object.entries(value.prompts && typeof value.prompts === 'object' ? value.prompts : {})
+    .filter(([, item]) => item && typeof item.content === 'string')
+    .map(([kind, item]) => ({ kind, label: promptTypeLabel(kind), version: String(item.version || ''), content: item.content }))
+  return { branches, jobId, jobUrl: jobId ? `/jobs/${jobId}` : '', prompts,
+    template: value.template && typeof value.template.name === 'string' ? value.template.name : '',
+    packaged: typeof value.package === 'string' && value.package.length > 0 }
 }
 
 export function planGroups(run, rows = planRows(run)) {
@@ -130,6 +157,10 @@ export function buildPlanAction(run, action, values = {}, disabled = false) {
     if (cost === null || budget === null || spent === null) throw new Error('费用或剩余预算尚未由服务器确认。')
     if (cost > Math.max(0, budget - spent) + 1e-8) throw new Error('计划费用与修复预留超过剩余总预算，请调整后审核。')
     payload = { plan_version: version, repair_budget_credits: amount }
+    if (templateWrites(run).length) {
+      if (values.confirmTemplateWrite !== true) throw new Error('请先勾选确认：作业与提示词将写入经典模板。')
+      payload.confirm_template_write = true
+    }
   } else if (action === 'approve_gate') {
     const gate = planRows(run).find((row) => row.id === values.gateNodeId)
     if (!gate || !gateReady(gate)) throw new Error('该审核门当前不可确认。')

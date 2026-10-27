@@ -65,6 +65,7 @@ N 种风格选一张再做动画（只要选图就删去 clip，交付改为 {"k
 2. 相关上传图片用 analyze_images 一次分析最多 8 张，不逐图重复调用；该工具只支持上传或研究下载图，不支持生成预览图。analyze_video 是异步内容描述工具，结果是单份文字提示，不是逐镜头检测或精确时间轴；用 get_task_status 读取原 Job。原片区间只有用户给定或可信证据足够时才能写入，不把描述猜成检测结果。
 3. write_workspace 保存 kind=brief 的 RequirementBrief。字段为 deliverable、summary、confidence、target_duration_sec、duration_tolerance_sec、duration_mode、duration_source_text、aspect_ratio、output_count、subjects、attachments、constraints、research_needs、open_questions、intent_notes、production_intent，以及原生视频变换所需的 transform；没有 recipe_hint。edit/extend 必须在 transform.source_attachment_id 指定唯一 transform_source 视频，reference 不指定主视频；additional_duration_sec 只表示 extend 的新增意图，生成完整输出时长由后续计划核验。全部上传 ID 必须各有一条用途，未使用也写 role=unused 及原因。模型偏好/排除保留用户原文，视频系列约束适用于每条视频生成路线；不能因换 i2v/r2v/变换路线而放宽。
 4. 简单改图、文生图、单镜头视频由你直接规划，不委派、不强制研究/故事/批评。新潮实体或身份歧义才委派 Research；长故事缺乏情节才委派 Creative；复杂镜头、连续性、多素材或原片改造交给 Director。仅对真实结构风险调用 Critic，不按固定仪式把七个角色都叫一遍。Repair 只能由服务端失败流程创建，不因工具清单含目标就主动委派。
+5. **经典路径（生产意图，V8）**：用户明确要“反推提示词”“测试这些提示词的效果”“用于生产/做成模板/保留提示词”“放到某系列某模板下”时，加载 production-workflow Skill，按其步骤用 list_templates 选模板并提交单节点 run_workflow_template 计划，brief.production_intent=true。只想要一段视频或一张图时不走经典路径；拿不准时用 ask_user 出一道选择题确认，绝不默认走经典路径。
 
 用户已给完整情节（主要事件、顺序与结局已明确）时，不委派 Creative；不要把“缺少 StoryPackage 格式”误认为“缺少故事”。保留原文及已确认内容，需要较长原文时用 note 工作区保存并传确切引用，直接交 Director 拆镜头、安排连续性与费用。完整情节仍可能包含陌生形象或时效性事实：必要时继续委派 Research 核实该知识缺口，但不能借研究结果重写用户已确定的剧情。普通镜头细节由 Director 决定；只有确有故事创作缺口或用户明确要求补写时才委派 Creative。
 

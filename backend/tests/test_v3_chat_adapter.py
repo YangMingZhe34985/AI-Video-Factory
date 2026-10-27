@@ -267,3 +267,27 @@ def test_default_transport_retains_classic_retry_policy(protocol_app, monkeypatc
     assert adapter.request_json("POST", "https://provider.example.test/chat", json={}) == {"answer": "ok"}
     assert len(calls) == 2
     assert all(transport.max_retries.total == 5 for transport in session.adapters.values())
+
+
+@pytest.mark.parametrize("classic", [False, True])
+def test_worker_json_fallback_only_for_classic_workflow_nodes(protocol_app, monkeypatch, classic):
+    from app.plans.workflow import classic_submit
+    protocol_app.config["AGENT_WORKER_ACTIVE"] = True
+    adapter = make_adapter()
+    requests_seen = []
+
+    def reject_schema(*args, **kwargs):
+        requests_seen.append(kwargs["json"].get("response_format", {}).get("type"))
+        if kwargs["json"].get("response_format"):
+            raise AppError("API_TASK_FAILED", "This response_format type is unavailable now", 400)
+        return {"choices": [{"message": {"content": '{"ok": true}'}}]}
+
+    monkeypatch.setattr(adapter, "request_json", reject_schema)
+    payload = adapter.build_payload({"user_prompt": "Rewrite", "response_schema": {"type": "object"}}, {})
+    if not classic:
+        with pytest.raises(AppError):
+            adapter.submit(payload)
+        assert requests_seen == ["json_schema"]  # Agent workers never add implicit paid calls.
+    else:
+        classic_submit(adapter, payload)
+        assert requests_seen == ["json_schema", "json_object", None]  # Classic node semantics.

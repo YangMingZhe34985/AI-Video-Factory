@@ -93,7 +93,8 @@
           "enum": [
             "image",
             "video",
-            "package"
+            "package",
+            "prompts"
           ],
           "title": "Kind",
           "type": "string"

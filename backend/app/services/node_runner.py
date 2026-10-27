@@ -225,6 +225,9 @@ class NodeRunner:
         if job and (job.config or {}).get("agent_transform"):
             from app.agent.transform_policy import validate_before_submit
             validate_before_submit(job, model, inputs, params, operation=operation, adapter_name=adapter_name)
+        if job and (job.config or {}).get("agent_workflow"):
+            from app.plans.workflow import classic_submit
+            return classic_submit(adapter, payload)
         return adapter.submit(payload)
 
     @staticmethod

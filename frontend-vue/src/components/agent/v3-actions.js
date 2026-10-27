@@ -4,7 +4,7 @@ const runStates = new Set(['queued', 'understanding', 'awaiting_input', 'awaitin
 const reviewStates = new Set(['awaiting_plan_review', 'awaiting_result_review', 'awaiting_gate', 'attention'])
 const fieldSets = {
   answer: ['card_id', 'answers', 'use_defaults'],
-  approve_plan: ['plan_version', 'repair_budget_credits'],
+  approve_plan: ['plan_version', 'repair_budget_credits', 'confirm_template_write'],
   approve_gate: ['plan_version', 'gate_node_id', 'selected_artifact_id', 'choice_digest'],
   approve_results: ['plan_version'],
   revise_plan: ['plan_version', 'message', 'gate_node_id'],
@@ -114,7 +114,10 @@ function normalizeAction(run, action, payload = {}) {
     requireValue([total, run.budget_limit, run.estimated_spent, repair].every(credit), '费用尚未确认，请重新获取估算。')
     const planned = total + repair + run.estimated_spent
     requireValue(Number.isFinite(planned) && planned <= run.budget_limit + 1e-9, '计划和修复预留超过剩余总预算。')
-    return { action, plan_version: version, repair_budget_credits: repair }
+    // Classic-path plans write prompt versions into a user template (V.25.3).
+    const writes = Array.isArray(run.template_writes) && run.template_writes.length > 0
+    requireValue(!writes || payload.confirm_template_write === true, '请先确认将作业与提示词写入经典模板。')
+    return { action, plan_version: version, repair_budget_credits: repair, ...(writes ? { confirm_template_write: true } : {}) }
   }
   if (action === 'approve_gate') {
     requireValue(run.status === 'awaiting_gate', '当前没有待确认预览或候选。')
