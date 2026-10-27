@@ -804,7 +804,7 @@ inputs：
 | `prompts` | object | 可选初始提示词：`t2v`、`first_frame_image`、`i2v`、`r2v_flash`、`i2i`（各 ≤8000 字）。 |
 | `i2i_test` | object | 启用 `i2i_test` 时必填：`{mode: single_male|single_female|couple, test_count: 1–8}`。 |
 | `models` / `model_params` | object | 可选，按槽位 `t2v`、`image`、`i2v`、`r2v`、`i2i_image`、`i2i_video` 指定模型与参数；未指定时编译器按需求简报的模型偏好与默认模型补全并冻结；文本/理解节点（reverse_prompts、rewrite_prompts、reverse_prompts4r2v、rewrite_t2i_to_i2i）以节点键为槽位，只由编译器按经典配置模型冻结，作者不得改写。 |
-| `package` | bool | 默认 true：作业结束后生成经典 ZIP 包（final/、assets/、prompts/、manifest）。 |
+| `package` | bool | 默认 true：作业结束后生成经典 ZIP 包（final/、assets/、prompts/、manifest）。经典打包以视频为主体，只有启用视频分支（t2v、i2v、r2v、i2i_test）时有效，否则编译器置为 false。 |
 
 - 依赖规则由经典 `WorkflowValidator` 判定（例如 `rewrite_prompts` 需要 t2v 提示词：来自 `reverse_prompts` 或 `prompts.t2v`；I2I Test 还需要 i2v 提示词）；编译期即报 `WORKFLOW_DEPENDENCY_MISSING`。不得同时提供已启用分支会生成的提示词（`WORKFLOW_PROMPT_CONFLICT`），例外：提供 `prompts.i2i` 时跳过 rewrite_t2i_to_i2i，按原文测试。未被启用分支使用的输入报 `WORKFLOW_INPUT_UNUSED`。
 - 需求简报的比例与时长不生成计划时长约束，而是作为各生成槽位参数的默认值（比例经 aspect 规则写入 ratio/size，时长写入视频槽位 duration）；作者显式参数优先，冲突时报错。
@@ -821,6 +821,12 @@ inputs：
 ### V.25.4 执行绑定
 
 - 作业 `config.agent_workflow = {branches, test_count}`，`node_models` / `node_model_params` 为冻结的全部槽位；作业快照只绑定初始提示词引用与初始素材，作业内 LLM 节点生成的提示词不在审批范围内（经典路径的固有特性，计划卡明示）。
+- 经典路径作业内的经典文本节点保留经典适配器的 JSON 模式降级（json_schema → json_object → 不带格式，最多 2 次额外文本调用），即使运行在 Agent/MQ worker 中；Agent 规划调用仍不做隐式重试。
 - 每次服务商提交校验：操作在冻结映射内、模型与参数一致、源素材指纹不变、初始提示词未变、单次价格不高于绑定时的单价；计划须为当前版本且处于执行状态。
 - 经典路径作业不再按 Agent 私有作业处理（`is_private_agent_job` 为假）：提示词经 PromptSync 写回模板，作业与产物在经典页面可见，模板打包可用；经典页面的手动重跑仍被计划派发许可拒绝。
 - 公开计划视图增加 `template_writes`；该节点的 `workflow` 投影给出 job_id、template、package 与各类型提示词（版本与正文前 4000 字）。结果卡给出经典作业详情链接 `/jobs/<job_id>`。
+
+### V.25.5 Skill 与路由
+
+- `production-workflow` Skill（producer）给出触发规则、三种任务的分支映射与三个可编译示例；Producer 路由第 5 条：生产意图明确时加载该 Skill，拿不准时用 ask_user 选择题确认，不默认走经典路径。
+- plan-review 资源新增 `resources/tools/run_workflow_template.json`；`plan_draft.schema.json` 的交付类型增加 prompts。

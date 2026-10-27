@@ -180,5 +180,5 @@
 | V15a | v3 运行指标：单 Run v3 段与 `/api/agent/metrics/v3` 聚合（契约 V.24.7） | Claude | D-062 | 完成（2026-10-26，D-064） |
 | V15b | 真实视频复测新提示词与修复（两镜头 20 秒 + 单镜头 5 秒） | Claude | D-062 | 完成（两段均成功交付；t2v 主体稳定性问题转为“主体优先 i2v”规则） |
 | V15c | 默认开启 v3 阶段 1（仅用户本人，环境变量切换，见 DEFAULT_ON_PLAN） | 用户（部署）/ Claude（检查） | V15a | 待用户决定 |
-| V8 | 经典路径：生产意图、系列 + 模板、`run_workflow_template`（契约开工前补写） | Codex | V-Gate3 | 按用户指令暂跳过 |
+| V8 | 经典路径：生产意图、系列 + 模板、`run_workflow_template`（D-066、契约 V.25） | Claude | 路由 A/B + 真实冒烟 | 已完成（2026-10-27，见 docs/agent_v3/V8_REPORT_20261027.md）；视频真实验证待授权 |
 
